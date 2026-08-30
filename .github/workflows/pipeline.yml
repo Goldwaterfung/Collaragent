@@ -1,0 +1,169 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag / Release version (e.g. v1.0.0, leave empty to auto-derive from package.json)'
+        required: false
+        default: ''
+      draft:
+        description: 'Publish as Draft release'
+        type: boolean
+        required: false
+        default: false
+      prerelease:
+        description: 'Mark as Pre-release'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # =========================================================================
+  # 1. QUALITY GATE (Runs on PRs, pushes to main, tags, and manual triggers)
+  # =========================================================================
+  quality-check:
+    name: Quality Check (Typecheck, Test, Build)
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_OPTIONS: '--max-old-space-size=8192'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: TypeScript Check
+        run: npm run typecheck
+
+      - name: Run Unit Tests
+        run: npx vitest run
+
+      - name: Compile Bundles (Vite)
+        run: npm run build
+
+  # =========================================================================
+  # 2. CROSS-PLATFORM PACKAGING (Runs ONLY if quality-check passes & not a PR)
+  # =========================================================================
+  build-and-package:
+    name: Package (${{ matrix.os }})
+    needs: quality-check
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            build_cmd: npm run build:mac
+          - os: windows-latest
+            build_cmd: npm run build:win
+          - os: ubuntu-latest
+            build_cmd: npm run build:linux
+
+    env:
+      NODE_OPTIONS: '--max-old-space-size=8192'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'yarn'
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools libfuse2
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Package Electron App
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaragent-dist-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: warn
+
+  # =========================================================================
+  # 3. PUBLISH GITHUB RELEASE (Runs ONLY after all OS packages succeed)
+  # =========================================================================
+  publish-release:
+    name: Publish GitHub Release
+    needs: [quality-check, build-and-package]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Release Tag
+        id: resolve_tag
+        run: |
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            echo "tag=${{ inputs.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: collaragent-dist-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          name: CollarAgent ${{ steps.resolve_tag.outputs.tag }}
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.prerelease || false }}
+          generate_release_notes: true
+          files: |
+            release-artifacts/*.dmg
+            release-artifacts/*.zip
+            release-artifacts/*.exe
+            release-artifacts/*.AppImage
+            release-artifacts/*.deb
+
