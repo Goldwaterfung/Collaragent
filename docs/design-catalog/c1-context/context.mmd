@@ -1,0 +1,23 @@
+flowchart TB
+    %% C1 System Context Styling
+    classDef person fill:#08427b,stroke:#073b6f,color:#fff;
+    classDef system fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef external fill:#6b7280,stroke:#4b5563,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    User["👤 Knowledge Worker / Engineer<br/>[Person]<br/>Creates projects, crafts documents, designs graph models, and directs AI agents"]:::person
+
+    subgraph SystemBoundary ["CollarAgent Desktop Platform"]
+        CollarAgentApp["🏢 CollarAgent<br/>[Software System]<br/>Local-first desktop agent environment providing interactive canvas, rich text editor, multi-agent orchestration, and project time-travel"]:::system
+    end
+
+    LocalFS["💾 Local Filesystem<br/>[Host OS]<br/>Stores .cagent archives, .collar live state, skills, and configuration vaults"]:::external
+    LLMProviders["🧠 LLM Cloud Providers<br/>[External Systems: OpenAI, Anthropic, Google, Ollama]<br/>Executes generative completions, reasoning traces, and function calling"]:::external
+    MCPServers["🔌 Model Context Protocol (MCP) Servers<br/>[External Processes / Remote Servers]<br/>Provides external tools, filesystem access, and domain integrations via STDIO/SSE"]:::external
+    SearchGateway["🌐 Web Search Gateway<br/>[External API: Tavily]<br/>Performs live internet queries and web intelligence gathering"]:::external
+
+    User -->|"Interacts via UI, Canvas, Editor, and Chat [Desktop GUI]"| CollarAgentApp
+    CollarAgentApp -->|"Reads & writes local archives, skills, and encrypted keys [POSIX FS]"| LocalFS
+    CollarAgentApp -->|"Dispatches prompts & receives streaming completions [HTTPS / REST]"| LLMProviders
+    CollarAgentApp -->|"Discovers & executes external tool schemas [STDIO / SSE / JSON-RPC]"| MCPServers
+    CollarAgentApp -->|"Fetches real-time web search results [HTTPS / REST]"| SearchGateway

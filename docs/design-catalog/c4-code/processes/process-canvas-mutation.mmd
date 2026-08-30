@@ -1,0 +1,41 @@
+flowchart LR
+    %% Process EventStorming Styling
+    classDef event fill:#ff9800,stroke:#e65100,color:#000
+    classDef command fill:#2196f3,stroke:#0d47a1,color:#fff
+    classDef actor fill:#ffeb3b,stroke:#f57f17,color:#000
+    classDef system fill:#9c27b0,stroke:#4a148c,color:#fff
+    classDef aggregate fill:#4caf50,stroke:#1b5e20,color:#fff
+    classDef policy fill:#e91e63,stroke:#880e4f,color:#fff
+    classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
+
+    Agent[🤖 DeepAgent ReAct Loop]:::actor
+    
+    CmdWriteGraph[Command: writeGraph<br/>spec: WriteGraphSpec]:::command
+    EvtSpecReceived[Event: GraphSpec Received]:::event
+    AggDiffEngine[Aggregate: CanvasDiffEngine]:::aggregate
+    
+    PolDiff[Policy: Whenever Spec Received -> Diff vs CanvasSnapshot & Order Commands]:::policy
+    
+    EvtCmdsGenerated[Event: Atomic CanvasCommands Generated<br/>1. Remove links<br/>2. Remove nodes<br/>3. Add nodes<br/>4. Update attrs/layout<br/>5. Add links]:::event
+    
+    CmdBroadcastStaged[Command: Broadcast Staged Commands]:::command
+    SysWS[System: In-Process WS Server]:::system
+    EvtStagedOnUI[Event: Proposal Banner Displayed in UI]:::event
+    
+    User[👤 Knowledge Worker]:::actor
+    CmdAccept[Command: Accept Changes]:::command
+    EvtCommitted[Event: Changes Committed to History Stack]:::event
+    AggGraph[Aggregate: Graph Aggregate]:::aggregate
+
+    Agent --> CmdWriteGraph
+    CmdWriteGraph --> EvtSpecReceived
+    EvtSpecReceived --> PolDiff
+    PolDiff --> AggDiffEngine
+    AggDiffEngine --> EvtCmdsGenerated
+    EvtCmdsGenerated --> CmdBroadcastStaged
+    CmdBroadcastStaged --> SysWS
+    SysWS --> EvtStagedOnUI
+    
+    User --> CmdAccept
+    CmdAccept --> EvtCommitted
+    EvtCommitted --> AggGraph

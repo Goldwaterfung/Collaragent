@@ -1,0 +1,41 @@
+flowchart LR
+    %% Process EventStorming Styling
+    classDef event fill:#ff9800,stroke:#e65100,color:#000
+    classDef command fill:#2196f3,stroke:#0d47a1,color:#fff
+    classDef actor fill:#ffeb3b,stroke:#f57f17,color:#000
+    classDef system fill:#9c27b0,stroke:#4a148c,color:#fff
+    classDef aggregate fill:#4caf50,stroke:#1b5e20,color:#fff
+    classDef policy fill:#e91e63,stroke:#880e4f,color:#fff
+    classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
+
+    Agent[🤖 DeepAgent ReAct Loop]:::actor
+    
+    CmdEditDoc[Command: editDocument<br/>operations: JSONPatch[]]:::command
+    EvtPatchReceived[Event: Document Patch Received]:::event
+    AggPatchEngine[Aggregate: PatchCommandEngine]:::aggregate
+    
+    PolValidate[Policy: Whenever Patch Received -> Validate Block Existence & Compute Diffs]:::policy
+    
+    EvtEditorCmds[Event: Atomic EditorCommands Emitted<br/>• editor:update_block<br/>• editor:insert_block<br/>• editor:remove_block]:::event
+    
+    CmdStagedWS[Command: Stage Over WebSocket /ws/editor/:id]:::command
+    SysWS[System: WebSocket Sync Engine]:::system
+    EvtDiffView[Event: Visual Inline Diff Rendered in Lexical]:::event
+    
+    User[👤 Knowledge Worker]:::actor
+    CmdReview[Command: Review & Commit Proposal]:::command
+    EvtDocUpdated[Event: Document AST Updated & Persisted]:::event
+    AggDoc[Aggregate: Document Payload Aggregate]:::aggregate
+
+    Agent --> CmdEditDoc
+    CmdEditDoc --> EvtPatchReceived
+    EvtPatchReceived --> PolValidate
+    PolValidate --> AggPatchEngine
+    AggPatchEngine --> EvtEditorCmds
+    EvtEditorCmds --> CmdStagedWS
+    CmdStagedWS --> SysWS
+    SysWS --> EvtDiffView
+    
+    User --> CmdReview
+    CmdReview --> EvtDocUpdated
+    EvtDocUpdated --> AggDoc

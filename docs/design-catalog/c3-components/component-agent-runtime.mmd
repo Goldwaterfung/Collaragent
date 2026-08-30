@@ -1,0 +1,53 @@
+flowchart TB
+    %% C3 Agent Runtime Styling
+    classDef component fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef middleware fill:#7c3aed,stroke:#5b21b6,color:#fff;
+    classDef backend fill:#059669,stroke:#047857,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    subgraph DeepAgentRuntime ["DeepAgent Execution Engine (LangGraph Core)"]
+        
+        DeepAgentFac["🤖 createDeepAgent<br/>[Runtime Factory]<br/>Assembles ReAct execution loop, middleware stack, and state reducers"]:::component
+        
+        subgraph MiddlewarePipeline ["Ordered Middleware Interceptor Stack"]
+            PatchToolMW["🔧 PatchToolCallsMiddleware<br/>[Middleware]<br/>Appends synthetic cancellation ToolMessages for dangling calls"]:::middleware
+            SkillsMW["📚 SkillsMiddleware<br/>[Middleware]<br/>Progressive disclosure catalog injection & on-demand skill reading"]:::middleware
+            MemoryMW["🧠 Memory & AgentMemoryMiddleware<br/>[Middleware]<br/>Loads AGENTS.md, ~/.deepagents/agent.md, and project memory"]:::middleware
+            FSMiddleware["📁 FilesystemMiddleware<br/>[Middleware]<br/>Filesystem tool guides, sandbox validation, large output eviction"]:::middleware
+            SubAgentMW["👥 SubAgentMiddleware<br/>[Middleware]<br/>Manages task / dynamic_task delegation and state isolation"]:::middleware
+            TodoMW["📋 TodoListMiddleware<br/>[Middleware]<br/>write_todos tool injection & anti-parallelism guardrails"]:::middleware
+            ContextMW["✂️ ContextEditing & Summarization<br/>[Middleware]<br/>Prunes tool outputs (>100k tokens) and summarizes history (>120k)"]:::middleware
+        end
+
+        subgraph DiffAndPatchEngines ["Deterministic Mutation & Inversion Engines"]
+            CanvasDiff["🎨 CanvasDiffEngine<br/>[Component]<br/>Diffs declarative GraphSpec vs current state to emit atomic CanvasCommands"]:::component
+            DocDiff["📄 DocumentDiffEngine<br/>[Component]<br/>Diffs Lexical DocumentPayloads to emit atomic EditorCommands"]:::component
+            PatchEngine["🧩 PatchCommandEngine<br/>[Component]<br/>Applies structured JSON patch operations against HTML patch views"]:::component
+            InverseEngine["🔄 InverseCommandEngine<br/>[Component]<br/>Inverts executed workspace commands into atomic Undo commands"]:::component
+        end
+
+        subgraph StorageBackends ["Pluggable Storage Backends"]
+            CompositeBE["🔀 CompositeBackend<br/>[Backend]<br/>Prefix-based router (/memories -> StoreBackend, / -> FilesystemBackend)"]:::backend
+            FSBackend["💾 FilesystemBackend<br/>[Backend]<br/>POSIX disk access with virtual sandboxing and O_NOFOLLOW symlink safety"]:::backend
+            StateBE["⚡ StateBackend<br/>[Backend]<br/>Ephemeral in-memory storage residing in LangGraph state (`files` channel)"]:::backend
+            StoreBE["🗄️ StoreBackend<br/>[Backend]<br/>Cross-thread persistent storage backed by LangGraph BaseStore"]:::backend
+        end
+    end
+
+    DeepAgentFac --> PatchToolMW
+    PatchToolMW --> SkillsMW
+    SkillsMW --> MemoryMW
+    MemoryMW --> FSMiddleware
+    FSMiddleware --> SubAgentMW
+    SubAgentMW --> TodoMW
+    TodoMW --> ContextMW
+    
+    FSMiddleware --> CompositeBE
+    CompositeBE --> FSBackend
+    CompositeBE --> StateBE
+    CompositeBE --> StoreBE
+
+    DeepAgentFac --> CanvasDiff
+    DeepAgentFac --> DocDiff
+    DeepAgentFac --> PatchEngine
+    DeepAgentFac --> InverseEngine

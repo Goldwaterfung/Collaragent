@@ -1,0 +1,314 @@
+import {
+  createAgent,
+  humanInTheLoopMiddleware,
+  anthropicPromptCachingMiddleware,
+  summarizationMiddleware,
+  contextEditingMiddleware,
+  ClearToolUsesEdit,
+  SystemMessage,
+  type AgentMiddleware,
+  type ResponseFormat,
+} from "langchain";
+import type {
+  ClientTool,
+  ServerTool,
+  StructuredTool,
+} from "@langchain/core/tools";
+import type { BaseStore } from "@langchain/langgraph-checkpoint";
+
+import {
+  createFilesystemMiddleware,
+  createSubAgentMiddleware,
+  createPatchToolCallsMiddleware,
+  createMemoryMiddleware,
+  createSkillsMiddleware,
+  createWorkspaceMiddleware,
+  todoListMiddleware,
+  dateMiddleware,
+  type SubAgent,
+} from "../middleware/index.js";
+import { StateBackend } from "../backends/index.js";
+import { InteropZodObject } from "@langchain/core/utils/types";
+import { CompiledSubAgent } from "../middleware/subagents.js";
+import type {
+  CreateDeepAgentParams,
+  DeepAgent,
+  DeepAgentTypeConfig,
+  FlattenSubAgentMiddleware,
+} from "../types.js";
+
+/**
+ * required for type inference
+ */
+import type * as _messages from "@langchain/core/messages";
+import type * as _Command from "@langchain/langgraph";
+
+const BASE_PROMPT = `In order to complete the objective that the user asks of you, you have access to a number of standard tools.`;
+
+/**
+ * Create a Deep Agent with middleware-based architecture.
+ *
+ * Matches Python's create_deep_agent function, using middleware for all features:
+ * - Todo management (todoListMiddleware)
+ * - Filesystem tools (createFilesystemMiddleware)
+ * - Subagent delegation (createSubAgentMiddleware)
+ * - Conversation summarization (summarizationMiddleware)
+ * - Prompt caching (anthropicPromptCachingMiddleware)
+ * - Tool call patching (createPatchToolCallsMiddleware)
+ * - Human-in-the-loop (humanInTheLoopMiddleware) - optional
+ *
+ * @param params Configuration parameters for the agent
+ * @returns ReactAgent instance ready for invocation with properly inferred state types
+ *
+ * @example
+ * ```typescript
+ * // Middleware with custom state
+ * const ResearchMiddleware = createMiddleware({
+ *   name: "ResearchMiddleware",
+ *   stateSchema: z.object({ research: z.string().default("") }),
+ * });
+ *
+ * const agent = createDeepAgent({
+ *   middleware: [ResearchMiddleware],
+ * });
+ *
+ * const result = await agent.invoke({ messages: [...] });
+ * // result.research is properly typed as string
+ * ```
+ */
+export function createDeepAgent<
+  TResponse extends ResponseFormat = ResponseFormat,
+  ContextSchema extends InteropZodObject = InteropZodObject,
+  const TMiddleware extends readonly AgentMiddleware[] = readonly [],
+  const TSubagents extends readonly (SubAgent | CompiledSubAgent)[] =
+    readonly [],
+  const TTools extends readonly (ClientTool | ServerTool)[] = readonly [],
+>(
+  params: CreateDeepAgentParams<
+    TResponse,
+    ContextSchema,
+    TMiddleware,
+    TSubagents,
+    TTools
+  > = {} as CreateDeepAgentParams<
+    TResponse,
+    ContextSchema,
+    TMiddleware,
+    TSubagents,
+    TTools
+  >,
+) {
+  const {
+    model = "claude-sonnet-4-5-20250929",
+    tools = [],
+    allAvailableTools = [],
+    systemPrompt,
+    middleware: customMiddleware = [],
+    subagents = [],
+    responseFormat,
+    contextSchema,
+    checkpointer,
+    dynamicEnabled = true,
+    store,
+    backend,
+    interruptOn,
+    name,
+    memory,
+    skills,
+  } = params;
+
+  // Middleware enabled by default
+  const hasTodoList = true;
+  const hasFilesystem = true;
+  const hasWorkspace = true;
+  const workspaceReadOnly = false;
+
+  // Combine system prompt with base prompt like Python implementation
+  const finalSystemPrompt = systemPrompt
+    ? typeof systemPrompt === "string"
+      ? `${systemPrompt}\n\n${BASE_PROMPT}`
+      : new SystemMessage({
+          content: [
+            {
+              type: "text",
+              text: BASE_PROMPT,
+            },
+            ...(typeof systemPrompt.content === "string"
+              ? [{ type: "text", text: systemPrompt.content }]
+              : systemPrompt.content),
+          ],
+        })
+    : BASE_PROMPT;
+
+  // Create backend configuration for filesystem middleware
+  // If no backend is provided, use a factory that creates a StateBackend
+  const filesystemBackend = backend
+    ? backend
+    : (config: { state: unknown; store?: BaseStore }) =>
+        new StateBackend(config);
+
+  // Add skills middleware if skill sources provided
+  const skillsList = skills != null ? (Array.isArray(skills) ? skills : [skills]) : [];
+  const skillsMiddleware = skillsList.map((source) =>
+    createSkillsMiddleware({
+      backend: filesystemBackend,
+      source,
+    }),
+  );
+
+  // Built-in middleware array
+  const builtInMiddleware = [
+    // Injects the current date and time into the system prompt
+    dateMiddleware(),
+    // Provides todo list management capabilities for tracking tasks
+    ...(hasTodoList ? [todoListMiddleware()] : []),
+    // Add skills middleware if skill sources provided
+    ...skillsMiddleware,
+    // Enables filesystem operations and optional long-term memory storage
+    ...(hasFilesystem
+      ? [createFilesystemMiddleware({ backend: filesystemBackend })]
+      : []),
+    // Enables workspace operations (documents, graphs)
+    ...(hasWorkspace
+      ? [createWorkspaceMiddleware({ readOnly: workspaceReadOnly })]
+      : []),
+    // Enables delegation to specialized subagents for complex tasks
+    ...((subagents != null && subagents.length > 0) || dynamicEnabled
+      ? [
+          createSubAgentMiddleware({
+            defaultModel: model,
+            defaultTools: tools as StructuredTool[],
+            allAvailableTools: allAvailableTools as StructuredTool[],
+            defaultMiddleware: [
+            // Subagent middleware: Injects the current date and time
+            dateMiddleware(),
+            // Subagent middleware: Todo list management
+            ...(hasTodoList ? [todoListMiddleware()] : []),
+              // Subagent middleware: Skills (if provided)
+              ...skillsMiddleware,
+              // Subagent middleware: Filesystem operations
+              ...(hasFilesystem
+                ? [
+                    createFilesystemMiddleware({
+                      backend: filesystemBackend,
+                    }),
+                  ]
+
+                : []),
+              // Subagent middleware: Workspace operations
+              ...(hasWorkspace
+                ? [createWorkspaceMiddleware({ readOnly: workspaceReadOnly })]
+                : []),
+              summarizationMiddleware({
+                model,
+                trigger: { tokens: 120_000 },
+                keep: { messages: 15 },
+              }),
+              // Subagent middleware: Prunes old tool results to manage context size
+              contextEditingMiddleware({
+                edits: [
+                  new ClearToolUsesEdit({
+                    trigger: { tokens: 100_000 },
+                    keep: { messages: 5 },
+                  }),
+                ],
+              }),
+              // Subagent middleware: Anthropic prompt caching for improved performance
+              anthropicPromptCachingMiddleware({
+                unsupportedModelBehavior: "ignore",
+              }),
+              // Subagent middleware: Patches tool calls for compatibility
+              createPatchToolCallsMiddleware(),
+            ],
+            defaultInterruptOn: interruptOn,
+            subagents: subagents as unknown as (SubAgent | CompiledSubAgent)[],
+            generalPurposeAgent: true,
+          }),
+        ]
+      : []),
+    summarizationMiddleware({
+      model,
+      trigger: { tokens: 120_000 },
+      keep: { messages: 15 },
+    }),
+    // Prunes old tool results to manage context size before they reach the summarization limit
+    contextEditingMiddleware({
+      edits: [
+        new ClearToolUsesEdit({
+          trigger: { tokens: 100_000 },
+          keep: { messages: 5 },
+        }),
+      ],
+    }),
+    // Enables Anthropic prompt caching for improved performance and reduced costs
+    anthropicPromptCachingMiddleware({
+      unsupportedModelBehavior: "ignore",
+    }),
+    // Patches tool calls to ensure compatibility across different model providers
+    createPatchToolCallsMiddleware(),
+    // Add memory middleware if memory sources provided
+    ...(memory != null && memory.length > 0
+      ? [
+          createMemoryMiddleware({
+            backend: filesystemBackend,
+            sources: memory,
+          }),
+        ]
+      : []),
+  ] as const;
+
+  // Add human-in-the-loop middleware if interrupt config provided
+  if (interruptOn) {
+    // builtInMiddleware is typed as readonly to enable type inference
+    // however, we need to push to it to add the middleware, so let's ignore the type error
+    // @ts-expect-error - builtInMiddleware is readonly
+    builtInMiddleware.push(humanInTheLoopMiddleware({ interruptOn }));
+  }
+
+  // Combine built-in middleware with custom middleware
+  // The custom middleware is typed as TMiddleware to preserve type information
+  const allMiddleware = [
+    ...builtInMiddleware,
+    ...(customMiddleware as unknown as TMiddleware),
+  ] as const;
+
+  // Note: Recursion limit of 1000 (matching Python behavior) should be passed
+  // at invocation time: agent.invoke(input, { recursionLimit: 1000 })
+  const agent = createAgent({
+    model,
+    systemPrompt: finalSystemPrompt,
+    tools: tools as StructuredTool[],
+    middleware: allMiddleware as unknown as AgentMiddleware[],
+    responseFormat: responseFormat as ResponseFormat,
+    contextSchema,
+    checkpointer,
+    store,
+    name,
+  });
+
+  // Combine custom middleware with flattened subagent middleware for complete type inference
+  // This ensures InferMiddlewareStates captures state from both sources
+  type AllMiddleware = readonly [
+    ...typeof builtInMiddleware,
+    ...TMiddleware,
+    ...FlattenSubAgentMiddleware<TSubagents>,
+  ];
+
+  // Return as DeepAgent with proper DeepAgentTypeConfig
+  // - Response: TResponse (from responseFormat parameter)
+  // - State: undefined (state comes from middleware)
+  // - Context: ContextSchema
+  // - Middleware: AllMiddleware (built-in + custom + subagent middleware for state inference)
+  // - Tools: TTools
+  // - Subagents: TSubagents (for type-safe streaming)
+  return agent as unknown as DeepAgent<
+    DeepAgentTypeConfig<
+      TResponse,
+      undefined,
+      ContextSchema,
+      AllMiddleware,
+      TTools,
+      TSubagents
+    >
+  >;
+}

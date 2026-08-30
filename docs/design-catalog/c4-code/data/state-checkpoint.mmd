@@ -1,0 +1,26 @@
+stateDiagram-v2
+    [*] --> ActiveEditing : Live Workspace & Agent Interaction
+    
+    ActiveEditing --> Quiescing : CheckpointCreateRequested (Manual or Auto)
+    Quiescing --> SnapshotCapturing : Suppress WebSocket echo (SyncPause lock)
+    
+    state SnapshotCapturing {
+        [*] --> FlushWSBuffers : wsServer.flush()
+        FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
+        CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & MsgPack snapshot
+        CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record
+    }
+    
+    SnapshotCapturing --> ActiveEditing : Release SyncPause & resume editing
+    
+    ActiveEditing --> RestoreRequested : User clicks CheckpointMarker in Chat
+    RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing
+    
+    state QuiescingRestore {
+        [*] --> RollbackChat : Truncate messages to target blockIndex
+        RollbackChat --> ResetBranchRegistry : agentCheckpointRegistry.setPendingBranch()
+        ResetBranchRegistry --> RestoreSnapshots : Reconstitute instances from MsgPack
+        RestoreSnapshots --> InvertCommandLogs : Apply InverseCommandEngine deltas
+    }
+    
+    QuiescingRestore --> ActiveEditing : Broadcast state:reset to UI & resume

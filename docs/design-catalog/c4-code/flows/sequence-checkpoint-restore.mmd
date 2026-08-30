@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 User
+    participant UI as 💻 Renderer (Chat Timeline)
+    participant Preload as 🔒 Preload Bridge
+    participant Main as ⚙️ Main Host (CheckpointOrchestrator)
+    participant Registry as ⏱️ AgentCheckpointRegistry
+    participant Server as 🗄️ Storage Utility Process
+    participant Storage as 📦 CagentStorage Engine
+
+    User->>UI: Clicks "Restore to this point" on CheckpointMarker
+    UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId })
+    Preload->>Main: IPC invoke(CHECKPOINT_RESTORE)
+    
+    Main->>UI: IPC send(checkpoint:quiesce) -> Activate SyncPause mutex
+    Main->>Server: POST /api/checkpoints/restore { bundleId }
+    
+    Server->>Storage: Read CheckpointBundle & target snapshot MsgPack
+    Storage-->>Server: Hydrated Snapshot + Log Cursors
+    
+    Server->>Registry: setPendingBranch(threadId, agentCheckpointId)
+    Server->>Storage: Truncate chat messages to bundle.chat.messageId
+    Server-->>Main: Restore completed { restored: true }
+    
+    Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
+    Main-->>Preload: Restore response
+    Preload-->>UI: Success
+    
+    UI->>Server: GET /api/instances/:id -> Reload restored snapshot
+    UI->>UI: Re-render Canvas and Lexical Editor at exact historical state

@@ -1,0 +1,63 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ *
+ */
+
+.EquationEditor_inlineEditor {
+    padding: 2px 6px;
+    margin: 0 2px;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    outline: 0;
+    color: #8c19ff;
+    background-color: #f8fafc;
+    resize: none;
+    font-family: inherit;
+    font-size: 0.9em;
+    transition: all 0.2s ease;
+}
+
+.EquationEditor_inlineEditor:focus {
+    border-color: #8c19ff;
+    box-shadow: 0 0 0 2px rgba(140, 25, 255, 0.1);
+}
+
+.EquationEditor_blockEditor {
+    padding: 8px 12px;
+    margin: 4px 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    outline: 0;
+    color: #8c19ff;
+    background-color: #f8fafc;
+    resize: vertical;
+    width: 100%;
+    font-family: 'Fira Code', 'Courier New', Courier, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    transition: all 0.2s ease;
+}
+
+.EquationEditor_blockEditor:focus {
+    border-color: #8c19ff;
+    box-shadow: 0 0 0 2px rgba(140, 25, 255, 0.1);
+}
+
+.EquationEditor_inputBackground {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 4px;
+    padding: 0 2px;
+}
+
+.EquationEditor_dollarSign {
+    text-align: left;
+    color: #94a3b8;
+    font-family: monospace;
+    font-weight: bold;
+    user-select: none;
+}

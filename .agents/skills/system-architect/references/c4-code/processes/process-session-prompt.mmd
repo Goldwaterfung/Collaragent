@@ -1,0 +1,27 @@
+flowchart TD
+    %% Process Flow: End-to-End Session Prompt Dispatch
+    PromptReceived([User Submits Prompt]) --> ValidateRPC[1. JsonRpcDispatcher validates SessionsPromptParamsSchema]
+    ValidateRPC --> ResolveEntities[2. HostSessionsService resolves model & agent preset]
+    ResolveEntities --> CheckLiveAgent{Live Agent Exists for Session?}
+
+    CheckLiveAgent -->|No| CreateAgent[3a. AgentLoop.createAgent with cwd sandbox & preset setup]
+    CheckLiveAgent -->|Yes| RebindScope[3b. Rebind standing preset scope & tool restrictions]
+
+    CreateAgent --> PreStepWaterfalls
+    RebindScope --> PreStepWaterfalls
+
+    PreStepWaterfalls[4. agent/pre-step: Snapshot skill catalog & expand slash commands] --> AssemblePrompt[5. SystemPrompt.assemble: Persona order 0 + Sandbox mode + Tool schemas]
+    AssemblePrompt --> RequestLLM[6. LlmRuntime dispatches request via Pi-AI SSE adapter]
+    RequestLLM --> StreamSSE[7. Stream assistant/chunk & reasoning/chunk to Desktop UI]
+
+    StreamSSE --> CheckToolCalls{Model Produced Tool Calls?}
+    CheckToolCalls -->|No| TurnFinished[8a. Append assistant message & bill TokenMeter usage]
+    CheckToolCalls -->|Yes| ScheduleTools[8b. Tool Scheduler runs <= 4 calls with ToolTimeoutPolicy]
+
+    ScheduleTools --> ExecuteSandbox[9. Execute tool against SandboxedFileSystem / SandboxBash]
+    ExecuteSandbox --> PostExecute[10. tools/post-execute: Repeat reminder & compaction pruner]
+    PostExecute --> NextStepLoop[11. Advance loop to next driver step]
+    NextStepLoop --> PreStepWaterfalls
+
+    TurnFinished --> CommitJournal[12. SQLiteSessionPersistence commits turn/finish to WAL log]
+    CommitJournal --> ReadyState([Turn Settled])

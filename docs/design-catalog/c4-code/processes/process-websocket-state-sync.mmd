@@ -1,0 +1,43 @@
+flowchart LR
+    %% Process EventStorming Styling
+    classDef event fill:#ff9800,stroke:#e65100,color:#000
+    classDef command fill:#2196f3,stroke:#0d47a1,color:#fff
+    classDef actor fill:#ffeb3b,stroke:#f57f17,color:#000
+    classDef system fill:#9c27b0,stroke:#4a148c,color:#fff
+    classDef aggregate fill:#4caf50,stroke:#1b5e20,color:#fff
+    classDef policy fill:#e91e63,stroke:#880e4f,color:#fff
+    classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
+
+    Agent[🤖 Agent Tool / Client]:::actor
+    
+    CmdSyncCmd[Command: sync-command<br/>{ command, staged: true, clientId }]:::command
+    EvtCmdReceived[Event: Staged Command Received]:::event
+    AggWSServer[Aggregate: WsServer In-Memory DTO]:::aggregate
+    
+    PolValidate[Policy: Whenever sync-command received -> validateCanonicalNodeId & applyCommandToDto]:::policy
+    
+    EvtStateMutated[Event: DTO Mutated & previousState Captured]:::event
+    EvtBuffered[Event: Command Buffered in proposals Map]:::event
+    
+    CmdBroadcast[Command: Broadcast sync-command & sync-changes]:::command
+    SysWSChannel[System: /ws/canvas/:instanceId Channel]:::system
+    
+    EvtUIReflected[Event: UI Renders New Nodes & Shows Proposal Banner]:::event
+    User[👤 Knowledge Worker]:::actor
+    
+    CmdDecision[Command: accept-changes OR reject-changes]:::command
+    PolResolve[Policy: If accept -> clear buffer & save; If reject -> revert via previousState & broadcast snapshot]:::policy
+    EvtFinalized[Event: Workspace State Finalized & Persisted to Disk]:::event
+
+    Agent --> CmdSyncCmd
+    CmdSyncCmd --> EvtCmdReceived
+    EvtCmdReceived --> PolValidate
+    PolValidate --> AggWSServer
+    AggWSServer --> EvtStateMutated
+    EvtStateMutated --> EvtBuffered
+    EvtBuffered --> CmdBroadcast
+    CmdBroadcast --> SysWSChannel
+    SysWSChannel --> EvtUIReflected
+    User --> CmdDecision
+    CmdDecision --> PolResolve
+    PolResolve --> EvtFinalized

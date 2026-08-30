@@ -1,0 +1,83 @@
+flowchart LR
+    %% EventStorming Semantic Styling
+    classDef event fill:#ff9800,stroke:#e65100,color:#000
+    classDef command fill:#2196f3,stroke:#0d47a1,color:#fff
+    classDef actor fill:#ffeb3b,stroke:#f57f17,color:#000
+    classDef system fill:#9c27b0,stroke:#4a148c,color:#fff
+    classDef aggregate fill:#4caf50,stroke:#1b5e20,color:#fff
+    classDef policy fill:#e91e63,stroke:#880e4f,color:#fff
+    classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
+
+    User[👤 Knowledge Worker]:::actor
+
+    %% 1. Workspace Initialization
+    CmdCreateWS[Create Workspace]:::command
+    EvtWSCreated[Workspace Created]:::event
+    AggWS[Workspace Aggregate]:::aggregate
+    PolInitWS[Whenever Workspace Created -> Initialize Live Directory & DB]:::policy
+    SysUtility[Storage Utility Process]:::system
+
+    User --> CmdCreateWS
+    CmdCreateWS --> EvtWSCreated
+    EvtWSCreated --> AggWS
+    AggWS --> SysUtility
+    EvtWSCreated --> PolInitWS
+
+    %% 2. User Editing & Visual Modeling
+    CmdAddNode[Add Card Node / Connect]:::command
+    EvtCanvasMutated[Canvas State Mutated]:::event
+    AggGraph[Graph Aggregate]:::aggregate
+    PolBroadcast[Whenever Canvas Mutated -> Broadcast via WebSocket]:::policy
+    SysWSServer[In-Process WS Server]:::system
+
+    User --> CmdAddNode
+    CmdAddNode --> EvtCanvasMutated
+    EvtCanvasMutated --> AggGraph
+    AggGraph --> SysWSServer
+    EvtCanvasMutated --> PolBroadcast
+
+    %% 3. Agent Invocation & Auto-Checkpoint
+    CmdSendPrompt[Submit Agent Prompt]:::command
+    EvtPromptSent[Prompt Submitted]:::event
+    PolAutoCheck[Whenever Prompt Submitted -> Capture Auto Checkpoint]:::policy
+    EvtCheckSaved[Checkpoint Bundle Captured]:::event
+    AggCheck[Checkpoint Aggregate]:::aggregate
+    SysLLM[LLM Cloud Provider]:::system
+
+    User --> CmdSendPrompt
+    CmdSendPrompt --> EvtPromptSent
+    EvtPromptSent --> PolAutoCheck
+    PolAutoCheck --> EvtCheckSaved
+    EvtCheckSaved --> AggCheck
+
+    %% 4. Agent Tool Execution & Staged Proposals
+    EvtPromptSent --> SysLLM
+    SysLLM --> EvtToolCalled[Agent Tool Call Emitted]:::event
+    CmdStageProp[Stage Workspace Proposal]:::command
+    EvtPropStaged[Workspace Proposal Staged]:::event
+    AggProposal[Proposal Review Aggregate]:::aggregate
+    HotspotConflict[? Concurrent Local & Agent Edit Conflict]:::hotspot
+
+    EvtToolCalled --> CmdStageProp
+    CmdStageProp --> EvtPropStaged
+    EvtPropStaged --> AggProposal
+    EvtPropStaged -.conflict.- HotspotConflict
+
+    %% 5. Proposal Acceptance & Commit
+    CmdAccept[Accept Changes]:::command
+    EvtPropCommitted[Proposal Committed to Graph]:::event
+    User --> CmdAccept
+    CmdAccept --> EvtPropCommitted
+    EvtPropCommitted --> AggGraph
+
+    %% 6. Time-Travel Restore
+    CmdRestore[Restore Checkpoint]:::command
+    EvtQuiesced[Workspace Quiesced]:::event
+    EvtStateRestored[Workspace State & Chat Head Restored]:::event
+    PolResume[Whenever Restored -> Resume Sync & Refresh UI]:::policy
+
+    User --> CmdRestore
+    CmdRestore --> EvtQuiesced
+    EvtQuiesced --> EvtStateRestored
+    EvtStateRestored --> AggCheck
+    EvtStateRestored --> PolResume

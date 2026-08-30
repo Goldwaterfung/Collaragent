@@ -1,0 +1,41 @@
+flowchart TB
+    %% C3 Component Diagram for Daemon & Sync Plugin Container
+    classDef component fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef database fill:#1e40af,stroke:#1d4ed8,color:#fff;
+    classDef external fill:#475569,stroke:#334155,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    DesktopClient["💻 Desktop Client"]:::external
+    GraphEngine["⚙️ Graph Engine Plugin"]:::external
+
+    subgraph SyncPluginBoundary ["Daemon & Sync Plugin (packages/harness-plugin-sync)"]
+        SyncServer["🌐 SyncServer<br/>[Component: WebSocket Server]<br/>Binds HTTP/WS listener and manages connection channels"]:::component
+
+        JsonRpcDispatcher["🔀 JsonRpcDispatcher<br/>[Component: RPC Router & Validator]<br/>Validates Zod parameters and dispatches sessions.*, graphs.*, skills.* calls"]:::component
+
+        HostSessionsService["⏱️ HostSessionsService<br/>[Component: Session Orchestrator]<br/>Drives agent loops, HITL approval waterfall, and forks"]:::component
+
+        CapabilityContextFactory["🏗️ Capability Context Factory<br/>[Component: createCapabilityContext]<br/>Mounts and configures all 19 Cordis harness plugins"]:::component
+
+        FileSettingsService["⚙️ FileSettingsService<br/>[Component: Settings Persistence]<br/>Loads and persists user intent in settings.yaml"]:::component
+
+        FileCredentialsService["🔐 FileCredentialsService<br/>[Component: Vault Manager]<br/>Encapsulates API tokens in credentials.yaml"]:::component
+
+        AgentPresetsService["🎭 AgentPresetsService<br/>[Component: Presets & Standing Scopes]<br/>Binds personas and restricts tool allowlists per preset"]:::component
+
+        GraphWorkspaceService["📁 GraphWorkspaceService<br/>[Component: Workspace Graph Coordinator]<br/>Manages multi-graph workspaces and serialization"]:::component
+    end
+
+    SQLiteDB[("🗄️ SQLite Session Persistence (WAL)")]:::database
+
+    DesktopClient -->|"WebSocket JSON-RPC"| SyncServer
+    SyncServer --> JsonRpcDispatcher
+    JsonRpcDispatcher --> HostSessionsService
+    JsonRpcDispatcher --> FileSettingsService
+    JsonRpcDispatcher --> FileCredentialsService
+    JsonRpcDispatcher --> AgentPresetsService
+    JsonRpcDispatcher --> GraphWorkspaceService
+
+    HostSessionsService --> CapabilityContextFactory
+    HostSessionsService --> SQLiteDB
+    HostSessionsService --> GraphEngine

@@ -1,0 +1,60 @@
+flowchart TB
+    %% C3 Renderer UI Styling
+    classDef component fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef store fill:#0d9488,stroke:#115e59,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    subgraph RendererWorkspaceBoundary ["Renderer UI & Workspace Engine"]
+        
+        subgraph StateLayer ["State Management & Contexts"]
+            ChatStore["📦 useChatStore (Zustand)<br/>[Store]<br/>Thread-keyed messages, stream chunks, reasoning traces, subagent tasks"]:::store
+            ConfigStore["📦 useConfigStore (Zustand)<br/>[Store]<br/>Cached application configuration, models, and tool settings"]:::store
+            SessionCtx["🌐 ProjectSessionContext<br/>[Context]<br/>Resolves apiPort/wsPort, manages session lifecycle & reload sockets"]:::store
+            InstanceCtx["📑 InstanceContext<br/>[Context]<br/>TanStack Query cache & live /ws/instances watcher"]:::store
+            CanvasStore["🎨 CanvasProvider (useReducer)<br/>[Reducer Store]<br/>Manages Domain, Layout, UI, and History undo/redo stacks"]:::store
+        end
+
+        subgraph ViewLayer ["Visual Component Tree"]
+            DockviewHost["🗔 Workspace (Dockview)<br/>[Component]<br/>Multi-dock tabbed container hosting Canvas, Document, and Skill views"]:::component
+            
+            subgraph CanvasView ["Graph Canvas Subsystem"]
+                CanvasViewport["🖼️ Canvas Viewport<br/>[Component]<br/>SVG cubic bezier edge layer, pan/zoom engine, and node renderer"]:::component
+                CanvasNodeComp["🔲 CanvasNode<br/>[Component]<br/>4-cardinal port handles (N, E, S, W), title editor, resize handles"]:::component
+                MemoEditor["📝 MemoEditor (Lexical)<br/>[Component]<br/>Compact markdown editor embedded within canvas cards"]:::component
+                LeidenWorker["🔬 Leiden Clustering Engine<br/>[Web Worker]<br/>Hierarchical community detection and automatic graph partitioning"]:::component
+            end
+            
+            subgraph DocumentView ["Rich Document Subsystem"]
+                CardEditor["📄 CardEditor (Lexical)<br/>[Component]<br/>Full document editor: typography, GFM tables, math (KaTeX), code blocks"]:::component
+                DocxExporter["📑 DocxExporter<br/>[Component]<br/>Compiles DocumentPayload block AST directly into Word (.docx)"]:::component
+            end
+
+            subgraph ChatView ["Agent Chat & Streaming Subsystem"]
+                ChatEngine["💬 Chat Engine<br/>[Component]<br/>Streaming lifecycle manager, mention popover (@), checkpoint markers"]:::component
+                MessageListComp["📜 MessageList<br/>[Component]<br/>Renders reasoning cards, tool call diffs, and token metrics"]:::component
+                SubagentPane["🤖 SubagentStreamPane<br/>[Component]<br/>Dedicated slide-in drawer for deep subagent trace inspection"]:::component
+            end
+        end
+
+        subgraph SyncLayer ["Real-Time Synchronization Plugins"]
+            CanvasSync["⚡ CanvasWebSocketSyncPlugin<br/>[Component]<br/>Syncs graph commands and viewport changes over /ws/canvas/:id"]:::component
+            EditorSync["⚡ EditorWebSocketSyncPlugin<br/>[Component]<br/>Syncs Lexical AST, diff reviews, and staged agent proposals"]:::component
+        end
+    end
+
+    SessionCtx --> InstanceCtx
+    InstanceCtx --> DockviewHost
+    DockviewHost --> CanvasViewport
+    DockviewHost --> CardEditor
+    CanvasViewport --> CanvasNodeComp
+    CanvasNodeComp --> MemoEditor
+    CanvasViewport -.-> LeidenWorker
+    
+    CardEditor --> DocxExporter
+    ChatEngine --> MessageListComp
+    ChatEngine --> SubagentPane
+    
+    ChatEngine <--> ChatStore
+    CanvasViewport <--> CanvasStore
+    CanvasStore <--> CanvasSync
+    CardEditor <--> EditorSync

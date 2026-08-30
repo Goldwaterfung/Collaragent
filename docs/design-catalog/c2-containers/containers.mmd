@@ -1,0 +1,43 @@
+flowchart TB
+    %% C2 Container Styling
+    classDef person fill:#08427b,stroke:#073b6f,color:#fff;
+    classDef container fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef database fill:#1e40af,stroke:#1d4ed8,color:#fff;
+    classDef external fill:#6b7280,stroke:#4b5563,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    User["👤 Desktop User<br/>[Person]"]:::person
+
+    subgraph DesktopProcessBoundary ["CollarAgent Application Boundary (Electron Multi-Process)"]
+        
+        RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders 3-pane layout, graph canvas, Lexical editor, streaming chat, and state trees"]:::container
+        
+        PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / AsyncGenerators]<br/>Provides isolated, typed IPC channels and stream unbuffering"]:::container
+        
+        MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
+        
+        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server for editor diffs and canvas commands"]:::container
+        
+        UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, ZIP archiver, and CagentStorage engine"]:::container
+
+        LocalVault[("🔐 Secure Storage Vault<br/>[Host: OS Keychain / DPAPI / Secret Service]<br/>Stores encrypted LLM and Tavily API keys (~/.collaragent/secrets.json)")]:::database
+        
+        ProjectStore[("📦 Sharded Project Storage (.collar / .cagent)<br/>[Container: FileSystem + MessagePack]<br/>Stores manifest.json, state.json, instances/*.json, and snapshots/*.msgpack")]:::database
+    end
+
+    ExternalLLM["🧠 LLM Cloud APIs<br/>[External: OpenAI / Anthropic / Gemini / Ollama]"]:::external
+    ExternalMCP["🔌 External MCP Servers<br/>[External: STDIO / SSE / HTTP]"]:::external
+
+    User -->|"Interacts via Mouse, Keyboard, Drag & Drop"| RendererUI
+    RendererUI -->|"Invokes typed APIs & receives stream chunks"| PreloadBridge
+    PreloadBridge -->|"Bi-directional IPC [Electron IPC]"| MainHost
+    RendererUI <-->|"Bi-directional State Sync & Proposal Diffs [WebSocket / JSON-RPC]"| WSServer
+    RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
+    
+    MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer
+    MainHost -->|"Spawns & triggers flush [In-Memory Call]"| WSServer
+    MainHost -->|"Encrypts / decrypts API credentials [safeStorage]"| LocalVault
+    MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
+    MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP
+    
+    UtilityServer -->|"Reads / writes atomic JSON & MessagePack blobs [POSIX FS]"| ProjectStore

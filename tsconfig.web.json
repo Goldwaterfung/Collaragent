@@ -1,0 +1,33 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "include": [
+    "src/renderer/env.d.ts",
+    "src/renderer/**/*",
+    "src/renderer/**/*.tsx",
+    "src/preload/*.d.ts",
+    "src/shared/**/*",
+    "src/preload/env.d.ts",
+    "src/workspace/**/*"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@renderer/*": [
+        "./src/renderer/*"
+      ],
+      "@shared/*": [
+        "./src/shared/*"
+      ],
+      "@workspace/*": [
+        "./src/workspace/*"
+      ],
+      "@collaragent/*": [
+        "./src/collaragent/*"
+      ]
+    }
+  },
+  "exclude": [
+    "src/**/lexical-playground/**"
+  ]
+}

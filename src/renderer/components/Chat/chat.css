@@ -1,0 +1,82 @@
+@reference "../../assets/base.css";
+
+/* Scoped markdown styling for chat output. */
+.chat-markdown {
+	& ul {
+		@apply list-disc pl-6;
+	}
+
+	& ol {
+		@apply list-decimal pl-6;
+	}
+
+	& li {
+		@apply my-1;
+	}
+
+	& h1,
+	& h2,
+	& h3 {
+		@apply font-semibold mt-3 mb-2;
+	}
+
+	& h1 {
+		@apply text-2xl;
+	}
+
+	& h2 {
+		@apply text-xl;
+	}
+
+	& h3 {
+		@apply text-[1.1rem];
+	}
+
+	& p {
+		@apply my-2;
+	}
+
+	& strong {
+		@apply font-semibold;
+	}
+
+	& em {
+		@apply italic;
+	}
+
+	& blockquote {
+		@apply my-3 pl-3 border-l-[3px] border-black/20 text-black/70;
+	}
+
+	& code {
+		@apply px-[0.3rem] py-[0.1rem] rounded-sm bg-surface-100 font-mono text-[0.95em];
+	}
+
+	& pre {
+		@apply my-3 p-3 rounded-md bg-surface-100 overflow-x-auto;
+
+		&::-webkit-scrollbar {
+			@apply h-1.5;
+		}
+
+		&::-webkit-scrollbar-track {
+			@apply bg-transparent;
+		}
+
+		&::-webkit-scrollbar-thumb {
+			@apply bg-surface-300 rounded-full hover:bg-primary/80;
+		}
+	}
+
+	& pre code {
+		@apply p-0 bg-transparent;
+	}
+
+	& hr {
+		@apply my-4 border-0 border-t border-black/15;
+	}
+
+	& a {
+		@apply underline underline-offset-2;
+	}
+}

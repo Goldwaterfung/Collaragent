@@ -1,0 +1,30 @@
+stateDiagram-v2
+    %% Task Node Execution Lifecycle State Machine
+    [*] --> idle : Graph Instantiated
+
+    idle --> queued : Dependencies Resolved & Inputs Ready
+    queued --> running : Scheduler Allocates Worker / Subagent
+
+    state running {
+        [*] --> PreparingContext : Render Template & Slice KG
+        PreparingContext --> Executing : Run Subagent / Script / Condition
+        Executing --> ValidatingOutput : Check Output Schemas
+        ValidatingOutput --> [*]
+    }
+
+    running --> awaiting_human : Node Type == 'human_gate' OR HITL Escalation
+    awaiting_human --> running : Human Resolves Gate / Approves Mutation
+    awaiting_human --> abandoned : Human Cancels / Rejects Request
+
+    running --> completed : Execution Succeeded & Output Validated
+    running --> failed : Execution Error & Max Retries Exceeded
+    running --> skipped : Upstream Conditional Branch Not Taken
+    running --> forked : Execution Branch Fork Triggered
+
+    failed --> queued : Retry Triggered (Under Max Retries)
+
+    completed --> [*]
+    failed --> [*]
+    skipped --> [*]
+    abandoned --> [*]
+    forked --> [*]

@@ -1,0 +1,105 @@
+erDiagram
+    %% Graph Canvas Domain
+    GRAPH ||--o{ NODE_ENTITY : contains
+    GRAPH ||--o{ RELATIONSHIP_ENTITY : contains
+    NODE_ENTITY ||--o{ PORT_ENTITY : exposes
+    NODE_ENTITY ||--|| NODE_LAYOUT : positioned_by
+    RELATIONSHIP_ENTITY }o--|| PORT_ENTITY : "from / to"
+
+    %% Document AST Domain
+    DOCUMENT_PAYLOAD ||--o{ BLOCK : contains
+    DOCUMENT_PAYLOAD ||--o{ COMMENT : has
+    BLOCK ||--o{ INLINE_RUN : renders
+    BLOCK ||--o{ TABLE_ROW : organizes
+    TABLE_ROW ||--o{ TABLE_CELL : contains
+    TABLE_CELL ||--o{ INLINE_RUN : contains
+    INLINE_RUN }o--o{ COMMENT : references
+
+    %% Unified Checkpoint & Ledger Domain
+    CHECKPOINT_BUNDLE ||--o{ INSTANCE_RESTORE_POINT : captures
+    CHECKPOINT_BUNDLE ||--|| CHAT_CHECKPOINT : references
+    WORKSPACE_SNAPSHOT ||--|| INSTANCE_RESTORE_POINT : targets
+    WORKSPACE_COMMAND_LOG ||--|| INSTANCE_LOG_POSITION : indexed_at
+
+    %% Entity Definitions
+    GRAPH {
+        GraphId id PK
+        Record nodesById
+        Record relationshipsById
+        Record outgoingByNodeId
+        Record incomingByNodeId
+    }
+
+    NODE_ENTITY {
+        NodeId id PK
+        string type "card"
+        string name
+        Record attrs "clusterId, clusterPath, tags"
+    }
+
+    PORT_ENTITY {
+        PortId id PK
+        Point relativePosition "x, y"
+        Vector normalVector "x, y"
+        string type "source | target | bi-directional"
+    }
+
+    NODE_LAYOUT {
+        NodeId nodeId PK, FK
+        number x
+        number y
+        number width
+        number height
+    }
+
+    RELATIONSHIP_ENTITY {
+        RelationshipId id PK
+        Endpoint from "nodeId, portId"
+        Endpoint to "nodeId, portId"
+        Record attrs "label, weight, directional"
+    }
+
+    DOCUMENT_PAYLOAD {
+        Block[] blocks
+        Record comments
+    }
+
+    BLOCK {
+        string id PK
+        string type "h1|h2|paragraph|code|quote|table"
+        string align "left|center|right|justify"
+        string language
+        InlineRun[] children
+    }
+
+    INLINE_RUN {
+        string text
+        boolean bold
+        boolean italic
+        string equation "LaTeX Formula"
+        string[] commentIds FK
+    }
+
+    CHECKPOINT_BUNDLE {
+        string id PK
+        string sessionId FK
+        string threadId FK
+        string agentCheckpointId FK
+        string createdAt
+        string reason "auto | restore"
+    }
+
+    INSTANCE_RESTORE_POINT {
+        string instanceId PK
+        string instanceType "graph-canvas | document"
+        string snapshotId FK
+        InstanceLogPosition targetCursor
+    }
+
+    WORKSPACE_COMMAND_LOG {
+        string instanceId PK
+        InstanceLogPosition cursor
+        string source "ui | agent | sync"
+        Command command
+        Record previousState
+    }

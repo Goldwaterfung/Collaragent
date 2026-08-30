@@ -1,0 +1,51 @@
+flowchart TB
+    %% Deployment Styling
+    classDef node fill:#1e293b,stroke:#3b82f6,color:#fff,stroke-width:2px;
+    classDef process fill:#0f172a,stroke:#64748b,color:#fff;
+    classDef file fill:#1e40af,stroke:#1d4ed8,color:#fff;
+    classDef cloud fill:#475569,stroke:#94a3b8,color:#fff;
+
+    subgraph HostOS ["🖥️ Host Operating System (macOS / Windows / Linux)"]
+        
+        subgraph ElectronApp ["Electron Runtime (v43)"]
+            
+            subgraph MainProc ["Main Process [Node.js Runtime]"]
+                HostMain["index.js / WindowManager<br/>• AgentFactory & LangGraph<br/>• SecureStorage & Config<br/>• In-Process WS Server (:wsPort)"]:::process
+            end
+            
+            subgraph RendererProc ["BrowserWindow Process [Chromium]"]
+                WebUI["Renderer SPA (React 19)<br/>• Dockview & Infinite Canvas<br/>• Lexical CardEditor<br/>• Web Worker (Leiden Clustering)"]:::process
+            end
+            
+            subgraph UtilityProc ["UtilityProcess (Forked Node.js Daemon)"]
+                Daemon["process.js<br/>• Express 5 REST API (:fsPort)<br/>• CagentStorage Engine<br/>• ZIP Compression / yauzl"]:::process
+            end
+        end
+
+        subgraph LocalDisk ["Host Filesystem & OS Vault"]
+            ConfigDir["~/.collaragent/<br/>• config.json<br/>• secrets.json (safeStorage 0o600)<br/>• window-state.json"]:::file
+            SkillsDir["~/.deepagents/skills/<br/>• SKILL.md bundles"]:::file
+            ProjectDir["Workspace File (*.cagent / .collar/)<br/>• manifest.json<br/>• state.json<br/>• instances/*.json<br/>• snapshots/*.msgpack"]:::file
+        end
+    end
+
+    subgraph CloudServices ["External Cloud Infrastructure"]
+        OpenAICloud["OpenAI API [HTTPS]"]:::cloud
+        AnthropicCloud["Anthropic API [HTTPS]"]:::cloud
+        GoogleCloud["Google GenAI API [HTTPS]"]:::cloud
+        TavilyAPI["Tavily Search API [HTTPS]"]:::cloud
+    end
+
+    RendererProc <-->|"contextBridge IPC"| MainProc
+    RendererProc <-->|"WebSocket [ws://127.0.0.1:wsPort]"| HostMain
+    RendererProc -->|"REST API [http://127.0.0.1:fsPort]"| Daemon
+    MainProc <-->|"Node parentPort IPC"| Daemon
+
+    MainProc -->|"Reads/Writes"| ConfigDir
+    MainProc -->|"Reads"| SkillsDir
+    Daemon -->|"Reads/Writes Atomic Blobs"| ProjectDir
+
+    MainProc -->|"Streams Prompts/Completions"| OpenAICloud
+    MainProc -->|"Streams Prompts/Completions"| AnthropicCloud
+    MainProc -->|"Streams Prompts/Completions"| GoogleCloud
+    MainProc -->|"Queries Search"| TavilyAPI

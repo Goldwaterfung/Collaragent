@@ -1,0 +1,35 @@
+flowchart TB
+    %% C3 Main Host Styling
+    classDef component fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef database fill:#1e40af,stroke:#1d4ed8,color:#fff;
+    classDef external fill:#6b7280,stroke:#4b5563,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    subgraph MainProcessHost ["Electron Main Process Host"]
+        WinMgr["🪟 WindowManager<br/>[Component]<br/>Manages BrowserWindows, linked utility processes, and WS servers"]:::component
+        ConfigMgr["⚙️ ConfigManager & SecureStorage<br/>[Component]<br/>Manages ~/.collaragent/config.json and OS safeStorage secrets"]:::component
+        ModelMgr["🧠 ModelManager<br/>[Component]<br/>Catalog of supported LLMs, parameters, and context limits"]:::component
+        AgentFac["🏭 AgentFactory<br/>[Component]<br/>Compiles DeepAgent instances with cached model clients and tools"]:::component
+        MCPLoader["🔌 MCPLoader<br/>[Component]<br/>Manages MultiServerMCPClient, STDIO subprocesses, and tool caching"]:::component
+        IPCRouter["📡 IPC Handlers Router<br/>[Component]<br/>Dispatches agent, checkpoint, config, file, and skill IPC requests"]:::component
+        StreamCtrl["🌊 StreamController<br/>[Component]<br/>Throttles token/reasoning streams and chunks IPC pushes"]:::component
+        CheckOrch["⏱️ CheckpointOrchestrator<br/>[Component]<br/>Coordinates multi-domain snapshots (Agent + Workspace + Chat + Files)"]:::component
+    end
+
+    subgraph ExternalContainers ["Adjacent Containers"]
+        RendererUI["💻 Renderer Process (Chromium)"]:::external
+        UtilityServer["🗄️ Storage Utility Process (Express 5)"]:::external
+        LocalVault[("🔐 OS Secure Storage Vault")]:::database
+    end
+
+    RendererUI -->|"IPC Invocations"| IPCRouter
+    IPCRouter -->|"Loads/Saves configuration"| ConfigMgr
+    IPCRouter -->|"Queries model specs"| ModelMgr
+    ConfigMgr -->|"Encrypts/Decrypts keys"| LocalVault
+    IPCRouter -->|"Instantiates runtime agents"| AgentFac
+    AgentFac -->|"Connects external tool servers"| MCPLoader
+    IPCRouter -->|"Streams execution output"| StreamCtrl
+    StreamCtrl -->|"IPC Push Chunks"| RendererUI
+    IPCRouter -->|"Triggers unified snapshot/restore"| CheckOrch
+    CheckOrch -->|"Persists checkpoints over REST"| UtilityServer
+    WinMgr -->|"Supervises via parentPort"| UtilityServer

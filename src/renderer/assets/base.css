@@ -1,0 +1,142 @@
+@import "tailwindcss";
+@import 'dockview/dist/styles/dockview.css';
+
+@theme {
+  /* User Palette */
+  --color-surface-50: #FCF8F8;
+  --color-surface-100: #FBEFEF;
+  --color-surface-200: #F9DFDF;
+  --color-surface-300: #F5AFAF;
+  --color-primary: #F5AFAF;
+  --color-accent: #818cf8;
+  --color-accent-glow: rgba(129, 140, 248, 0.4);
+
+  /* Defaults */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+:root {
+  /* Mapping legacy variables to new theme */
+
+  /* Text defaults */
+  --ev-c-white: #ffffff;
+  --ev-c-black: #000000;
+
+  /* Mappings for components using ev-c-* vars */
+  --ev-c-text-1: #000000;
+  --ev-c-text-2: rgba(0, 0, 0, 0.7);
+  --ev-c-text-3: rgba(0, 0, 0, 0.4);
+
+  --ev-c-gray-1: #999;
+  --ev-c-gray-2: #bbb;
+  --ev-c-gray-3: #ddd;
+
+  /* Button mappings */
+  --ev-button-alt-border: transparent;
+  --ev-button-alt-text: #000000;
+  --ev-button-alt-bg: var(--color-surface-300);
+  --ev-button-alt-hover-border: transparent;
+  --ev-button-alt-hover-text: #000000;
+  --ev-button-alt-hover-bg: var(--color-surface-200);
+
+  /* Semantic mappings */
+  --color-background: var(--color-surface-50);
+  --color-background-soft: var(--color-surface-100);
+  --color-background-mute: var(--color-surface-200);
+  --color-text: var(--ev-c-text-1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;
+}
+
+ul {
+  list-style: none;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-background);
+  line-height: 1.6;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dockview-theme-custom {
+  /* Core Colors */
+  --dv-background-color: var(--color-surface-50);
+  --dv-group-view-background-color: var(--color-surface-50);
+
+  /* Tabs Container */
+  --dv-tabs-and-actions-container-background-color: var(--color-surface-100);
+  --dv-tabs-and-actions-container-height: 35px;
+
+  /* Tabs */
+  --dv-activegroup-visiblepanel-tab-background-color: var(--color-surface-50);
+  --dv-activegroup-visiblepanel-tab-color: var(--ev-c-text-1);
+
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-surface-200);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--ev-c-text-2);
+
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--color-surface-100);
+  --dv-activegroup-hiddenpanel-tab-color: var(--ev-c-text-2);
+
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--color-surface-100);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--ev-c-text-3);
+
+  /* Borders & Dividers */
+  --dv-tab-divider-color: var(--color-surface-200);
+  --dv-separator-border: var(--color-surface-200);
+  --dv-paneview-header-border-color: var(--color-surface-200);
+  --dv-drag-over-border-color: var(--color-primary);
+
+  /* Sashes (Resizers) */
+  --dv-active-sash-color: var(--color-primary);
+
+  /* Misc */
+  --dv-drag-over-background-color: rgba(245, 175, 175, 0.2);
+  /* surface-300 with opacity */
+  --dv-icon-hover-background-color: var(--color-surface-200);
+
+  /* Font */
+  --dv-font-family: inherit;
+}
+
+.markdown-container,
+.markdown-content {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+
+/* Ensure pre and code blocks inside markdown also handle overflow */
+.markdown-container pre,
+.markdown-content pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

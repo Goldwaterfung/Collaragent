@@ -1,0 +1,38 @@
+flowchart TB
+    %% C3 Utility Server Styling
+    classDef component fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef database fill:#1e40af,stroke:#1d4ed8,color:#fff;
+    classDef external fill:#6b7280,stroke:#4b5563,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    subgraph UtilityProcessDaemon ["Storage Utility Process (Daemon)"]
+        ProcEntry["🚪 process.ts / ParentPort Handler<br/>[Component]<br/>Mounts .cagent archive, acquires lock, manages export lifecycle"]:::component
+        FSApi["🌐 Filesystem API (Express 5)<br/>[Component]<br/>REST controllers for instances, checkpoints, chat history, and projects"]:::component
+        CagentEngine["🗄️ CagentStorage Engine<br/>[Component]<br/>V3 sharded storage manager with atomic JSON writes and locking"]:::component
+        InstanceStore["📑 FolderInstanceContentStore<br/>[Component]<br/>Sharded instance content store (instances/<id>.json)"]:::component
+        FSSaver["💾 FileSystemSaver & FileCheckpointStore<br/>[Component]<br/>LangGraph BaseCheckpointSaver persisting tuples & blobs"]:::component
+        ArchiveMgr["📦 ArchiveManager<br/>[Component]<br/>ZIP compression/extraction (.cagent via yauzl & archiver)"]:::component
+        GC["🧹 BlobGarbageCollector<br/>[Component]<br/>Prunes orphaned checkpoint blobs and temporary files"]:::component
+    end
+
+    subgraph ExternalContainers ["Adjacent Containers"]
+        MainHost["⚙️ Main Host Process"]:::external
+        RendererUI["💻 Renderer Process (Chromium)"]:::external
+        ProjectDisk[("📦 .collar / .cagent Storage Files")]:::database
+    end
+
+    MainHost -->|"ParentPort Messages (start, prepare-close, export)"| ProcEntry
+    RendererUI -->|"REST HTTP Queries (:fsPort)"| FSApi
+    
+    ProcEntry -->|"Initializes & Configures"| FSApi
+    ProcEntry -->|"Invokes ZIP archive pack/unpack"| ArchiveMgr
+    
+    FSApi -->|"Reads/Writes instances"| InstanceStore
+    FSApi -->|"Reads/Writes manifest, state & logs"| CagentEngine
+    FSApi -->|"Persists LangGraph execution tuples"| FSSaver
+    
+    CagentEngine -->|"Atomic JSON/MsgPack I/O"| ProjectDisk
+    InstanceStore -->|"Atomic JSON I/O"| ProjectDisk
+    FSSaver -->|"Persists checkpoint blobs"| ProjectDisk
+    ArchiveMgr -->|"Packs/Unpacks ZIP"| ProjectDisk
+    GC -->|"Scans & Cleans"| ProjectDisk

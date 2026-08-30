@@ -1,0 +1,36 @@
+stateDiagram-v2
+    [*] --> Idle : Application Ready
+    Idle --> TurnInitializing : User submits message (@mentions attached)
+    
+    TurnInitializing --> AutoCheckpointing : Capture pre-turn CheckpointBundle
+    AutoCheckpointing --> PromptAssembling : Quiesce WS sync & bundle state
+    
+    PromptAssembling --> ModelStreaming : Inject Date, Skills catalog, Memory, Tools
+    
+    state ModelStreaming {
+        [*] --> ReceivingChunks
+        ReceivingChunks --> EmittingReasoning : Reasoning tokens detected
+        ReceivingChunks --> EmittingContent : Text tokens detected
+        ReceivingChunks --> ToolCallDetected : Structured tool call emitted
+        EmittingReasoning --> ReceivingChunks
+        EmittingContent --> ReceivingChunks
+    }
+    
+    ModelStreaming --> EvictingLargeTool : Tool output > 20,000 tokens (~80KB)
+    EvictingLargeTool --> ToolExecuting : Evict to /large_tool_results/
+    ModelStreaming --> ToolExecuting : Standard tool output
+    
+    state ToolExecuting {
+        [*] --> DispatchTool
+        DispatchTool --> ExecutingWorkspaceTool : manageGraph / editDocument
+        DispatchTool --> ExecutingFilesystemTool : read_file / write_file
+        DispatchTool --> ExecutingSubagent : task / dynamic_task
+        
+        ExecutingWorkspaceTool --> StageProposal : Broadcast with staged: true
+        ExecutingSubagent --> SubagentRecursion : Run isolated ReactAgent (limit 200)
+        SubagentRecursion --> ReturnSynthesis : Merge final synthesis
+    }
+    
+    ToolExecuting --> ModelStreaming : Tool result fed back to Model node
+    ModelStreaming --> TurnCompleted : Stop token / No more tool calls
+    TurnCompleted --> Idle : Resume WS sync & update ChatStore

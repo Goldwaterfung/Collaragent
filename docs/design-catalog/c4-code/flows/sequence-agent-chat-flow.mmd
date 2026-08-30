@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 User
+    participant UI as 💻 Renderer (Chat / Editor)
+    participant Preload as 🔒 Preload Bridge
+    participant Main as ⚙️ Electron Main Host
+    participant Agent as 🤖 DeepAgent Runtime
+    participant WSS as ⚡ WebSocket Server
+    participant ExtLLM as 🧠 External LLM Provider
+
+    User->>UI: Types "@Canvas add auth node" & clicks Send
+    UI->>UI: Append optimistic user message to useChatStore
+    UI->>Preload: window.checkpointIPC.create(req)
+    Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
+    Main-->>Preload: CheckpointBundleSummary { id: "chk-101" }
+    Preload-->>UI: Checkpoint stored
+
+    UI->>Preload: window.agentIPC.stream({ message, streamId, threadId })
+    Preload->>Main: IPC send(AGENT_STREAM, req)
+    Main->>Agent: Invoke createDeepAgent ReAct loop
+    Agent->>ExtLLM: Stream prompt + injected skills catalog
+    
+    loop Token Streaming
+        ExtLLM-->>Agent: Token / Reasoning chunk
+        Agent-->>Main: Stream chunk
+        Main-->>Preload: IPC send(agent:stream:streamId, chunk)
+        Preload-->>UI: Yield AsyncGenerator chunk -> Update AgentStream UI
+    end
+
+    ExtLLM-->>Agent: ToolCall: manageGraph(action: "writeGraph", spec: {...})
+    Agent->>Agent: CanvasDiffEngine computes atomic CanvasCommands
+    Agent->>WSS: Broadcast command with { staged: true }
+    WSS-->>UI: WebSocket push: 'graph:add_node' (staged)
+    UI->>UI: Render Proposal Banner ("Agent modified canvas: 1 node added")
+
+    ExtLLM-->>Agent: Final synthesis text
+    Agent-->>Main: Turn finished
+    Main-->>Preload: IPC send(agent:stream:streamId:end)
+    Preload-->>UI: Finalize message in useChatStore
+
+    User->>UI: Clicks "Accept Changes"
+    UI->>WSS: WebSocket send: { type: 'accept-changes', instanceId }
+    WSS-->>UI: Commit staged commands to CanvasProvider history

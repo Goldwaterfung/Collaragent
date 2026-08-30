@@ -1,0 +1,37 @@
+stateDiagram-v2
+    %% Agent Session Turn Lifecycle State Machine
+    [*] --> TurnIdle : Session Ready
+
+    TurnIdle --> TurnStarted : sessions.prompt Received
+    
+    state TurnStarted {
+        [*] --> PreStepWaterfalls : agent/pre-step (Skills, Slash Commands)
+        PreStepWaterfalls --> AssemblingPrompt : SystemPrompt.assemble (Persona, Sandbox Mode, Tools)
+        AssemblingPrompt --> ModelStreaming : ctx.llm.request (Pi-AI SSE)
+        
+        state ModelStreaming {
+            [*] --> ReceivingChunks : Stream assistant/chunk & reasoning/chunk
+            ReceivingChunks --> SchedulingTools : Assistant Emits tool_call(s)
+            ReceivingChunks --> StreamCompleted : Assistant Emits message (no tool calls)
+        }
+
+        SchedulingTools --> ExecutingTools : Scheduler Runs (maxParallelToolCalls: 4)
+        
+        state ExecutingTools {
+            [*] --> SandboxedExecution : Enforce Sandbox Policy & Timeout
+            SandboxedExecution --> HITLApprovalPending : Denial Encountered (FS_SANDBOX_DENIED)
+            HITLApprovalPending --> SandboxedExecution : User Grants 'allowed-once'
+            HITLApprovalPending --> EscalationRejected : User Rejects / Turn Cancelled
+            SandboxedExecution --> PostExecuteHygiene : Repeat Reminder & Compaction Pruner
+            PostExecuteHygiene --> [*]
+        }
+
+        ExecutingTools --> PreStepWaterfalls : Next Step Turn Loop
+        StreamCompleted --> [*]
+    }
+
+    TurnStarted --> TurnFinished : Assistant Done & Usage Billed
+    TurnStarted --> TurnError : Unrecoverable Error or Cancelled
+    
+    TurnFinished --> TurnIdle : Ready for Next User Prompt
+    TurnError --> TurnIdle : Ready for Next User Prompt

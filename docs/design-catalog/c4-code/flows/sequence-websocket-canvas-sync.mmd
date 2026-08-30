@@ -1,0 +1,62 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 Knowledge Worker
+    participant CanvasUI as 💻 Canvas UI (CanvasWebSocketSyncPlugin)
+    participant WSS as ⚡ WebSocket Server (:wsPort)
+    participant AgentTool as 🤖 Agent Tool (manageGraph.ts)
+    participant DiffEngine as 🎨 CanvasDiffEngine
+    participant RESTServer as 🗄️ Storage Daemon (:fsPort)
+
+    %% Step 1: Agent Invocation & Ephemeral Connection
+    Note over AgentTool: LLM calls writeGraph(instanceName, spec)
+    AgentTool->>WSS: Connects SyncClient to /ws/canvas/:instanceId
+    AgentTool->>WSS: Send { type: 'join', clientId: 'client-xyz' }
+    AgentTool->>WSS: Send { type: 'sync-request' }
+    WSS-->>AgentTool: Return { type: 'sync-snapshot', graph, layout }
+
+    %% Step 2: Diff Computation
+    Note over AgentTool,DiffEngine: resolveGraphSpecIdentity (Alias -> UUID)
+    AgentTool->>DiffEngine: computeDiff(currentSnapshot, resolvedSpec)
+    Note over DiffEngine: 1. Remove obsolete relationships<br/>2. Remove deleted nodes<br/>3. Add new nodes + cardinal ports<br/>4. Update node attrs & layouts<br/>5. Add new relationships
+    DiffEngine-->>AgentTool: Return atomic CanvasCommand[]
+
+    %% Step 3: Staged Transmission
+    Note over AgentTool: Tag commands with { staged: true }
+    loop For each CanvasCommand in batch
+        AgentTool->>WSS: Send { type: 'sync-command', command: { ...cmd, staged: true }, version: 1 }
+        
+        %% Step 4: Server Mutation & Staging
+        WSS->>WSS: validateIncomingCanvasCommand(cmd)
+        WSS->>WSS: applyCommandToDto() & capture previousState
+        WSS->>WSS: proposals.get(instanceId).push({ ...cmd, previousState })
+        WSS->>WSS: nextSeq = commandSequences++
+
+        WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
+        
+        par Real-time Broadcast & Logging
+            WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
+            WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, commands: bufferedProposals }
+            WSS->>RESTServer: POST /api/checkpoints/workspace/logs (Audit Trail)
+        end
+    end
+    AgentTool->>AgentTool: Disconnect ephemeral SyncClient
+
+    %% Step 5: UI Proposal Banner
+    Note over CanvasUI: CanvasProvider updates visual DOM & displays Proposal Banner
+    
+    %% Step 6: User Accept/Reject
+    alt User clicks "Keep" (Accept Changes)
+        User->>CanvasUI: Clicks "Accept Changes"
+        CanvasUI->>WSS: Send { type: 'accept-changes', instanceId, clientId }
+        WSS->>WSS: proposals.delete(instanceId)
+        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, commands: [] }
+        WSS->>RESTServer: 500ms debouncedSave() persists committed state
+    else User clicks "Undo" (Reject Changes)
+        User->>CanvasUI: Clicks "Reject Changes"
+        CanvasUI->>WSS: Send { type: 'reject-changes', instanceId, clientId }
+        WSS->>WSS: Replay proposals in reverse using captured previousState
+        WSS->>WSS: proposals.delete(instanceId)
+        WSS-->>CanvasUI: Broadcast { type: 'sync-snapshot', graph, layout, from: 'agent-proposal-reverted' }
+        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, commands: [] }
+        WSS->>RESTServer: 500ms debouncedSave() persists restored state
+    end

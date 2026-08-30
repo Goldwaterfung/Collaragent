@@ -1,0 +1,40 @@
+flowchart TB
+    %% C2 Container Diagram for Collargraph
+    classDef person fill:#08427b,stroke:#073b6f,color:#fff;
+    classDef container fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef database fill:#1e40af,stroke:#1d4ed8,color:#fff;
+    classDef external fill:#475569,stroke:#334155,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    User["👤 Developer / Approver<br/>[Person]"]:::person
+
+    subgraph CollargraphBoundary ["Collargraph System Boundary"]
+        DesktopApp["💻 Desktop IDE & Studio<br/>[Container: Tauri 2.0 / React 19 / Vite]<br/>Provides React Flow canvas, CodeMirror editor, chat stream, and settings UI"]:::container
+        
+        CLIDaemon["⚙️ CLI & Background Sync Daemon<br/>[Container: Node.js / TypeScript CLI]<br/>Hosts SyncServer, JSON-RPC dispatcher, and batch execution commands"]:::container
+
+        CapabilitySpine["🧠 Capability Harness & Graph Engine<br/>[Container: Cordis Plugin Substrate]<br/>Hosts graph scheduler, relational memory, agent loop, tool sandbox, and Pi-AI routing"]:::container
+
+        SQLiteDB[("🗄️ Session Persistence Database<br/>[Container: SQLite WAL]<br/>Durable append-only event log & message journals")]:::database
+
+        ConfigFileStore[("📄 Configuration Vault<br/>[Container: Local YAML / JSON Files]<br/>Stores settings.yaml, credentials.yaml, and presets.yaml")]:::database
+
+        WorkerSandbox["📦 Code Sandbox Worker Threads<br/>[Container: node:worker_threads]<br/>Isolates deterministic script execution with CPU/memory limits")]:::container
+    end
+
+    LLMProviders["🤖 External LLM Providers<br/>[External System: DeepSeek / OpenAI / Gemini / Anthropic]"]:::external
+    LocalOS["🖥️ Local Operating System<br/>[External System: File System & Shell / Seatbelt / bwrap]"]:::external
+
+    User -->|"Interacts with visual studio [GUI]"| DesktopApp
+    User -->|"Runs headless commands [Terminal / Shell]"| CLIDaemon
+
+    DesktopApp -->|"WebSocket RPC & Event Stream [ws://127.0.0.1:<port> / JSON-RPC 2.0]"| CLIDaemon
+    DesktopApp -->|"Window control & native shell [Tauri IPC]"| LocalOS
+
+    CLIDaemon -->|"Mounts via createCapabilityContext() [In-Process / Cordis]"| CapabilitySpine
+
+    CapabilitySpine -->|"Commits immutable journal events [SQL / WAL Lock]"| SQLiteDB
+    CapabilitySpine -->|"Loads configuration & secrets [File I/O]"| ConfigFileStore
+    CapabilitySpine -->|"Executes deterministic code [Node.js Worker MessageChannel]"| WorkerSandbox
+    CapabilitySpine -->|"Dispatches completions [HTTPS / SSE]"| LLMProviders
+    CapabilitySpine -->|"Executes sandboxed file/shell operations [OS APIs / Seatbelt / bwrap]"| LocalOS
