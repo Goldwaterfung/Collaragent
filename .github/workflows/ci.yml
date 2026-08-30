@@ -1,0 +1,42 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-check:
+    name: Typecheck, Test & Build
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_OPTIONS: '--max-old-space-size=8192'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: TypeScript Check
+        run: npm run typecheck
+
+      - name: Run Unit Tests
+        run: npx vitest run
+
+      - name: Compile Bundles (Vite)
+        run: npm run build
