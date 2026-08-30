@@ -5,7 +5,7 @@
 # CollarAgent: The Local-First Visual Research & Academic Writing Studio
 
 <p align="center">
-  <b>Transform conversational AI brainstorming into living concept maps, structured academic papers, and essays.<br>Stop losing context in disconnected chat tabs—collaborate visually, verify every edit, and write with total peace of mind.</b>
+  <b>Transform agentic research and brainstorming into living concept maps, structured academic papers, and essays.<br>Stop losing context in disconnected workflows—collaborate visually, verify every edit, and write with total peace of mind.</b>
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -36,19 +36,19 @@
 
 You opened your editor to write a breakthrough paper, synthesize research, or craft a syllabus—not to drown in dozens of disconnected browser tabs, copy-paste across diagram tools, and worry if an AI prompt will overwrite your hard work. **Your tools should empower your deep thinking, not fragment it.**
 
-**CollarAgent** is a local-first desktop IDE that pairs an autonomous AI agent with an **infinite concept canvas** and a **scholarly rich-text document engine**. Instead of treating research as isolated text prompts, CollarAgent unifies your thought process: brainstorm complex theories with your AI co-pilot, watch it construct living node-link concept maps, organize evidence with automated clustering, and draft publication-ready manuscripts with LaTeX math and native Microsoft Word (`.docx`) export.
+**CollarAgent** is a local-first desktop IDE that pairs an autonomous research agent with an **infinite concept canvas** and a **scholarly rich-text document engine**. Instead of treating research as isolated text prompts, CollarAgent unifies your thought process: explore complex theories with your autonomous agent, watch it construct living node-link concept maps, organize evidence with automated clustering, and draft publication-ready manuscripts with LaTeX math and native Microsoft Word (`.docx`) export.
 
 ---
 
 ## Why CollarAgent?
 
-Drafting essays, literature reviews, and research papers requires multi-dimensional thinking. Traditional tools force a painful compromise between visual mapping, structured writing, and AI chat.
+Drafting essays, literature reviews, and research papers requires multi-dimensional thinking. Traditional tools force a painful compromise between visual mapping, structured writing, and fragmented generative tools.
 
 | Traditional Research & Writing Workflow | CollarAgent Visual & Agentic Workflow |
 | :--- | :--- |
-| **Disconnected Context**: Juggling Miro/FigJam for mind maps, Notion/Obsidian for notes, and ChatGPT for drafting. | **Unified 3-Pane Studio**: Canvas, document editor, and AI agent run side-by-side in one synchronized workspace. |
-| **Destructive AI Overwrites**: AI assistants silently replace entire drafts or delete structural notes with no review step. | **Safe Staged Proposals**: All AI edits are staged as visual diffs on the canvas and in the document for one-click accept/reject. |
-| **Broken Chat Memory on Rollbacks**: Undoing an AI mistake requires manual text reverts while chat context remains polluted. | **Multi-Domain Time Travel**: Captures atomic snapshots across chat history, agent reasoning memory, and workspace files. |
+| **Fragmented Toolchains**: Constant context-switching between standalone whiteboard tools, separate note editors, and isolated AI web interfaces. | **Unified 3-Pane Studio**: Canvas, document editor, and autonomous agent run side-by-side in one synchronized workspace. |
+| **Destructive Generative Overwrites**: Traditional generative tools silently replace entire drafts or delete structural notes with no review step. | **Safe Staged Proposals**: All agent edits are staged as visual diffs on the canvas and in the document for one-click accept/reject. |
+| **Broken Context on Rollbacks**: Undoing a mistake requires manual text reverts while reasoning context remains polluted. | **Multi-Domain Time Travel**: Captures atomic snapshots across conversation history, agent reasoning memory, and workspace files. |
 | **Manual Formula & Export Hassles**: Clunky equation formatting and broken copy-pasting into word processors. | **Scholarly Lexical Engine**: Native LaTeX ($\text{KaTeX}$), GFM tables, Prism syntax, and direct export to Word (`.docx`). |
 | **Cloud Data Lock-in**: Research drafts, private notes, and proprietary data hosted on third-party cloud servers. | **100% Local-First Ownership**: Self-contained `.cagent` archives stored on your disk with OS keychain encryption. |
 
@@ -66,7 +66,7 @@ CollarAgent brings together three synchronized environments inside a flexible, m
     <tr>
       <th align="left" width="33%">🎨 Visual Concept Canvas</th>
       <th align="left" width="33%">📄 Scholarly Document Engine</th>
-      <th align="left" width="34%">🤖 AI Research Co-Pilot</th>
+      <th align="left" width="34%">🤖 Autonomous Research Agent</th>
     </tr>
   </thead>
   <tbody>
@@ -178,12 +178,12 @@ Agent   ❯ [CollarAgent Engine]
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3>🛡️ Safe, Staged AI Co-Authoring</h3>
-      <p>Never worry about AI overwriting your hard work. Every agent suggestion is staged with visual diffs on the canvas and in the document. You inspect, accept, or reject with one click.</p>
+      <h3>🛡️ Safe, Staged Agentic Co-Authoring</h3>
+      <p>Never worry about agent edits overwriting your hard work. Every agent suggestion is staged with visual diffs on the canvas and in the document. You inspect, accept, or reject with one click.</p>
     </td>
     <td width="50%" valign="top">
       <h3>⏱️ Multi-Domain Time Travel</h3>
-      <p>Explore bold theories freely. Every turn captures an atomic snapshot of your chat history, agent reasoning state, canvas graph, and document files for instant point-in-time rollbacks.</p>
+      <p>Explore bold theories freely. Every turn captures an atomic snapshot of your conversation history, agent reasoning state, canvas graph, and document files for instant point-in-time rollbacks.</p>
     </td>
   </tr>
   <tr>
@@ -200,9 +200,9 @@ Agent   ❯ [CollarAgent Engine]
 
 ---
 
-## What Your AI Agent Can Do
+## What Your Autonomous Agent Can Do
 
-Instead of simple conversational replies, your AI co-pilot actively orchestrates your research workspace:
+Instead of simple conversational replies, your autonomous research agent actively orchestrates your research workspace:
 
 * **Visual Graph Modeling**: Construct concept nodes, connect directional relationships, auto-arrange layouts (Dagre / Radial), and run off-thread Leiden community clustering.
 * **Scholarly Document Authoring**: Write and edit sections, insert LaTeX equations, generate comparison tables, format code blocks, and attach inline commentary.
