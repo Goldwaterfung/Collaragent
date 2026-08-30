@@ -30,12 +30,12 @@ flowchart TB
     end
 
     subgraph SyncLayer ["Realtime Synchronization Layer (In-Process WS)"]
-        WSServer["⚡ WebSocket Server (:3001)<br/>[ws-server.ts]<br/>Route multiplexer, memory doc cache, proposal staging"]:::sync
+        WSServer["⚡ WebSocket Server (Dynamic :wsPort)<br/>[ws-server.ts]<br/>Route multiplexer, memory doc cache, proposal staging"]:::sync
         SyncClientAgent["🔄 SyncClient (Agent Host)<br/>[SyncClient.ts]<br/>Promise-based request-sync, monotonic ACKs"]:::sync
         SyncClientUI["🔄 SyncClient (Renderer UI)<br/>[SyncClient.ts]<br/>Live command broadcast subscriber, UI state reducer"]:::sync
     end
 
-    subgraph StorageLayer ["Storage Daemon Layer (Node.js UtilityProcess :3000)"]
+    subgraph StorageLayer ["Storage Daemon Layer (Node.js UtilityProcess Dynamic :apiPort)"]
         RESTServer["🌐 Express REST API<br/>[filesystemAPI.ts]<br/>Zod-validated instances & projects CRUD"]:::storage
         CagentStorage["💾 Sharded V3 Storage Engine<br/>[storageEngine.ts]<br/>manifest.json, instances/*.json, MessagePack snapshots"]:::storage
     end
@@ -96,9 +96,9 @@ sequenceDiagram
     actor LLM as LangGraph ReAct Loop
     participant Tools as WorkspaceTools.ts
     participant wstools as listDocumentInstances.ts
-    participant REST as Storage REST API (:3000)
+    participant REST as Storage REST API (Dynamic :apiPort)
     participant SyncClient as SyncClient.ts
-    participant WSServer as WebSocket Server (:3001)
+    participant WSServer as WebSocket Server (Dynamic :wsPort)
     participant Storage as Sharded V3 Storage Engine
 
     LLM->>Tools: readDocument({ instanceName: "Architecture Spec" })

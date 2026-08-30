@@ -25,10 +25,10 @@ flowchart TB
     subgraph MainHost ["Electron Main Host"]
         AgentRuntime["LangGraph Agent Runtime"]
         WorkspaceTools["Workspace Tools Engine"]
-        WSServer["WebSocket Sync Server (:3001)"]
+        WSServer["WebSocket Sync Server (Dynamic :wsPort)"]
     end
 
-    subgraph UtilityProcess ["Node.js Utility Process (:3000)"]
+    subgraph UtilityProcess ["Node.js Utility Process (Dynamic :apiPort)"]
         RESTServer["Express Storage API"]
         StorageEngine["Sharded V3 Cagent Engine"]
     end
@@ -41,11 +41,11 @@ flowchart TB
     %% Wiring
     ChatUI -->|"Dynamic Channel IPC"| IPCStream
     IPCStream --> AgentRuntime
-    CanvasUI <-->|"ws://localhost:3001/ws/canvas/:id"| WSServer
-    EditorUI <-->|"ws://localhost:3001/ws/editor/:id"| WSServer
-    WorkspaceTools <-->|"ws://localhost:3001/ws/..."| WSServer
-    WorkspaceTools -->|"http://localhost:3000/api/..."| RESTServer
-    WSServer -->|"http://localhost:3000/api/..."| RESTServer
+    CanvasUI <-->|"ws://localhost:${wsPort}/ws/canvas/:id"| WSServer
+    EditorUI <-->|"ws://localhost:${wsPort}/ws/editor/:id"| WSServer
+    WorkspaceTools <-->|"ws://localhost:${wsPort}/ws/..."| WSServer
+    WorkspaceTools -->|"http://localhost:${apiPort}/api/..."| RESTServer
+    WSServer -->|"http://localhost:${apiPort}/api/..."| RESTServer
     RESTServer --> StorageEngine
     AgentRuntime -->|"HTTPS / REST"| LLM
     AgentRuntime -->|"STDIO / SSE"| MCP
@@ -53,10 +53,19 @@ flowchart TB
 
 | Layer | Transport / Protocol | Port / Endpoint | Primary Responsibility |
 |---|---|---|---|
-| **Storage REST API** | HTTP 1.1 / JSON | `http://127.0.0.1:3000/api/*` | Instance discovery, project management, binary export, checkpoint restoration |
-| **Realtime Sync API** | WebSocket / JSON | `ws://127.0.0.1:3001/ws/*` | Realtime state synchronization, staged proposals, collaborative mutation, command inversion |
+| **Storage REST API** | HTTP 1.1 / JSON | `http://127.0.0.1:${apiPort}/api/*` (Dynamic ephemeral port) | Instance discovery, project management, binary export, checkpoint restoration |
+| **Realtime Sync API** | WebSocket / JSON | `ws://127.0.0.1:${wsPort}/ws/*` (Dynamic ephemeral port) | Realtime state synchronization, staged proposals, collaborative mutation, command inversion |
 | **Electron Desktop IPC** | Electron `ipcRenderer` / `ipcMain` | Dynamic channels | Chat invocation, token stream unbuffering, native dialogs, hardware key encryption |
 | **Agent Tool Calling** | TypeScript In-Process Functions | `WorkspaceTools.ts` | Programmatic manipulation of workspace documents, graph nodes, and files |
+
+### 1.1 Dynamic Ephemeral Port Allocation & Session Discovery
+
+CollarAgent runs both the Storage REST API and the Realtime WebSocket Sync Server on **dynamically allocated ephemeral ports** rather than fixed static ports:
+
+- **Per-Window Ephemeral Allocation**: On workspace/window initialization (`WindowManager.ts`), the main process forks the storage daemon (`utilityProcess.fork`) and starts `ws-server` by binding to port `0`. The operating system allocates free ephemeral ports on demand, ensuring zero port collisions across multiple open windows, test runners, or concurrent instances.
+- **Renderer Discovery via URL Query Parameters**: The allocated ports are passed into the renderer `BrowserWindow` through URL search parameters (`?apiPort=${fsPort}&wsPort=${wsHandle.port}&filePath=${filePath}`).
+- **Client Session Context**: The frontend React app (`ProjectSession.tsx`) extracts `apiPort` and `wsPort` from `window.location.search` and exposes them via `InstanceContext` and `ProjectSessionContext`.
+- **Agent Tool Execution**: The LangGraph agent runtime and tool executor (`WorkspaceTools.ts`, `ClientConnection.ts`) receive `wsPort` and `apiPort` from the active session context for all workspace operations.
 
 ---
 
@@ -198,6 +207,8 @@ The WebSocket server provides bidirectional synchronization between UI clients (
 
 ### 3.1 Connection Handshake & Endpoint Routing
 
+All WebSocket endpoints are served over the dynamically bound `${wsPort}` resolved during workspace initialization (`ws://127.0.0.1:${wsPort}`).
+
 | Route | Purpose | Message Types Handled |
 |---|---|---|
 | `/ws/canvas/:instanceId` | Realtime Graph Canvas Sync | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes` |
@@ -211,11 +222,11 @@ The WebSocket server provides bidirectional synchronization between UI clients (
 sequenceDiagram
     autonumber
     participant Client as SyncClient (Agent / UI)
-    participant WSServer as WebSocket Server
-    participant Storage as Storage REST API
+    participant WSServer as WebSocket Server (Dynamic :wsPort)
+    participant Storage as Storage REST API (Dynamic :apiPort)
 
     Note over Client,WSServer: Connection Establishment
-    Client->>WSServer: Connect ws://localhost:3001/ws/editor/:id
+    Client->>WSServer: Connect ws://localhost:${wsPort}/ws/editor/:id
     WSServer-->>Client: Connection Opened
 
     Note over Client,WSServer: Protocol Handshake
