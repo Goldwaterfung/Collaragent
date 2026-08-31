@@ -1,0 +1,45 @@
+flowchart TB
+    %% Deployment & Process Topology Diagram for Collargraph
+    classDef node fill:#1e293b,stroke:#3b82f6,color:#fff,stroke-width:2px;
+    classDef proc fill:#0f172a,stroke:#64748b,color:#fff;
+    classDef store fill:#1e3a8a,stroke:#3b82f6,color:#fff;
+
+    subgraph HostMachine ["🖥️ Developer Workstation (macOS / Linux / Windows)"]
+        subgraph TauriRuntime ["Tauri 2.0 Host Process"]
+            DesktopProc["🖥️ Desktop Frontend Process (WebKit / WebView2)<br/>React 19 + Dockview + React Flow Canvas"]:::proc
+        end
+
+        subgraph NodeRuntime ["Node.js Background Process (Port: 9247 / Dynamic)"]
+            DaemonProc["⚙️ Collargraph CLI / Daemon (apps/cli)<br/>SyncServer + JSON-RPC Dispatcher"]:::proc
+            CordisProc["🧠 Cordis Capability Container<br/>Graph Engine + HostSessionsService + Pi-AI Runtime"]:::proc
+            WorkerProc["⚡ Sandbox Worker Pool (node:worker_threads)<br/>WorkerThreadCodeRuntime"]:::proc
+        end
+
+        subgraph LocalDisk ["Local Persistent Storage"]
+            SQLiteFile[("🗄️ ~/.collargraph/data/collargraph.db (SQLite WAL Mode)")]:::store
+            SettingsFiles[("📄 ~/.collargraph/settings.yaml & credentials.yaml")]:::store
+            WorkspaceFS[("📁 Active Workspace Directory (Project Root)")]:::store
+        end
+
+        subgraph OSSecurity ["OS-Level Confinement Layer"]
+            SandboxRunner["🛡️ Seatbelt (macOS) / bwrap & Landlock (Linux) / Windows ACL"]:::proc
+        end
+    end
+
+    subgraph CloudAPIs ["☁️ External Cloud Services"]
+        DeepSeekAPI["DeepSeek API (api.deepseek.com)"]
+        OpenAIAPI["OpenAI API (api.openai.com)"]
+        GoogleAPI["Google Gemini API (generativelanguage.googleapis.com)"]
+        AnthropicAPI["Anthropic API (api.anthropic.com)"]
+    end
+
+    DesktopProc -->|"WebSocket JSON-RPC 2.0 (ws://127.0.0.1:9247)"| DaemonProc
+    DaemonProc --- CordisProc
+    CordisProc -->|"Spawns sandboxed code tasks"| WorkerProc
+    CordisProc -->|"Append-only event commit"| SQLiteFile
+    CordisProc -->|"Read/Write configuration"| SettingsFiles
+    CordisProc -->|"Controlled file writes & reads"| WorkspaceFS
+    CordisProc -->|"Confined bash execution"| SandboxRunner
+    SandboxRunner -->|"Restricted access"| WorkspaceFS
+
+    CordisProc -->|"HTTPS / SSE Streaming"| CloudAPIs

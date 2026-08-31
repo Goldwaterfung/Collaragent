@@ -1,0 +1,66 @@
+flowchart LR
+    %% EventStorming Semantic Styling
+    classDef event fill:#ff9800,stroke:#e65100,color:#000
+    classDef command fill:#2196f3,stroke:#0d47a1,color:#fff
+    classDef actor fill:#ffeb3b,stroke:#f57f17,color:#000
+    classDef system fill:#9c27b0,stroke:#4a148c,color:#fff
+    classDef aggregate fill:#4caf50,stroke:#1b5e20,color:#fff
+    classDef policy fill:#e91e63,stroke:#880e4f,color:#fff
+    classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
+
+    User[Developer / User]:::actor
+    Orch[Orchestrator Agent]:::actor
+    Approver[Human Approver]:::actor
+
+    CmdStart[Start Session / Submit Objective]:::command
+    EvtSessionStarted[Session Initialized]:::event
+    AggSession[Session Aggregate]:::aggregate
+    PolInit[Whenever Session Initialized -> Mount Presets & Scope]:::policy
+
+    CmdCreateGraph[Decompose Objective Into Graph]:::command
+    EvtGraphCreated[Task Graph Defined]:::event
+    AggGraph[Graph Aggregate]:::aggregate
+    PolSchedule[Whenever Graph Ready -> Schedule Topological Wavefront]:::policy
+
+    CmdRunNode[Execute Task Node]:::command
+    EvtNodeRunning[Node Execution Started]:::event
+    AggNode[Node Runner Aggregate]:::aggregate
+    SysLLM[External LLM Provider]:::system
+
+    EvtWriteDenied[Sandbox Mutation Denied]:::event
+    PolEscalate[Whenever Out-of-Workspace Mutation -> Request HITL Approval]:::policy
+    CmdDecide[Decide Approval Request]:::command
+    EvtApproved[Privilege Escalation Granted]:::event
+
+    EvtNodeCompleted[Node Execution Finished]:::event
+    PolPropagate[Whenever Node Finished -> Pipe Port Data & Ingest Triples]:::policy
+    AggKG[Knowledge Graph Aggregate]:::aggregate
+    EvtGraphCompleted[Task Graph Execution Completed]:::event
+
+    User --> CmdStart
+    CmdStart --> EvtSessionStarted
+    EvtSessionStarted --> AggSession
+    AggSession --> PolInit
+
+    PolInit --> CmdCreateGraph
+    Orch --> CmdCreateGraph
+    CmdCreateGraph --> EvtGraphCreated
+    EvtGraphCreated --> AggGraph
+    AggGraph --> PolSchedule
+
+    PolSchedule --> CmdRunNode
+    CmdRunNode --> EvtNodeRunning
+    EvtNodeRunning --> AggNode
+    AggNode --> SysLLM
+
+    AggNode --> EvtWriteDenied
+    EvtWriteDenied --> PolEscalate
+    PolEscalate --> CmdDecide
+    Approver --> CmdDecide
+    CmdDecide --> EvtApproved
+    EvtApproved --> AggNode
+
+    AggNode --> EvtNodeCompleted
+    EvtNodeCompleted --> PolPropagate
+    PolPropagate --> AggKG
+    PolPropagate --> EvtGraphCompleted

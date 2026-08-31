@@ -1,0 +1,15 @@
+# Global fallback owner
+* @Goldwaterfung
+
+# Workflow and automation definitions
+/.github/ @Goldwaterfung
+
+# Agent rules and skills
+/.agents/ @Goldwaterfung
+
+# Core Application Subsystems
+/src/main/ @Goldwaterfung
+/src/renderer/ @Goldwaterfung
+/src/shared/ @Goldwaterfung
+/src/workspace/ @Goldwaterfung
+/src/collaragent/ @Goldwaterfung
