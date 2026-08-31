@@ -1,47 +1,53 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { useCanvas } from '../store';
-import { CanvasNode } from './CanvasNode';
-import { Edge } from './Edge';
-import { EdgePath } from './EdgePath';
-import { CanvasBackground } from './CanvasBackground';
-import { CanvasToolbar } from './CanvasToolbar';
-import { MemoEditor } from '../../editor/components/MemoEditor';
-import CanvasWebSocketSyncPlugin from '@workspace/sync/CanvasSyncPlugin';
-import { serializeCanvas } from '@workspace/persistence/canvasSerialization';
-import { runHierarchicalLeidenOnDto } from '../domain/analysis/clustering/leiden';
-import { runHierarchicalLeidenOnDtoInWorker } from '../domain/analysis/clustering/leiden/workerClient';
-import { instanceService } from '@shared/services/InstanceService';
-import { createCardinalPorts } from '../domain/portUtils';
-import { NODE_HEADER_HEIGHT } from './nodeLayout';
-import { asNodeId, type NodeId } from '../domain/ids';
+import React, { useRef, useEffect, useState, useMemo } from 'react'
+import { useCanvas } from '../store'
+import { CanvasNode } from './CanvasNode'
+import { Edge } from './Edge'
+import { EdgePath } from './EdgePath'
+import { CanvasBackground } from './CanvasBackground'
+import { CanvasToolbar } from './CanvasToolbar'
+import { MemoEditor } from '../../editor/components/MemoEditor'
+import CanvasWebSocketSyncPlugin from '@workspace/sync/CanvasSyncPlugin'
+import { serializeCanvas } from '@workspace/persistence/canvasSerialization'
+import { runHierarchicalLeidenOnDto } from '../domain/analysis/clustering/leiden'
+import { runHierarchicalLeidenOnDtoInWorker } from '../domain/analysis/clustering/leiden/workerClient'
+import { instanceService } from '@shared/services/InstanceService'
+import { createCardinalPorts } from '../domain/portUtils'
+import { NODE_HEADER_HEIGHT } from './nodeLayout'
+import { asNodeId, type NodeId } from '../domain/ids'
+import type { CanvasCommand } from '../commands/types'
 
-export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
-  const { state, dispatch, dispatchCommand, dispatchTransaction } = useCanvas();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [marquee, setMarquee] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
-  const lastMousePos = useRef<{ x: number; y: number } | null>(null);
-  const mousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const leidenAbortRef = useRef<AbortController | null>(null);
+export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
+  const { state, dispatch, dispatchCommand, dispatchTransaction } = useCanvas()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [marquee, setMarquee] = useState<{
+    startX: number
+    startY: number
+    currentX: number
+    currentY: number
+  } | null>(null)
+  const lastMousePos = useRef<{ x: number; y: number } | null>(null)
+  const mousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const leidenAbortRef = useRef<AbortController | null>(null)
 
-  const connect = state.ui.interaction.connect;
+  const connect = state.ui.interaction.connect
 
   const isEmpty = useMemo(
     () => Object.keys(state.domain.graph.nodesById).length === 0,
     [state.domain.graph.nodesById]
-  );
+  )
 
   const handleWheel = (e: WheelEvent) => {
     // Allow scrolling within editor cards unless Ctrl/Cmd is held for zoom
-    const target = e.target as HTMLElement;
+    const target = e.target as HTMLElement
     if (target.closest('.editor-container') && !e.ctrlKey && !e.metaKey) {
-      return;
+      return
     }
 
     if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
-      const rect = containerRef.current?.getBoundingClientRect();
+      e.preventDefault()
+      const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05
+      const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
         dispatch({
           type: 'ZOOM',
@@ -49,132 +55,138 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
             factor: zoomFactor,
             center: {
               x: e.clientX - rect.left,
-              y: e.clientY - rect.top,
-            },
-          },
-        });
+              y: e.clientY - rect.top
+            }
+          }
+        })
       }
     } else {
-      e.preventDefault();
+      e.preventDefault()
       // Standard Pan with mouse wheel or trackpad two-finger scroll
       dispatch({
         type: 'PAN',
         payload: {
           x: -e.deltaX,
-          y: -e.deltaY,
-        },
-      });
+          y: -e.deltaY
+        }
+      })
     }
-  };
+  }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.shiftKey && e.button === 0) {
       // Shift + Left Click on canvas background starts marquee selection
-      const rect = containerRef.current?.getBoundingClientRect();
+      const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
-        const screenX = e.clientX - rect.left;
-        const screenY = e.clientY - rect.top;
-        setMarquee({ startX: screenX, startY: screenY, currentX: screenX, currentY: screenY });
+        const screenX = e.clientX - rect.left
+        const screenY = e.clientY - rect.top
+        setMarquee({ startX: screenX, startY: screenY, currentX: screenX, currentY: screenY })
       }
-      return;
+      return
     }
 
-    if (e.button === 0 || e.button === 1) { // Left or Middle click
-      dispatch({ type: 'DESELECT_ALL' });
-      setIsDragging(true);
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    if (e.button === 0 || e.button === 1) {
+      // Left or Middle click
+      dispatch({ type: 'DESELECT_ALL' })
+      setIsDragging(true)
+      lastMousePos.current = { x: e.clientX, y: e.clientY }
     }
-  };
+  }
 
   const handleMouseMove = (e: MouseEvent) => {
     if (marquee) {
-      const rect = containerRef.current?.getBoundingClientRect();
+      const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
         setMarquee((prev) =>
           prev ? { ...prev, currentX: e.clientX - rect.left, currentY: e.clientY - rect.top } : null
-        );
+        )
       }
     } else if (connect.status === 'connecting') {
-      const rect = containerRef.current?.getBoundingClientRect();
+      const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
         dispatchCommand({
           type: 'UpdateConnectCursor',
           payload: {
             point: {
               x: (e.clientX - rect.left - state.ui.viewport.x) / state.ui.viewport.zoom,
-              y: (e.clientY - rect.top - state.ui.viewport.y) / state.ui.viewport.zoom,
-            },
-          },
-        });
+              y: (e.clientY - rect.top - state.ui.viewport.y) / state.ui.viewport.zoom
+            }
+          }
+        })
       }
     } else if (isDragging && lastMousePos.current) {
-      const dx = e.clientX - lastMousePos.current.x;
-      const dy = e.clientY - lastMousePos.current.y;
+      const dx = e.clientX - lastMousePos.current.x
+      const dy = e.clientY - lastMousePos.current.y
 
       dispatch({
         type: 'PAN',
-        payload: { x: dx, y: dy },
-      });
+        payload: { x: dx, y: dy }
+      })
 
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
+      lastMousePos.current = { x: e.clientX, y: e.clientY }
     }
-  };
+  }
 
   const handleMouseUp = (e: MouseEvent) => {
     if (marquee) {
       // Calculate marquee box in canvas world coordinates
-      const x1 = Math.min(marquee.startX, marquee.currentX);
-      const x2 = Math.max(marquee.startX, marquee.currentX);
-      const y1 = Math.min(marquee.startY, marquee.currentY);
-      const y2 = Math.max(marquee.startY, marquee.currentY);
+      const x1 = Math.min(marquee.startX, marquee.currentX)
+      const x2 = Math.max(marquee.startX, marquee.currentX)
+      const y1 = Math.min(marquee.startY, marquee.currentY)
+      const y2 = Math.max(marquee.startY, marquee.currentY)
 
       // Only perform selection if marquee was dragged more than a minimal threshold
       if (Math.abs(x2 - x1) > 4 || Math.abs(y2 - y1) > 4) {
-        const worldX1 = (x1 - state.ui.viewport.x) / state.ui.viewport.zoom;
-        const worldX2 = (x2 - state.ui.viewport.x) / state.ui.viewport.zoom;
-        const worldY1 = (y1 - state.ui.viewport.y) / state.ui.viewport.zoom;
-        const worldY2 = (y2 - state.ui.viewport.y) / state.ui.viewport.zoom;
+        const worldX1 = (x1 - state.ui.viewport.x) / state.ui.viewport.zoom
+        const worldX2 = (x2 - state.ui.viewport.x) / state.ui.viewport.zoom
+        const worldY1 = (y1 - state.ui.viewport.y) / state.ui.viewport.zoom
+        const worldY2 = (y2 - state.ui.viewport.y) / state.ui.viewport.zoom
 
-        const selectedNodeIds: NodeId[] = [];
+        const selectedNodeIds: NodeId[] = []
         for (const [nodeId, layout] of Object.entries(state.layout.layoutByNodeId)) {
-          const nodeX2 = layout.x + layout.width;
-          const nodeY2 = layout.y + layout.height;
-          const intersects = !(layout.x > worldX2 || nodeX2 < worldX1 || layout.y > worldY2 || nodeY2 < worldY1);
+          const nodeX2 = layout.x + layout.width
+          const nodeY2 = layout.y + layout.height
+          const intersects = !(
+            layout.x > worldX2 ||
+            nodeX2 < worldX1 ||
+            layout.y > worldY2 ||
+            nodeY2 < worldY1
+          )
           if (intersects) {
-            selectedNodeIds.push(asNodeId(nodeId));
+            selectedNodeIds.push(asNodeId(nodeId))
           }
         }
 
         dispatch({
           type: 'SET_SELECTION',
-          payload: { nodeIds: selectedNodeIds, relationshipIds: [] },
-        });
+          payload: { nodeIds: selectedNodeIds, relationshipIds: [] }
+        })
       }
 
-      setMarquee(null);
+      setMarquee(null)
     }
 
-    setIsDragging(false);
-    lastMousePos.current = null;
+    setIsDragging(false)
+    lastMousePos.current = null
 
     if (connect.status === 'connecting' && connect.fromNodeId) {
-      const target = e.target;
+      const target = e.target
       const releasedOnNode =
-        target instanceof Element && !!target.closest('[data-canvas-node="true"]');
+        target instanceof Element && !!target.closest('[data-canvas-node="true"]')
 
       // If the user releases on a node, the node-level handler will create the edge.
       // If the user releases on empty canvas, create a new node and connect to it.
       if (!releasedOnNode) {
-        const rect = containerRef.current?.getBoundingClientRect();
+        const rect = containerRef.current?.getBoundingClientRect()
         if (rect) {
-          const x = (e.clientX - rect.left - state.ui.viewport.x) / state.ui.viewport.zoom;
-          const y = (e.clientY - rect.top - state.ui.viewport.y) / state.ui.viewport.zoom;
+          const x = (e.clientX - rect.left - state.ui.viewport.x) / state.ui.viewport.zoom
+          const y = (e.clientY - rect.top - state.ui.viewport.y) / state.ui.viewport.zoom
 
-          (async () => {
-            const fromNodeId = connect.fromNodeId;
-            if (!fromNodeId) return;
+          ;(async () => {
+            const fromNodeId = connect.fromNodeId
+            if (!fromNodeId) return
 
-            const newNodeId = instanceService.createNodeId();
+            const newNodeId = instanceService.createNodeId()
 
             dispatchTransaction([
               {
@@ -187,7 +199,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
                   width: 600,
                   height: 400,
                   attrs: { memo: '' }
-                },
+                }
               },
               {
                 type: 'ResizeNode',
@@ -196,7 +208,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
                   x,
                   y,
                   width: 600,
-                  height: 400,
+                  height: 400
                 }
               },
               {
@@ -206,34 +218,34 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
                     id: instanceService.createRelationshipId(),
                     from: { nodeId: fromNodeId },
                     to: { nodeId: newNodeId },
-                    attrs: {},
+                    attrs: {}
                   }
                 }
               }
-            ]);
-          })();
+            ])
+          })()
         }
       }
 
-      dispatchCommand({ type: 'CancelConnect' });
+      dispatchCommand({ type: 'CancelConnect' })
     }
-  };
+  }
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
+    e.preventDefault()
+  }
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
+    e.preventDefault()
 
-    const content = e.dataTransfer.getData("application/x-lexical-block-content");
+    const content = e.dataTransfer.getData('application/x-lexical-block-content')
     if (content) {
-      const rect = containerRef.current?.getBoundingClientRect();
+      const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
-        const x = (e.clientX - rect.left - state.ui.viewport.x) / state.ui.viewport.zoom;
-        const y = (e.clientY - rect.top - state.ui.viewport.y) / state.ui.viewport.zoom;
+        const x = (e.clientX - rect.left - state.ui.viewport.x) / state.ui.viewport.zoom
+        const y = (e.clientY - rect.top - state.ui.viewport.y) / state.ui.viewport.zoom
 
-        (async () => {
+        ;(async () => {
           dispatchCommand({
             type: 'CreateNode',
             payload: {
@@ -243,111 +255,118 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
               y,
               width: 400,
               height: 300,
-              attrs: { memo: content },
-            },
-          });
-        })();
+              attrs: { memo: content }
+            }
+          })
+        })()
       }
     }
-  };
+  }
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const container = containerRef.current
+    if (!container) return
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
 
     return () => {
-      container.removeEventListener('wheel', handleWheel);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, marquee, dispatch, dispatchCommand, state.ui.viewport, connect.status]);
+      container.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, marquee, dispatch, dispatchCommand, state.ui.viewport, connect.status])
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const target = e.target as HTMLElement | null;
+    const target = e.target as HTMLElement | null
     if (target) {
-      const tag = target.tagName;
-      if (
-        target.isContentEditable ||
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        tag === 'SELECT'
-      ) {
+      const tag = target.tagName
+      if (target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
         // Let Lexical / form elements manage their own keyboard inputs
-        return;
+        return
       }
     }
 
-    const key = e.key.toLowerCase();
-    const isMod = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase()
+    const isMod = e.ctrlKey || e.metaKey
 
     // Arrow keys: nudge selected nodes
-    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) && state.ui.selection.nodeIds.length > 0) {
-      e.preventDefault();
-      const step = e.shiftKey ? 50 : 10;
-      const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0;
-      const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0;
+    if (
+      ['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) &&
+      state.ui.selection.nodeIds.length > 0
+    ) {
+      e.preventDefault()
+      const step = e.shiftKey ? 50 : 10
+      const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
+      const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
 
+      const moveCommands: CanvasCommand[] = []
       for (const nodeId of state.ui.selection.nodeIds) {
-        const layout = state.layout.layoutByNodeId[nodeId];
+        const layout = state.layout.layoutByNodeId[nodeId]
         if (layout) {
-          dispatchCommand({
+          moveCommands.push({
             type: 'MoveNode',
             payload: {
               nodeId,
               x: layout.x + dx,
-              y: layout.y + dy,
-            },
-          });
+              y: layout.y + dy
+            }
+          })
         }
       }
-      return;
+      if (moveCommands.length > 0) {
+        dispatchTransaction(moveCommands)
+      }
+      return
     }
 
     // Delete/Backspace: delete selected nodes and relationships
     if (key === 'delete' || key === 'backspace') {
-      e.preventDefault();
+      e.preventDefault()
 
+      const deleteCommands: CanvasCommand[] = []
       // Delete selected nodes
       for (const nodeId of state.ui.selection.nodeIds) {
-        dispatchCommand({ type: 'DeleteNode', payload: { nodeId } });
+        deleteCommands.push({ type: 'DeleteNode', payload: { nodeId } })
       }
 
       // Delete selected relationships
       for (const relId of state.ui.selection.relationshipIds) {
-        dispatchCommand({ type: 'DeleteRelationship', payload: { relationshipId: relId } });
+        deleteCommands.push({ type: 'DeleteRelationship', payload: { relationshipId: relId } })
       }
-      return;
+
+      if (deleteCommands.length > 0) {
+        dispatchTransaction(deleteCommands)
+      }
+      return
     }
 
     // N / Shift+N: create new node
     if (key === 'n' && !isMod) {
-      e.preventDefault();
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      e.preventDefault()
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
 
-      const defaultWidth = 600;
-      const defaultHeight = 400;
+      const defaultWidth = 600
+      const defaultHeight = 400
 
-      let x: number;
-      let y: number;
+      let x: number
+      let y: number
 
       if (e.shiftKey) {
         // Shift+N: create at cursor position
-        x = (mousePosRef.current.x - state.ui.viewport.x) / state.ui.viewport.zoom;
-        y = (mousePosRef.current.y - state.ui.viewport.y) / state.ui.viewport.zoom;
+        x = (mousePosRef.current.x - state.ui.viewport.x) / state.ui.viewport.zoom
+        y = (mousePosRef.current.y - state.ui.viewport.y) / state.ui.viewport.zoom
       } else {
         // N: create at center of viewport
-        const centerScreenX = rect.width / 2;
-        const centerScreenY = rect.height / 2;
-        x = (centerScreenX - state.ui.viewport.x) / state.ui.viewport.zoom - defaultWidth / 2;
-        y = (centerScreenY - state.ui.viewport.y) / state.ui.viewport.zoom - defaultHeight / 2;
+        const centerScreenX = rect.width / 2
+        const centerScreenY = rect.height / 2
+        x = (centerScreenX - state.ui.viewport.x) / state.ui.viewport.zoom - defaultWidth / 2
+        y = (centerScreenY - state.ui.viewport.y) / state.ui.viewport.zoom - defaultHeight / 2
       }
 
-      (async () => {
+      ;(async () => {
         dispatchCommand({
           type: 'CreateNode',
           payload: {
@@ -358,110 +377,114 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
             width: defaultWidth,
             height: defaultHeight,
             attrs: { memo: '' }
-          },
-        });
-      })();
-      return;
+          }
+        })
+      })()
+      return
     }
 
     // Modifier-based shortcuts
-    if (!isMod) return;
+    if (!isMod) return
 
     // Ctrl/Cmd + Shift + L: run Leiden layout
     if (e.shiftKey && key === 'l') {
-      e.preventDefault();
+      e.preventDefault()
 
       if (leidenAbortRef.current && !leidenAbortRef.current.signal.aborted) {
-        leidenAbortRef.current.abort();
+        leidenAbortRef.current.abort()
       }
-      const abortController = new AbortController();
-      leidenAbortRef.current = abortController;
+      const abortController = new AbortController()
+      leidenAbortRef.current = abortController
 
-      const baseDto = serializeCanvas(state);
+      const baseDto = serializeCanvas(state)
       const snapshotDto =
         typeof structuredClone === 'function'
           ? structuredClone(baseDto)
-          : (JSON.parse(JSON.stringify(baseDto)) as typeof baseDto);
+          : (JSON.parse(JSON.stringify(baseDto)) as typeof baseDto)
 
       void (async () => {
-        let dto: any;
+        let dto: any
         try {
-          ({ dto } = await runHierarchicalLeidenOnDtoInWorker(snapshotDto as any, {
-            signedMode: 'penalty',
-          }, {
-            signal: abortController.signal,
-          }));
+          ;({ dto } = await runHierarchicalLeidenOnDtoInWorker(
+            snapshotDto as any,
+            {
+              signedMode: 'penalty'
+            },
+            {
+              signal: abortController.signal
+            }
+          ))
         } catch (err) {
-          if ((err as any)?.name === 'AbortError') return;
+          if ((err as any)?.name === 'AbortError') return
 
-          if (abortController.signal.aborted) return;
+          if (abortController.signal.aborted) return
 
-          ({ dto } = await runHierarchicalLeidenOnDto(
+          ;({ dto } = await runHierarchicalLeidenOnDto(
             snapshotDto,
             { signedMode: 'penalty' },
             {
               onProgress: (ev) => {
-                console.log('[Leiden] progress', ev);
-              },
-            },
-          ));
+                console.log('[Leiden] progress', ev)
+              }
+            }
+          ))
         }
 
-        if (abortController.signal.aborted) return;
+        if (abortController.signal.aborted) return
 
         dispatchCommand({
           type: 'ReplaceGraph',
           payload: {
             dto,
-            graphId: String((state.domain.graph as any).id),
-          },
-        });
+            graphId: String((state.domain.graph as any).id)
+          }
+        })
 
         if (leidenAbortRef.current === abortController) {
-          leidenAbortRef.current = null;
+          leidenAbortRef.current = null
         }
-      })();
+      })()
 
-      return;
+      return
     }
 
     // Ctrl/Cmd + Shift + C: cancel in-flight Leiden run
     if (e.shiftKey && key === 'c') {
-      e.preventDefault();
+      e.preventDefault()
       if (leidenAbortRef.current && !leidenAbortRef.current.signal.aborted) {
-        leidenAbortRef.current.abort();
+        leidenAbortRef.current.abort()
       }
-      return;
+      return
     }
 
     if (key === 'z') {
-      e.preventDefault();
-      dispatch({ type: e.shiftKey ? 'REDO' : 'UNDO' });
-      return;
+      e.preventDefault()
+      dispatch({ type: e.shiftKey ? 'REDO' : 'UNDO' })
+      return
     }
 
     if (key === 'y') {
-      e.preventDefault();
-      dispatch({ type: 'REDO' });
+      e.preventDefault()
+      dispatch({ type: 'REDO' })
     }
-  };
+  }
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      const rect = containerRef.current?.getBoundingClientRect();
+      const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
         mousePosRef.current = {
           x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        };
+          y: e.clientY - rect.top
+        }
       }
-    };
+    }
 
-    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousemove', onMouseMove)
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-    };
-  }, []);
+      window.removeEventListener('mousemove', onMouseMove)
+    }
+  }, [])
 
   return (
     <div
@@ -476,7 +499,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
         flex: 1,
         minHeight: 0,
         position: 'relative',
-        cursor: isDragging ? 'grabbing' : marquee ? 'crosshair' : 'default',
+        cursor: isDragging ? 'grabbing' : marquee ? 'crosshair' : 'default'
       }}
     >
       {/* Background Dot Matrix Grid */}
@@ -495,7 +518,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
             left: Math.min(marquee.startX, marquee.currentX),
             top: Math.min(marquee.startY, marquee.currentY),
             width: Math.abs(marquee.currentX - marquee.startX),
-            height: Math.abs(marquee.currentY - marquee.startY),
+            height: Math.abs(marquee.currentY - marquee.startY)
           }}
         />
       )}
@@ -507,7 +530,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
           width: '100%',
           height: '100%',
           position: 'absolute',
-          pointerEvents: 'none',
+          pointerEvents: 'none'
         }}
       >
         {/* Edges Layer */}
@@ -545,36 +568,38 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
             </marker>
           </defs>
           {Object.values(state.domain.graph.relationshipsById).map((rel) => {
-            const sourceNode = state.domain.graph.nodesById[rel.from.nodeId];
-            const targetNode = state.domain.graph.nodesById[rel.to.nodeId];
-            const sourceLayout = state.layout.layoutByNodeId[rel.from.nodeId];
-            const targetLayout = state.layout.layoutByNodeId[rel.to.nodeId];
-            if (!sourceLayout || !targetLayout) return null;
+            const sourceNode = state.domain.graph.nodesById[rel.from.nodeId]
+            const targetNode = state.domain.graph.nodesById[rel.to.nodeId]
+            const sourceLayout = state.layout.layoutByNodeId[rel.from.nodeId]
+            const targetLayout = state.layout.layoutByNodeId[rel.to.nodeId]
+            if (!sourceLayout || !targetLayout) return null
 
             const sourceHeaderPorts = sourceNode
               ? createCardinalPorts(sourceNode.id, sourceLayout.width, NODE_HEADER_HEIGHT)
-              : undefined;
+              : undefined
             const targetHeaderPorts = targetNode
               ? createCardinalPorts(targetNode.id, targetLayout.width, NODE_HEADER_HEIGHT)
-              : undefined;
+              : undefined
 
-            const sourceHeaderNode = sourceNode && sourceHeaderPorts
-              ? { ...sourceNode, ports: sourceHeaderPorts }
-              : sourceNode;
-            const targetHeaderNode = targetNode && targetHeaderPorts
-              ? { ...targetNode, ports: targetHeaderPorts }
-              : targetNode;
+            const sourceHeaderNode =
+              sourceNode && sourceHeaderPorts
+                ? { ...sourceNode, ports: sourceHeaderPorts }
+                : sourceNode
+            const targetHeaderNode =
+              targetNode && targetHeaderPorts
+                ? { ...targetNode, ports: targetHeaderPorts }
+                : targetNode
 
             const sourceHeaderLayout = {
               ...sourceLayout,
               width: sourceLayout.width,
-              height: NODE_HEADER_HEIGHT,
-            };
+              height: NODE_HEADER_HEIGHT
+            }
             const targetHeaderLayout = {
               ...targetLayout,
               width: targetLayout.width,
-              height: NODE_HEADER_HEIGHT,
-            };
+              height: NODE_HEADER_HEIGHT
+            }
 
             return (
               <Edge
@@ -586,7 +611,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
                 targetNode={targetHeaderNode}
                 attrs={rel.attrs}
               />
-            );
+            )
           })}
           {connect.status === 'connecting' && connect.start && connect.current && (
             <EdgePath
@@ -609,28 +634,28 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
               justifyContent: 'center',
               pointerEvents: 'none',
               userSelect: 'none',
-              zIndex: 0,
+              zIndex: 0
             }}
             className="text-neutral-400 dark:text-neutral-600 gap-2"
           >
             <div className="text-sm font-medium">No cards on this canvas yet</div>
             <div className="text-xs flex items-center gap-1.5">
-              Press <kbd className="px-2 py-0.5 rounded bg-neutral-200/80 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 font-mono text-[11px] text-neutral-700 dark:text-neutral-300">N</kbd> or click <b>Add Card</b> to start
+              Press{' '}
+              <kbd className="px-2 py-0.5 rounded bg-neutral-200/80 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 font-mono text-[11px] text-neutral-700 dark:text-neutral-300">
+                N
+              </kbd>{' '}
+              or click <b>Add Card</b> to start
             </div>
           </div>
         )}
 
         <div style={{ pointerEvents: 'auto' }}>
           {Object.values(state.domain.graph.nodesById).map((node) => {
-            const layout = state.layout.layoutByNodeId[node.id];
-            if (!layout) return null;
+            const layout = state.layout.layoutByNodeId[node.id]
+            if (!layout) return null
 
             return (
-              <CanvasNode
-                key={node.id}
-                node={node}
-                layout={layout}
-              >
+              <CanvasNode key={node.id} node={node} layout={layout}>
                 {node.type === 'card' && (
                   <MemoEditor
                     value={(node.attrs as any)?.memo || ''}
@@ -653,11 +678,10 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ }) => {
                   />
                 )}
               </CanvasNode>
-            );
+            )
           })}
         </div>
       </div>
     </div>
-  );
-};
-
+  )
+}

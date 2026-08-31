@@ -1,63 +1,70 @@
-import React, { useState, useRef, useEffect } from 'react';
-import type { NodeLayout } from '../types';
-import { useCanvas } from '../store';
-import { NodeFrame } from './NodeFrame';
-import { NodeHeader } from './NodeHeader';
-import { ResizeHandle } from './ResizeHandle';
-import { PortContainer } from './PortContainer';
-import { createCardinalPorts, type CardinalDirection } from '@workspace/canvas/domain/portUtils';
-import { NODE_HEADER_HEIGHT } from './nodeLayout';
-import type { NodeEntity, PortEntity } from '@workspace/canvas/domain/types';
-import { instanceService } from '@shared/services/InstanceService';
+import React, { useState, useRef, useEffect } from 'react'
+import type { NodeLayout } from '../types'
+import type { CanvasCommand } from '../commands/types'
+import { useCanvas } from '../store'
+import { NodeFrame } from './NodeFrame'
+import { NodeHeader } from './NodeHeader'
+import { ResizeHandle } from './ResizeHandle'
+import { PortContainer } from './PortContainer'
+import { createCardinalPorts, type CardinalDirection } from '@workspace/canvas/domain/portUtils'
+import { NODE_HEADER_HEIGHT } from './nodeLayout'
+import type { NodeEntity, PortEntity } from '@workspace/canvas/domain/types'
+import { instanceService } from '@shared/services/InstanceService'
 
 /**
  * Props for a single canvas node component.
  */
 interface CanvasNodeProps {
   /** The node domain entity */
-  node: NodeEntity;
+  node: NodeEntity
   /** The layout information for the node (position and dimensions) */
-  layout: NodeLayout;
+  layout: NodeLayout
   /** Child content to render inside the node */
-  children: React.ReactNode;
+  children: React.ReactNode
 }
 
-const expandedByNodeId = new Map<string, boolean>();
+const expandedByNodeId = new Map<string, boolean>()
 
 export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const { dispatch, dispatchCommand, state } = useCanvas();
-  const [isDragging, setIsDragging] = useState(false);
-  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
-  const lastMousePos = useRef<{ x: number; y: number } | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false)
+  const { dispatch, dispatchCommand, dispatchTransaction, state } = useCanvas()
+  const [isDragging, setIsDragging] = useState(false)
+  const [resizeHandle, setResizeHandle] = useState<string | null>(null)
+  const lastMousePos = useRef<{ x: number; y: number } | null>(null)
+  const stateRef = useRef(state)
+  stateRef.current = state
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
+  const hasDraggedRef = useRef<boolean>(false)
+  const wasSelectedOnMouseDownRef = useRef<boolean>(false)
 
-  const isSelected = state.ui.selection.nodeIds.includes(node.id);
+  const isSelected = state.ui.selection.nodeIds.includes(node.id)
 
-  const displayName = node.name;
+  const displayName = node.name
 
   // Local state for the input to avoid jitter while typing
-  const [localName, setLocalName] = useState(displayName);
+  const [localName, setLocalName] = useState(displayName)
 
-  const headerWidth = layout.width;
+  const headerWidth = layout.width
 
   const headerPorts = React.useMemo(
     () => createCardinalPorts(node.id, headerWidth, NODE_HEADER_HEIGHT),
     [node.id, headerWidth]
-  );
+  )
 
   // Sync local state when external data changes
   useEffect(() => {
-    setLocalName(displayName);
-  }, [displayName]);
+    setLocalName(displayName)
+  }, [displayName])
 
   useEffect(() => {
-    const stored = expandedByNodeId.get(node.id);
-    setIsExpanded(stored ?? false);
-  }, [node.id]);
+    const stored = expandedByNodeId.get(node.id)
+    setIsExpanded(stored ?? false)
+  }, [node.id])
 
   useEffect(() => {
-    expandedByNodeId.set(node.id, isExpanded);
-  }, [node.id, isExpanded]);
+    expandedByNodeId.set(node.id, isExpanded)
+  }, [node.id, isExpanded])
 
   const commitNameUpdate = async () => {
     if (localName !== displayName) {
@@ -65,62 +72,71 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
         type: 'UpdateNode',
         payload: {
           nodeId: node.id,
-          patch: { name: localName },
-        },
-      });
+          patch: { name: localName }
+        }
+      })
     }
-  };
+  }
 
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      commitNameUpdate();
-      (e.target as HTMLInputElement).blur();
+      commitNameUpdate()
+      ;(e.target as HTMLInputElement).blur()
     }
-    e.stopPropagation(); // Prevent other canvas hotkeys
-  };
+    e.stopPropagation() // Prevent other canvas hotkeys
+  }
 
   const handleInputMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Allow text selection, prevent node drag
-  };
+    e.stopPropagation() // Allow text selection, prevent node drag
+  }
 
   const handleToggleMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
+    e.stopPropagation()
+  }
 
   const handleToggleClick = () => {
-    setIsExpanded((prev) => !prev);
-  };
+    setIsExpanded((prev) => !prev)
+  }
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent canvas panning
-    if (e.button !== 0) return;
+    e.stopPropagation() // Prevent canvas panning
+    if (e.button !== 0) return
 
-    dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: e.shiftKey } });
+    hasDraggedRef.current = false
+    wasSelectedOnMouseDownRef.current = isSelected
+
+    if (e.shiftKey) {
+      dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: true } })
+    } else {
+      if (!isSelected) {
+        dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: false } })
+      }
+    }
 
     // Start dragging immediately on selection (unified behavior)
-    setIsDragging(true);
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
-  };
+    setIsDragging(true)
+    lastMousePos.current = { x: e.clientX, y: e.clientY }
+  }
 
   const handleResizeStart = (e: React.MouseEvent, handle: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (e.button !== 0) return;
+    e.stopPropagation()
+    e.preventDefault()
+    if (e.button !== 0) return
 
-    setResizeHandle(handle);
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
-  };
+    setResizeHandle(handle)
+    lastMousePos.current = { x: e.clientX, y: e.clientY }
+  }
 
   /**
    * Handles completing a connection when releasing mouse on this node.
    */
   const handleMouseUp = () => {
-    if (state.ui.interaction.connect.status !== 'connecting') return;
+    if (state.ui.interaction.connect.status !== 'connecting') return
 
     // We rely on the global viewport handler to clear the interaction state (CancelConnect),
     // so we only need to dispatch the data mutation here.
-    const fromNodeId = state.ui.interaction.connect.fromNodeId;
-    if (!fromNodeId) return;
+    const fromNodeId = state.ui.interaction.connect.fromNodeId
+    if (!fromNodeId) return
 
     dispatchCommand({
       type: 'AddRelationship',
@@ -129,11 +145,11 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
           id: instanceService.createRelationshipId(),
           from: { nodeId: fromNodeId },
           to: { nodeId: node.id },
-          attrs: {},
+          attrs: {}
         }
       }
-    });
-  };
+    })
+  }
 
   /**
    * Handles starting a connection from a port.
@@ -150,49 +166,77 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
         fromNodeId: node.id,
         start: {
           x: layout.x + port.relativePosition.x,
-          y: layout.y + port.relativePosition.y,
-        },
-      },
-    });
-  };
+          y: layout.y + port.relativePosition.y
+        }
+      }
+    })
+  }
 
   useEffect(() => {
-    if (!isDragging && !resizeHandle) return;
+    if (!isDragging && !resizeHandle) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!lastMousePos.current) return;
-      const dx = (e.clientX - lastMousePos.current.x) / state.ui.viewport.zoom;
-      const dy = (e.clientY - lastMousePos.current.y) / state.ui.viewport.zoom;
+      if (!lastMousePos.current) return
+      const currentState = stateRef.current
+      const dx = (e.clientX - lastMousePos.current.x) / currentState.ui.viewport.zoom
+      const dy = (e.clientY - lastMousePos.current.y) / currentState.ui.viewport.zoom
+
+      if (dx !== 0 || dy !== 0) {
+        hasDraggedRef.current = true
+      }
 
       if (isDragging) {
-        dispatchCommand({
-          type: 'MoveNode',
-          payload: {
-            nodeId: node.id,
-            x: layout.x + dx,
-            y: layout.y + dy,
-          },
-        });
+        const isMultiSelected = isSelected && currentState.ui.selection.nodeIds.length > 1
+        if (isMultiSelected) {
+          const moveCommands: CanvasCommand[] = []
+          for (const selectedNodeId of currentState.ui.selection.nodeIds) {
+            const nodeLayout = currentState.layout.layoutByNodeId[selectedNodeId]
+            if (nodeLayout) {
+              moveCommands.push({
+                type: 'MoveNode',
+                payload: {
+                  nodeId: selectedNodeId,
+                  x: nodeLayout.x + dx,
+                  y: nodeLayout.y + dy
+                }
+              })
+            }
+          }
+          if (moveCommands.length > 0) {
+            dispatchTransaction(moveCommands)
+          }
+        } else {
+          const currentLayout = layoutRef.current
+          dispatchCommand({
+            type: 'MoveNode',
+            payload: {
+              nodeId: node.id,
+              x: currentLayout.x + dx,
+              y: currentLayout.y + dy
+            }
+          })
+        }
       } else if (resizeHandle) {
-        let newWidth = layout.width;
-        let newHeight = layout.height;
-        let newX = layout.x;
-        let newY = layout.y;
+        const currentLayout = layoutRef.current
+        let newWidth = currentLayout.width
+        let newHeight = currentLayout.height
+        let newX = currentLayout.x
+        let newY = currentLayout.y
 
-        if (resizeHandle.includes('e')) newWidth += dx;
-        if (resizeHandle.includes('s')) newHeight += dy;
+        if (resizeHandle.includes('e')) newWidth += dx
+        if (resizeHandle.includes('s')) newHeight += dy
         if (resizeHandle.includes('w')) {
-          newWidth -= dx;
-          newX += dx;
+          newWidth -= dx
+          newX += dx
         }
         if (resizeHandle.includes('n')) {
-          newHeight -= dy;
-          newY += dy;
+          newHeight -= dy
+          newY += dy
         }
 
         // Min dimensions
-        if (newWidth < 180) newWidth = 180;
-        if (newHeight < 120) newHeight = 120;
+        if (newWidth < 180) newWidth = 180
+        if (newHeight < 120) newHeight = 120
 
         dispatchCommand({
           type: 'ResizeNode',
@@ -201,30 +245,50 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
             x: newX,
             y: newY,
             width: newWidth,
-            height: newHeight,
-          },
-        });
+            height: newHeight
+          }
+        })
       }
 
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
-    };
+      lastMousePos.current = { x: e.clientX, y: e.clientY }
+    }
 
-    const handleGlobalMouseUp = () => {
-      setIsDragging(false);
-      setResizeHandle(null);
-      lastMousePos.current = null;
-    };
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      if (isDragging) {
+        if (
+          !hasDraggedRef.current &&
+          !e.shiftKey &&
+          wasSelectedOnMouseDownRef.current &&
+          stateRef.current.ui.selection.nodeIds.length > 1
+        ) {
+          dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: false } })
+        }
+      }
+      setIsDragging(false)
+      setResizeHandle(null)
+      lastMousePos.current = null
+      hasDraggedRef.current = false
+      wasSelectedOnMouseDownRef.current = false
+    }
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleGlobalMouseUp);
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleGlobalMouseUp)
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, [isDragging, resizeHandle, node, layout, dispatchCommand, state.ui.viewport.zoom]);
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleGlobalMouseUp)
+    }
+  }, [
+    isDragging,
+    resizeHandle,
+    node.id,
+    isSelected,
+    dispatch,
+    dispatchCommand,
+    dispatchTransaction
+  ])
 
-  const [isHovered, setIsHovered] = useState(false);
+  const [isHovered, setIsHovered] = useState(false)
 
   return (
     <PortContainer
@@ -290,7 +354,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
                 className="w-full bg-transparent font-semibold text-lg text-neutral-800 dark:text-neutral-100 text-center truncate outline-none focus:ring-1 focus:ring-blue-400/50 rounded px-1 transition-all"
                 style={{
                   cursor: isSelected ? 'text' : 'grab',
-                  pointerEvents: isSelected ? 'auto' : 'none',
+                  pointerEvents: isSelected ? 'auto' : 'none'
                 }}
               />
             </div>
@@ -308,14 +372,14 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
               width: layout.width,
               height: layout.height,
               zIndex: 40,
-              pointerEvents: 'auto',
+              pointerEvents: 'auto'
             }}
             className="rounded-b-xl border-x border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-xl overflow-hidden"
             onMouseDown={(e) => {
-              e.stopPropagation();
-              if (e.button !== 0) return;
+              e.stopPropagation()
+              if (e.button !== 0) return
               if (!isSelected) {
-                dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: e.shiftKey } });
+                dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: e.shiftKey } })
               }
             }}
           >
@@ -323,7 +387,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
               style={{
                 width: '100%',
                 height: '100%',
-                pointerEvents: 'auto',
+                pointerEvents: 'auto'
               }}
             >
               {children}
@@ -331,44 +395,19 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
 
             {(isSelected || isHovered) && (
               <>
-                <ResizeHandle
-                  position="n"
-                  onMouseDown={(e) => handleResizeStart(e, 'n')}
-                />
-                <ResizeHandle
-                  position="e"
-                  onMouseDown={(e) => handleResizeStart(e, 'e')}
-                />
-                <ResizeHandle
-                  position="s"
-                  onMouseDown={(e) => handleResizeStart(e, 's')}
-                />
-                <ResizeHandle
-                  position="w"
-                  onMouseDown={(e) => handleResizeStart(e, 'w')}
-                />
-                <ResizeHandle
-                  position="se"
-                  onMouseDown={(e) => handleResizeStart(e, 'se')}
-                />
-                <ResizeHandle
-                  position="sw"
-                  onMouseDown={(e) => handleResizeStart(e, 'sw')}
-                />
-                <ResizeHandle
-                  position="ne"
-                  onMouseDown={(e) => handleResizeStart(e, 'ne')}
-                />
-                <ResizeHandle
-                  position="nw"
-                  onMouseDown={(e) => handleResizeStart(e, 'nw')}
-                />
+                <ResizeHandle position="n" onMouseDown={(e) => handleResizeStart(e, 'n')} />
+                <ResizeHandle position="e" onMouseDown={(e) => handleResizeStart(e, 'e')} />
+                <ResizeHandle position="s" onMouseDown={(e) => handleResizeStart(e, 's')} />
+                <ResizeHandle position="w" onMouseDown={(e) => handleResizeStart(e, 'w')} />
+                <ResizeHandle position="se" onMouseDown={(e) => handleResizeStart(e, 'se')} />
+                <ResizeHandle position="sw" onMouseDown={(e) => handleResizeStart(e, 'sw')} />
+                <ResizeHandle position="ne" onMouseDown={(e) => handleResizeStart(e, 'ne')} />
+                <ResizeHandle position="nw" onMouseDown={(e) => handleResizeStart(e, 'nw')} />
               </>
             )}
           </div>
         )}
       </div>
     </PortContainer>
-  );
-};
-
+  )
+}

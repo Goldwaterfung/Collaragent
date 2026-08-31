@@ -1,49 +1,49 @@
-import { Graph, NodeId, RelationshipId } from './domain';
-import { CanvasSnapshot, NodeLayout } from './domain/types';
-import type { CanvasCommand } from './commands/types';
+import { Graph, NodeId, RelationshipId } from './domain'
+import { CanvasSnapshot, NodeLayout } from './domain/types'
+import type { CanvasCommand } from './commands/types'
 
-export type { NodeLayout, CanvasSnapshot };
+export type { NodeLayout, CanvasSnapshot }
 
 export interface Point {
-  x: number;
-  y: number;
+  x: number
+  y: number
 }
 
 export interface ViewportState {
-  x: number;
-  y: number;
-  zoom: number;
+  x: number
+  y: number
+  zoom: number
 }
 
 export interface UiSelectionState {
-  nodeIds: NodeId[];
-  relationshipIds: RelationshipId[];
+  nodeIds: NodeId[]
+  relationshipIds: RelationshipId[]
 }
 
 export interface ConnectSessionState {
-  status: 'idle' | 'connecting';
-  fromNodeId?: NodeId;
-  start?: Point;
-  current?: Point;
+  status: 'idle' | 'connecting'
+  fromNodeId?: NodeId
+  start?: Point
+  current?: Point
 }
 
 export interface Node {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  type: 'card';
-  content?: any;
-  selected?: boolean;
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+  type: 'card'
+  content?: any
+  selected?: boolean
 }
 
 export interface Edge {
-  id: RelationshipId;
-  source: NodeId;
-  target: NodeId;
-  sourceHandle?: string;
-  targetHandle?: string;
+  id: RelationshipId
+  source: NodeId
+  target: NodeId
+  sourceHandle?: string
+  targetHandle?: string
 }
 
 /**
@@ -53,46 +53,49 @@ export interface Edge {
  * - UI: viewport + selection + interaction sessions (Phase 4)
  */
 export interface CanvasDomainState {
-  graph: Graph;
+  graph: Graph
 }
 
 export interface CanvasLayoutState {
-  layoutByNodeId: Record<NodeId, NodeLayout>;
+  layoutByNodeId: Record<NodeId, NodeLayout>
 }
 
 export interface CanvasUiState {
-  viewport: ViewportState;
-  selection: UiSelectionState;
+  viewport: ViewportState
+  selection: UiSelectionState
   interaction: {
-    connect: ConnectSessionState;
-  };
+    connect: ConnectSessionState
+  }
 }
 
-export type CanvasHistorySnapshot = CanvasSnapshot;
+export type CanvasHistorySnapshot = CanvasSnapshot
 
 export interface CanvasHistoryState {
-  undoStack: CanvasHistorySnapshot[];
-  redoStack: CanvasHistorySnapshot[];
-  maxSize: number;
+  undoStack: CanvasHistorySnapshot[]
+  redoStack: CanvasHistorySnapshot[]
+  maxSize: number
   lastMerge?: {
-    at: number;
-    commandType: 'MoveNode' | 'ResizeNode';
-    nodeId: NodeId;
-  };
+    at: number
+    commandType: 'MoveNode' | 'ResizeNode'
+    nodeIdsKey: string
+  }
 }
 
 export interface CanvasState {
-  domain: CanvasDomainState;
-  layout: CanvasLayoutState;
-  ui: CanvasUiState;
-  history: CanvasHistoryState;
+  domain: CanvasDomainState
+  layout: CanvasLayoutState
+  ui: CanvasUiState
+  history: CanvasHistoryState
 }
 
 export type CanvasAction =
   | { type: 'PAN'; payload: Point }
   | { type: 'ZOOM'; payload: { factor: number; center: Point } }
   | { type: 'SET_VIEWPORT'; payload: ViewportState }
-  | { type: 'HYDRATE_CANVAS'; payload: { graph: Graph; layoutByNodeId: Record<NodeId, NodeLayout> } }
+  | {
+      type: 'HYDRATE_CANVAS'
+      payload: { graph: Graph; layoutByNodeId: Record<NodeId, NodeLayout> }
+    }
   | { type: 'SELECT_NODE'; payload: { id: NodeId; multi: boolean } }
   | { type: 'SELECT_RELATIONSHIP'; payload: { id: RelationshipId; multi: boolean } }
   | { type: 'SET_SELECTION'; payload: { nodeIds: NodeId[]; relationshipIds?: RelationshipId[] } }
@@ -100,4 +103,4 @@ export type CanvasAction =
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'COMMAND'; payload: CanvasCommand }
-  | { type: 'COMMANDS'; payload: CanvasCommand[] };
+  | { type: 'COMMANDS'; payload: CanvasCommand[] }
