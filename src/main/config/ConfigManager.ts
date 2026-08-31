@@ -166,12 +166,12 @@ export class ConfigManager {
   async addMCPServer(server: MCPServerConfig): Promise<boolean> {
     const newConfig = { ...this.currentConfig }
     if (!newConfig.mcpServers) newConfig.mcpServers = []
-    
+
     // Check for ID collision
     if (newConfig.mcpServers.some((s) => s.id === server.id)) {
       return false
     }
-    
+
     newConfig.mcpServers.push(server)
     return this.saveConfig(newConfig)
   }
@@ -179,7 +179,7 @@ export class ConfigManager {
   async updateMCPServer(id: string, updates: Partial<MCPServerConfig>): Promise<boolean> {
     const newConfig = { ...this.currentConfig }
     if (!newConfig.mcpServers) return false
-    
+
     const index = newConfig.mcpServers.findIndex((s) => s.id === id)
     if (index === -1) return false
 
@@ -190,7 +190,7 @@ export class ConfigManager {
   async deleteMCPServer(id: string): Promise<boolean> {
     const newConfig = { ...this.currentConfig }
     if (!newConfig.mcpServers) return false
-    
+
     const initialLength = newConfig.mcpServers.length
     newConfig.mcpServers = newConfig.mcpServers.filter((s) => s.id !== id)
 
@@ -207,19 +207,21 @@ export class ConfigManager {
   // ==========================================================================
 
   async setModel(modelConfig: ModelConfig): Promise<boolean> {
-    // Validate model exists
-    const availableModels = this.modelManager.getAvailableModels()
-    const modelExists = availableModels.some(
-      (m) => m.id === modelConfig.modelId && m.provider === modelConfig.provider
-    )
-
-    if (!modelExists) {
-      logger.error(`Attempted to set invalid model: ${modelConfig.provider}/${modelConfig.modelId}`)
+    if (!modelConfig.modelId || modelConfig.modelId.trim() === '') {
+      logger.error('Attempted to set model with empty modelId')
       return false
     }
 
+    const availableModels = this.modelManager.getAvailableModels()
+    const catalogModel = availableModels.find(
+      (m) => m.id === modelConfig.modelId && m.provider === modelConfig.provider
+    )
+
     const newConfig = { ...this.currentConfig }
-    newConfig.model = modelConfig
+    newConfig.model = {
+      ...modelConfig,
+      parameters: catalogModel?.parameters ?? modelConfig.parameters ?? { temperature: 0.7 }
+    }
     return this.saveConfig(newConfig)
   }
 

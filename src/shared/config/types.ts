@@ -1,4 +1,3 @@
-
 // ============================================================================
 // APP CONFIGURATION TYPES
 // ============================================================================
@@ -8,31 +7,31 @@
  */
 export interface AppConfig {
   /** Model configuration */
-  model: ModelConfig;
+  model: ModelConfig
 
   /** List of configured subagents */
-  subagents: SubAgentConfig[];
+  subagents: SubAgentConfig[]
 
   /** List of available tools with enable/disable state */
-  tools: ToolConfig[];
+  tools: ToolConfig[]
 
   /** Middleware configuration */
-  middleware: MiddlewareConfig;
+  middleware: MiddlewareConfig
 
   /** MCP Server configurations */
-  mcpServers: MCPServerConfig[];
+  mcpServers: MCPServerConfig[]
 
   /** Recent files list */
-  recentFiles: RecentFile[];
+  recentFiles: RecentFile[]
 }
 
 /**
  * Recent file entry
  */
 export interface RecentFile {
-  path: string;
-  name: string;
-  lastOpened: number; // timestamp
+  path: string
+  name: string
+  lastOpened: number // timestamp
 }
 
 /**
@@ -40,20 +39,23 @@ export interface RecentFile {
  */
 export interface ModelConfig {
   /** Provider selection */
-  provider: "openai" | "anthropic" | "google" | "ollama";
+  provider: 'openai' | 'anthropic' | 'google' | 'ollama'
 
   /** Model identifier (e.g., gpt-4, claude-3-5-sonnet) */
-  modelId: string;
+  modelId: string
+
+  /** Display name for manual/custom model */
+  name?: string
 
   /** Base URL (required for Ollama, optional for others) */
-  baseUrl?: string;
+  baseUrl?: string
 
   /** Additional model parameters */
   parameters?: {
-    temperature?: number;
-    maxTokens?: number;
-    [key: string]: any;
-  };
+    temperature?: number
+    maxTokens?: number
+    [key: string]: unknown
+  }
 }
 
 /**
@@ -61,31 +63,31 @@ export interface ModelConfig {
  */
 export interface SubAgentConfig {
   /** Unique identifier */
-  id: string;
+  id: string
 
   /** Display name */
-  name: string;
+  name: string
 
   /** Description for main agent to decide delegation */
-  description: string;
+  description: string
 
   /** System prompt for this subagent */
-  systemPrompt: string;
+  systemPrompt: string
 
   /** List of tool IDs this subagent can use */
-  tools: string[];
+  tools: string[]
 
   /** List of MCP server IDs this subagent can use */
-  mcpServers?: string[];
+  mcpServers?: string[]
 
   /** Whether this subagent is enabled */
-  enabled: boolean;
+  enabled: boolean
 
   /** Override main agent model (optional) */
   model?: {
-    provider: "openai" | "anthropic" | "google" | "ollama";
-    modelId: string;
-  };
+    provider: 'openai' | 'anthropic' | 'google' | 'ollama'
+    modelId: string
+  }
 }
 
 /**
@@ -93,19 +95,19 @@ export interface SubAgentConfig {
  */
 export interface ToolConfig {
   /** Unique identifier */
-  id: string;
+  id: string
 
   /** Display name */
-  name: string;
+  name: string
 
   /** Whether this tool is enabled */
-  enabled: boolean;
+  enabled: boolean
 
   /** Reference to built-in LangChain tool */
-  langchainTool: string;
+  langchainTool: string
 
   /** Whether this tool requires an API key */
-  requireAPI?: boolean;
+  requireAPI?: boolean
 }
 
 /**
@@ -114,67 +116,66 @@ export interface ToolConfig {
 export interface MiddlewareConfig {
   /** SubAgent middleware settings */
   subAgent: {
-    enabled: boolean;
+    enabled: boolean
     /** Whether dynamic subagents (dynamic_task) are enabled */
-    dynamicEnabled: boolean;
+    dynamicEnabled: boolean
     /** Build-in recursion limit to prevent infinite loops */
-    recursionLimit: number;
-  };
-
+    recursionLimit: number
+  }
 
   /** Skills middleware settings */
   skills: {
     /**
      * Whether the skills middleware is active.
      */
-    enabled: boolean;
+    enabled: boolean
 
     /**
      * Filesystem directory to scan for skills.
      */
-    source: string;
-  };
+    source: string
+  }
 }
 
 /**
  * MCP Server Transport types
  */
-export type MCPTransportType = "stdio" | "sse" | "http";
+export type MCPTransportType = 'stdio' | 'sse' | 'http'
 
 /**
  * MCP Server configuration
  */
 export interface MCPServerConfig {
   /** Unique identifier for the server */
-  id: string;
+  id: string
 
   /** Display name for the server */
-  name: string;
+  name: string
 
   /** Whether this server is enabled */
-  enabled: boolean;
+  enabled: boolean
 
   /** Whether this server requires an API key in SecureStorage */
-  requireAPI?: boolean;
+  requireAPI?: boolean
 
   /** The environment variable name to inject the API key as (defaults to API_KEY) */
-  apiKeyName?: string;
+  apiKeyName?: string
 
   /** Transport configuration */
   transport: {
-    type: MCPTransportType;
+    type: MCPTransportType
 
     /** Required for stdio transport */
-    command?: string;
-    args?: string[];
-    env?: Record<string, string>;
+    command?: string
+    args?: string[]
+    env?: Record<string, string>
 
     /** Required for sse and http transports */
-    url?: string;
-  };
+    url?: string
+  }
 
   /** Array of tool names the user turned off */
-  disabledTools?: string[];
+  disabledTools?: string[]
 }
 
 // ============================================================================
@@ -186,33 +187,33 @@ export interface MCPServerConfig {
  */
 export interface ModelInfo {
   /** Model identifier */
-  id: string;
+  id: string
 
   /** Actual API model ID (if different from UI id) */
-  apiModelId?: string;
+  apiModelId?: string
 
   /** Display name */
-  name: string;
+  name: string
 
   /** Provider */
-  provider: "openai" | "anthropic" | "google" | "ollama";
+  provider: 'openai' | 'anthropic' | 'google' | 'ollama'
 
   /** Model description */
-  description?: string;
+  description?: string
 
   /** Context window size */
-  contextWindow?: number;
+  contextWindow?: number
 
   /** Pricing information */
   pricing?: {
-    input: number;
-    output: number;
-  };
+    input: number
+    output: number
+  }
 
   /** Preset parameters for this model configuration */
   parameters?: {
-    temperature?: number;
-    maxTokens?: number;
-    [key: string]: any;
-  };
+    temperature?: number
+    maxTokens?: number
+    [key: string]: unknown
+  }
 }

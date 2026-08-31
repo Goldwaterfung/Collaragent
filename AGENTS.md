@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Project Snapshot
 
@@ -8,41 +8,43 @@ CollarAgent is a **local-first desktop IDE** that pairs a DeepAgent (LangGraph R
 
 The **3-pane studio**: Visual Canvas (infinite graph) ↔ Scholarly Document (Lexical + KaTeX + GFM + DOCX export) ↔ AI Co-Pilot (multi-provider, staged proposals, time-travel checkpoints).
 
+This project uses yarn
+
 ## Essential Commands
 
 All commands run from the repo root.
 
 ```bash
 # Install (also runs electron-builder install-app-deps as postinstall)
-npm install
+yarn install
 
 # Dev: launches Electron with HMR (main + preload + renderer)
-npm run dev
+yarn dev
 
 # Optional backend Express server (dbServer/documentInstancesApi.js)
-npm run dev:api
+yarn dev:api
 
 # Type-check (Node config covers main/preload/collaragent/workspace/shared;
 # Web config covers renderer/workspace/shared). Both must pass before build.
-npm run typecheck          # runs typecheck:node && typecheck:web
-npm run typecheck:node
-npm run typecheck:web
+yarn typecheck          # runs typecheck:node && typecheck:web
+yarn typecheck:node
+yarn typecheck:web
 
 # Lint and format
-npm run lint               # ESLint with cache; set NODE_OPTIONS='--max-old-space-size=8192'
-npm run format             # Prettier --write .
+yarn lint               # ESLint with cache; set NODE_OPTIONS='--max-old-space-size=8192'
+yarn format             # Prettier --write .
 
 # Build
-npm run build              # typecheck + electron-vite build (out/ for main/preload, dist/ for renderer)
-npm run build:backend      # node scripts/build-backend.mjs (legacy helper; referenced by build:full)
-npm run build:full         # backend + electron-vite build
-npm run start              # electron-vite preview (run a built bundle)
+yarn build              # typecheck + electron-vite build (out/ for main/preload, dist/ for renderer)
+yarn build:backend      # node scripts/build-backend.mjs (legacy helper; referenced by build:full)
+yarn build:full         # backend + electron-vite build
+yarn start              # electron-vite preview (run a built bundle)
 
 # Package installers (electron-builder)
-npm run build:mac          # DMG/Zip
-npm run build:win          # NSIS/Portable
-npm run build:linux        # AppImage/deb
-npm run build:unpack       # Unpacked dir build (no installer)
+yarn build:mac          # DMG/Zip
+yarn build:win          # NSIS/Portable
+yarn build:linux        # AppImage/deb
+yarn build:unpack       # Unpacked dir build (no installer)
 
 # Vitest (only present in devDeps; no `test` script wired yet)
 npx vitest                            # run all unit tests
