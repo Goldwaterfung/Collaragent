@@ -5,7 +5,7 @@
  * This implementation maintains 1:1 compatibility with the Python version.
  */
 
-export * from "./runtime/index.js";
+export * from './runtime/index.js'
 export type {
   CreateDeepAgentParams,
   MergedDeepAgentState,
@@ -21,16 +21,11 @@ export type {
   // Subagent middleware extraction types
   ExtractSubAgentMiddleware,
   FlattenSubAgentMiddleware,
-  InferSubAgentMiddlewareStates,
-} from "./types.js";
+  InferSubAgentMiddlewareStates
+} from './types.js'
 
 // Export config
-export {
-  createSettings,
-  findProjectRoot,
-  type Settings,
-  type SettingsOptions,
-} from "./config.js";
+export { createSettings, findProjectRoot, type Settings, type SettingsOptions } from './config.js'
 
 // Export middleware (matches Python's interface)
 export {
@@ -52,22 +47,22 @@ export {
   type MemoryMiddlewareOptions,
   type SubAgent,
   type CompiledSubAgent,
-  type FileData,
-} from "./middleware/index.js";
+  type FileData
+} from './middleware/index.js'
 
 // Export agent memory middleware
 export {
   createAgentMemoryMiddleware,
-  type AgentMemoryMiddlewareOptions,
-} from "./middleware/agent-memory.js";
+  type AgentMemoryMiddlewareOptions
+} from './middleware/agent-memory.js'
 
 // Export skills loader (utility functions for direct filesystem access)
 export {
   listSkills,
   parseSkillMetadata,
   type SkillMetadata as LoaderSkillMetadata,
-  type ListSkillsOptions,
-} from "./skills/index.js";
+  type ListSkillsOptions
+} from './skills/index.js'
 
 // Export backends
 export {
@@ -89,5 +84,8 @@ export {
   type FileDownloadResponse,
   type FileUploadResponse,
   type SandboxBackendProtocol,
-  type MaybePromise,
-} from "./backends/index.js";
+  type MaybePromise
+} from './backends/index.js'
+
+// Export telemetry
+export * from './telemetry/index.js'

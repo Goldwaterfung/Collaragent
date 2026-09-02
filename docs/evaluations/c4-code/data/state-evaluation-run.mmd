@@ -1,0 +1,32 @@
+stateDiagram-v2
+    [*] --> Uninitialized
+
+    Uninitialized --> FixtureInitialized : setupScenario() [Initialize mock workspace & storage]
+    FixtureInitialized --> AgentInvoking : agent.invoke() [Attach Langfuse CallbackHandler]
+
+    state AgentInvoking {
+        [*] --> LLMGeneration
+        LLMGeneration --> ToolExecution : Emits ToolCall
+        ToolExecution --> LLMGeneration : ToolResult returned
+        ToolExecution --> ErrorEncountered : Tool throws/returns error code
+        ErrorEncountered --> SelfHealingAttempt : Agent inspects error & current blocks
+        SelfHealingAttempt --> ToolExecution : Re-issues corrected tool arguments
+        LLMGeneration --> FinalResponse : Complete trajectory reached
+    }
+
+    AgentInvoking --> VerifyingInvariants : Trajectory received by runner
+    
+    state VerifyingInvariants {
+        [*] --> SchemaValidation
+        SchemaValidation --> ASTInvariantCheck : Schema Valid
+        ASTInvariantCheck --> RollbackVerification : AST Valid
+        RollbackVerification --> InvariantsPassed : Rollback Byte Parity 100%
+        RollbackVerification --> InvariantsFailed : Byte Drift / Violation
+    }
+
+    InvariantsPassed --> ScoringAndFlushing : createScore() & flushAsync()
+    InvariantsFailed --> ScoringAndFlushing : createScore() & flushAsync()
+
+    ScoringAndFlushing --> Completed : Traces flushed & EVALS.md updated
+    Completed --> [*]
+

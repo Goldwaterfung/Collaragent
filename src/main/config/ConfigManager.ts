@@ -26,6 +26,22 @@ export class ConfigManager {
 
     this.configPath = path.join(configDir, 'config.json')
     this.currentConfig = this.loadConfig()
+    this.syncTelemetryEnv(this.currentConfig)
+  }
+
+  private syncTelemetryEnv(config: AppConfig): void {
+    if (config.telemetry?.enabled) {
+      if (config.telemetry.baseUrl) {
+        process.env.LANGFUSE_BASE_URL = config.telemetry.baseUrl
+      }
+      if (config.telemetry.publicKey) {
+        process.env.LANGFUSE_PUBLIC_KEY = config.telemetry.publicKey
+      }
+      const secretKey = this.getApiKey('langfuse')
+      if (secretKey) {
+        process.env.LANGFUSE_SECRET_KEY = secretKey
+      }
+    }
   }
 
   // ==========================================================================
@@ -105,6 +121,7 @@ export class ConfigManager {
       const toSave = result.data
       fs.writeFileSync(this.configPath, JSON.stringify(toSave, null, 2))
       this.currentConfig = toSave
+      this.syncTelemetryEnv(toSave)
       logger.info('Configuration saved successfully')
       return true
     } catch (err) {
@@ -230,11 +247,35 @@ export class ConfigManager {
   // ==========================================================================
 
   setApiKey(provider: string, apiKey: string): boolean {
-    return this.secureStorage.setApiKey(provider, apiKey)
+    const success = this.secureStorage.setApiKey(provider, apiKey)
+    if (success && provider === 'langfuse') {
+      process.env.LANGFUSE_SECRET_KEY = apiKey
+    }
+    return success
   }
 
   getApiKey(provider: string): string | undefined {
     return this.secureStorage.getApiKey(provider)
+  }
+
+  getTelemetryConfig(): {
+    enabled: boolean
+    baseUrl: string
+    publicKey?: string
+    secretKey?: string
+  } {
+    const telemetry = this.currentConfig.telemetry
+    const enabled = telemetry?.enabled ?? false
+    const baseUrl = telemetry?.baseUrl || 'http://localhost:3000'
+    const publicKey = telemetry?.publicKey || process.env.LANGFUSE_PUBLIC_KEY
+    const secretKey = this.getApiKey('langfuse') || process.env.LANGFUSE_SECRET_KEY
+
+    return {
+      enabled,
+      baseUrl,
+      publicKey: publicKey || undefined,
+      secretKey: secretKey || undefined
+    }
   }
 
   // ==========================================================================

@@ -108,6 +108,15 @@ export const MCPServerConfigSchema = z.object({
 })
 
 /**
+ * Zod schema for Telemetry configuration
+ */
+export const TelemetryConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  baseUrl: z.string().default('http://localhost:3000'),
+  publicKey: z.string().optional().default('')
+})
+
+/**
  * Zod schema for AppConfig
  */
 export const AppConfigSchema = z.object({
@@ -116,6 +125,11 @@ export const AppConfigSchema = z.object({
   tools: z.array(ToolConfigSchema),
   middleware: MiddlewareConfigSchema,
   mcpServers: z.array(MCPServerConfigSchema).optional().default([]),
+  telemetry: TelemetryConfigSchema.optional().default({
+    enabled: false,
+    baseUrl: 'http://localhost:3000',
+    publicKey: ''
+  }),
   recentFiles: z.array(RecentFileSchema).optional().default([])
 })
 

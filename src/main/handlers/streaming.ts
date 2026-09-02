@@ -4,7 +4,8 @@ import * as Channels from '../../shared/ipc/agent/channels'
 import * as Types from '../../shared/ipc/agent/types'
 import { AgentFactory } from '../agents/factory'
 import { saveMessageToProject } from './chatPersistence'
-import { agentCheckpointRegistry } from "@collaragent/checkpoint"
+import { agentCheckpointRegistry } from '@collaragent/checkpoint'
+import { flushTelemetry } from '../../collaragent/telemetry/index'
 
 /**
  * Handles the streaming of agent responses to the renderer process.
@@ -21,23 +22,6 @@ export async function streamAgentResponse(
   clientIds?: { clientMessageId?: string; clientAssistantMessageId?: string },
   metrics?: { ipcChunks: number; ipcBytes: number; firstChunkAt?: number }
 ): Promise<void> {
-  //const addTokenUsage = (
-  //  current: Types.TokenUsage | undefined,
-  //  delta: Types.TokenUsage
-  //): Types.TokenUsage => ({
-  //  inputTokens: (current?.inputTokens || 0) + delta.inputTokens,
-  //  outputTokens: (current?.outputTokens || 0) + delta.outputTokens,
-  //  totalTokens: (current?.totalTokens || 0) + delta.totalTokens,
-  //  reasoningTokens:
-  //    delta.reasoningTokens !== undefined || current?.reasoningTokens !== undefined
-  //      ? (current?.reasoningTokens || 0) + (delta.reasoningTokens || 0)
-  //      : undefined,
-  //  cachedInputTokens:
-  //    delta.cachedInputTokens !== undefined || current?.cachedInputTokens !== undefined
-  //      ? (current?.cachedInputTokens || 0) + (delta.cachedInputTokens || 0)
-  //      : undefined
-  //})
-
   const agent = await agentFactory.createAgent({ threadId, apiPort: ports?.apiPort })
   const input = { messages: [new HumanMessage(userMessage)] }
 
@@ -56,6 +40,13 @@ export async function streamAgentResponse(
     ).catch(() => {})
   }
 
+  // Initialize Langfuse Telemetry via AgentFactory
+  const langfuseHandler = await agentFactory.getTelemetryHandler({
+    threadId,
+    sessionId: threadId,
+    tags: ['desktop-chat']
+  })
+
   // Use standard LangGraph 'messages' stream mode for token streaming
   // This provides [chunk, metadata] tuples
   const pendingBranchId = agentCheckpointRegistry.consumePendingBranch(threadId)
@@ -67,7 +58,8 @@ export async function streamAgentResponse(
     },
     signal: signal,
     streamMode: 'messages',
-    recursionLimit: 200
+    recursionLimit: 200,
+    callbacks: langfuseHandler ? [langfuseHandler] : []
   })
 
   let fullResponse = ''
@@ -86,7 +78,7 @@ export async function streamAgentResponse(
     const hitTime = now - lastFlush >= flushIntervalMs
     const hitSize = textBuffer.length >= maxBufferSize || reasoningBuffer.length >= maxBufferSize
     const shouldFlush = force || hitTime || hitSize
-    
+
     const hasBuffers = textBuffer.length > 0 || reasoningBuffer.length > 0
     if (!shouldFlush || (!hasBuffers && (!force || !usage))) return
 
@@ -159,7 +151,8 @@ export async function streamAgentResponse(
           tc.status = 'completed'
           try {
             // Attempt to parse result if it's JSON
-            tc.result = typeof chunk.content === 'string' ? JSON.parse(chunk.content) : chunk.content
+            tc.result =
+              typeof chunk.content === 'string' ? JSON.parse(chunk.content) : chunk.content
           } catch (e) {
             tc.result = chunk.content
           }
@@ -188,10 +181,12 @@ export async function streamAgentResponse(
       const rawBlocks = (chunk as any).content_blocks || (chunk as any).contentBlocks
 
       if ((rawContent || rawBlocks) && type !== 'tool') {
-        const contentBlocks = 
-          rawBlocks && Array.isArray(rawBlocks) ? rawBlocks : 
-          Array.isArray(rawContent) ? rawContent : 
-          [{ type: 'text', text: rawContent?.toString() || '' }]
+        const contentBlocks =
+          rawBlocks && Array.isArray(rawBlocks)
+            ? rawBlocks
+            : Array.isArray(rawContent)
+              ? rawContent
+              : [{ type: 'text', text: rawContent?.toString() || '' }]
 
         for (const block of contentBlocks) {
           if (block.type === 'text' || typeof block === 'string') {
@@ -223,7 +218,7 @@ export async function streamAgentResponse(
               } else {
                 blocks.push({ type: 'reasoning', content: reasoningValue })
               }
-              
+
               reasoningBuffer += reasoningValue
               flushText()
             }
@@ -265,7 +260,7 @@ export async function streamAgentResponse(
   }
 
   // Update the registry with the new effective checkpoint.
-  // We do this even on abort to ensure the next turn accurately branches from 
+  // We do this even on abort to ensure the next turn accurately branches from
   // the state LangGraph actually reached (including completed tools).
   if (ports?.apiPort) {
     const persistenceManager = agentFactory.getPersistenceManager()
@@ -278,6 +273,11 @@ export async function streamAgentResponse(
         agentCheckpointRegistry.setEffective(threadId, newCheckpointId)
       }
     }
+  }
+
+  // Flush any pending telemetry traces asynchronously
+  if (langfuseHandler) {
+    await flushTelemetry(langfuseHandler)
   }
 
   // If there was a fatal error, re-throw it so the handler can emit the error signal

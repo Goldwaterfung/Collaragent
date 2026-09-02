@@ -7,7 +7,8 @@
     "src/renderer/**/*",
     "src/shared/**/*",
     "src/collaragent/**/*",
-    "src/workspace/**/*"
+    "src/workspace/**/*",
+    "evals/**/*"
   ],
   "compilerOptions": {
     "composite": true,
@@ -26,6 +27,9 @@
       ],
       "@collaragent/*": [
         "./src/collaragent/*"
+      ],
+      "@evals/*": [
+        "./evals/*"
       ]
     }
   },

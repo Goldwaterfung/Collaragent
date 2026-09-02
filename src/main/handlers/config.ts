@@ -189,4 +189,24 @@ export function registerConfigHandlers(configManager: ConfigManager, modelManage
       }
     }
   )
+
+  // Test Telemetry Connection
+  ipcMain.handle(
+    Channels.CONFIG_TEST_TELEMETRY,
+    async (
+      _,
+      request: Types.ConfigTestTelemetryRequest
+    ): Promise<Types.ConfigTestTelemetryResponse> => {
+      const { checkLangfuseHealth } = await import('../../collaragent/telemetry/index')
+      const secretKey = request.secretKey || configManager.getApiKey('langfuse')
+      const publicKey = request.publicKey || configManager.getConfig().telemetry?.publicKey
+      const result = await checkLangfuseHealth(request.baseUrl, { publicKey, secretKey })
+      return {
+        success: result.ok,
+        status: result.status,
+        message: result.message,
+        error: result.error
+      }
+    }
+  )
 }

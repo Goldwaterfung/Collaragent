@@ -16,6 +16,13 @@ build/installer.nsh
 .env.development.local
 .env.test.local
 .env.production.local
+.env.eval
+.env.eval.local
+.langfuse/
+.langfuse_data/
+.collar/
+*.cagent.lock
+*.lock.json
 
 # TypeScript incremental build cache
 *.tsbuildinfo

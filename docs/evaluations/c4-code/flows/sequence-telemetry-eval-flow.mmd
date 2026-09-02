@@ -1,0 +1,47 @@
+sequenceDiagram
+    autonumber
+    participant TE as TraceEvalRunner (yarn eval:traces)
+    participant ER as EvalRunner (yarn eval)
+    participant DA as DeepAgent Runtime
+    participant WT as WorkspaceTools
+    participant AE as AssertionEngine
+    participant CB as Langfuse CallbackBridge
+    participant LF as Langfuse v4 Server (:3000)
+    participant MR as MarkdownReporter
+
+    %% Flow A: Live Agent Execution & Root-Trace Ingestion
+    Note over ER,LF: Flow A: Live Agent Execution & Telemetry Ingestion (with Root Trace Updates)
+    ER->>CB: createLangfuseHandler({ sessionId, tags, updateRoot: true })
+    CB-->>ER: langfuseHandler instance
+    ER->>DA: invoke({ messages }, { callbacks: [langfuseHandler] })
+    DA->>CB: handleChainStart(rootChain, inputs)
+    CB->>LF: rootTrace.update({ input: inputs }) (propagate root input)
+    DA->>WT: executeTool(createDocument / editDocument / writeMindMap)
+    WT->>CB: onToolStart(toolName, inputArgs)
+    WT-->>DA: Tool execution result / error payload
+    DA->>CB: onToolEnd(output) / onLLMEnd(usage, tokens)
+    CB->>LF: Queue Tool Spans & Token Metrics (async background)
+    DA->>CB: handleChainEnd(rootChain, outputs)
+    CB->>LF: rootTrace.update({ output: outputs }) (propagate root output)
+    DA-->>ER: Agent final output & message trajectory
+    ER->>CB: flushAsync()
+    CB->>LF: Await background queue drain (HTTP POST /api/public/ingestion)
+
+    %% Flow B: Real-Trace Evaluation & Auto-Annotation
+    Note over TE,LF: Flow B: Real-Trace Evaluation & Auto-Annotation Engine (yarn eval:traces)
+    TE->>LF: GET /api/public/traces?sessionId=...&limit=20
+    LF-->>TE: Trace list (summaries & trace IDs)
+    loop For each trace in session
+        TE->>LF: GET /api/public/traces/{traceId}
+        LF-->>TE: Full trace details with observation tree
+        TE->>TE: Extract tool calls, AST payloads & Graph DAG structures
+        TE->>AE: evaluateScenarioInvariants({ toolCalls, documentPayload, graphCanvas })
+        AE->>AE: Check 1: Zod Schema Adherence
+        AE->>AE: Check 2: Lexical AST (Unique Block IDs & Heading Hierarchy)
+        AE->>AE: Check 3: Canvas Graph DAG Acyclicity & Endpoints
+        AE->>AE: Check 4: Autonomous Error Recovery
+        AE-->>TE: ScenarioInvariantSummary (passed, schemaAdherence, invariantIntegrity)
+        TE->>LF: POST /api/public/scores (benchmark_passed, schema_adherence, invariant_integrity)
+    end
+    TE->>LF: await langfuse.flushAsync() (drain score ingestion queues)
+

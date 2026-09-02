@@ -30,7 +30,9 @@ import {
   ConfigCheckKeyRequest,
   ConfigCheckKeyResponse,
   ConfigFetchMCPToolsRequest,
-  ConfigFetchMCPToolsResponse
+  ConfigFetchMCPToolsResponse,
+  ConfigTestTelemetryRequest,
+  ConfigTestTelemetryResponse
 } from '../shared/ipc/config/types'
 import {
   AgentStreamRequest,
@@ -50,7 +52,7 @@ import {
   CheckpointRestoreRequest,
   CheckpointRestoreResponse,
   CheckpointCancelRequest,
-  CheckpointCancelResponse,
+  CheckpointCancelResponse
 } from '../shared/ipc/checkpoints/types'
 
 declare global {
@@ -61,18 +63,29 @@ declare global {
       get: (request: ConfigGetRequest) => Promise<ConfigGetResponse>
       save: (request: ConfigSaveRequest) => Promise<ConfigSaveResponse>
       addSubagent: (request: ConfigAddSubagentRequest) => Promise<ConfigAddSubagentResponse>
-      updateSubagent: (request: ConfigUpdateSubagentRequest) => Promise<ConfigUpdateSubagentResponse>
-      deleteSubagent: (request: ConfigDeleteSubagentRequest) => Promise<ConfigDeleteSubagentResponse>
+      updateSubagent: (
+        request: ConfigUpdateSubagentRequest
+      ) => Promise<ConfigUpdateSubagentResponse>
+      deleteSubagent: (
+        request: ConfigDeleteSubagentRequest
+      ) => Promise<ConfigDeleteSubagentResponse>
       toggleTool: (request: ConfigToggleToolRequest) => Promise<ConfigToggleToolResponse>
       setModel: (request: ConfigSetModelRequest) => Promise<ConfigSetModelResponse>
       getModels: (request: ConfigGetModelsRequest) => Promise<ConfigGetModelsResponse>
       addMCPServer: (request: ConfigAddMCPServerRequest) => Promise<ConfigAddMCPServerResponse>
-      updateMCPServer: (request: ConfigUpdateMCPServerRequest) => Promise<ConfigUpdateMCPServerResponse>
-      deleteMCPServer: (request: ConfigDeleteMCPServerRequest) => Promise<ConfigDeleteMCPServerResponse>
-      toggleMCPServer: (request: ConfigToggleMCPServerRequest) => Promise<ConfigToggleMCPServerResponse>
+      updateMCPServer: (
+        request: ConfigUpdateMCPServerRequest
+      ) => Promise<ConfigUpdateMCPServerResponse>
+      deleteMCPServer: (
+        request: ConfigDeleteMCPServerRequest
+      ) => Promise<ConfigDeleteMCPServerResponse>
+      toggleMCPServer: (
+        request: ConfigToggleMCPServerRequest
+      ) => Promise<ConfigToggleMCPServerResponse>
       setToolApiKey: (request: ConfigSetToolAPIKeyRequest) => Promise<ConfigSetToolAPIKeyResponse>
       checkKey: (request: ConfigCheckKeyRequest) => Promise<ConfigCheckKeyResponse>
       fetchMCPTools: (request: ConfigFetchMCPToolsRequest) => Promise<ConfigFetchMCPToolsResponse>
+      testTelemetry: (request: ConfigTestTelemetryRequest) => Promise<ConfigTestTelemetryResponse>
     }
     agentIPC: {
       stream: (request: AgentStreamRequest) => AsyncGenerator<AgentStreamResponse>
@@ -105,11 +118,21 @@ declare global {
       onImportEnded: (handler: () => void) => () => void
     }
     skillsIPC: {
-      list: (req: import('../shared/ipc/skills/types').SkillsListRequest) => Promise<import('../shared/ipc/skills/types').SkillsListResponse>
-      readFile: (req: import('../shared/ipc/skills/types').SkillsReadFileRequest) => Promise<import('../shared/ipc/skills/types').SkillsReadFileResponse>
-      writeFile: (req: import('../shared/ipc/skills/types').SkillsWriteFileRequest) => Promise<import('../shared/ipc/skills/types').SkillsWriteFileResponse>
-      create: (req: import('../shared/ipc/skills/types').SkillsCreateRequest) => Promise<import('../shared/ipc/skills/types').SkillsCreateResponse>
-      delete: (req: import('../shared/ipc/skills/types').SkillsDeleteRequest) => Promise<import('../shared/ipc/skills/types').SkillsDeleteResponse>
+      list: (
+        req: import('../shared/ipc/skills/types').SkillsListRequest
+      ) => Promise<import('../shared/ipc/skills/types').SkillsListResponse>
+      readFile: (
+        req: import('../shared/ipc/skills/types').SkillsReadFileRequest
+      ) => Promise<import('../shared/ipc/skills/types').SkillsReadFileResponse>
+      writeFile: (
+        req: import('../shared/ipc/skills/types').SkillsWriteFileRequest
+      ) => Promise<import('../shared/ipc/skills/types').SkillsWriteFileResponse>
+      create: (
+        req: import('../shared/ipc/skills/types').SkillsCreateRequest
+      ) => Promise<import('../shared/ipc/skills/types').SkillsCreateResponse>
+      delete: (
+        req: import('../shared/ipc/skills/types').SkillsDeleteRequest
+      ) => Promise<import('../shared/ipc/skills/types').SkillsDeleteResponse>
       pickDirectory: () => Promise<import('../shared/ipc/skills/types').SkillsPickDirectoryResponse>
     }
   }

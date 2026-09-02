@@ -1556,10 +1556,19 @@
   dependencies:
     ollama "^0.6.3"
 
-"@langchain/openai@1.5.10", "@langchain/openai@^1.4.1", "@langchain/openai@^1.5.10":
+"@langchain/openai@1.5.10", "@langchain/openai@^1.4.1":
   version "1.5.10"
   resolved "https://registry.yarnpkg.com/@langchain/openai/-/openai-1.5.10.tgz#96ae81ee6a005bca20e65454a187116e10b12e82"
   integrity sha512-4cxdgolkkXwnAiGEkNrue+ba7jUKjfBwleLCX5DrRVcRGrCc4w5EceblYZOIaHMY6+nhwMqIOtSzBWgcBCLfmw==
+  dependencies:
+    js-tiktoken "^1.0.12"
+    openai "^7.5.0"
+    zod "^3.25.76 || ^4"
+
+"@langchain/openai@^1.5.11":
+  version "1.5.11"
+  resolved "https://registry.yarnpkg.com/@langchain/openai/-/openai-1.5.11.tgz#d973b75285502c899f82b476df9db38ed2756428"
+  integrity sha512-BvGp5lQk5//0WVwTIepscazFpneT9I9+mc+kp+cLuhGHFb7mc9zGNrusZOXoa3p73SN0i3XqTo8lyIndpVx3Hw==
   dependencies:
     js-tiktoken "^1.0.12"
     openai "^7.5.0"
@@ -1583,6 +1592,26 @@
   integrity sha512-rheJlB01iVtrOUzttscutRgLybPH9qR79EyzBEbf1u97ljWyuxQfCwIWK+SjoQTM9O8M7GGLLRBSYE26Jmcoww==
   dependencies:
     js-tiktoken "^1.0.12"
+
+"@langfuse/core@^5.11.0":
+  version "5.11.0"
+  resolved "https://registry.yarnpkg.com/@langfuse/core/-/core-5.11.0.tgz#30f2b22a0d3326bc64925438291ddfd20272973f"
+  integrity sha512-Y5nBcrd8k0bEazb+lcOaEm6ICxxJJLGDkTax7dY4NyiYoO1LlTIFhkfwSOcneQRjpl7EvgL4Dy+9fzDXBDuVaA==
+
+"@langfuse/langchain@^5.11.0":
+  version "5.11.0"
+  resolved "https://registry.yarnpkg.com/@langfuse/langchain/-/langchain-5.11.0.tgz#0e42382f0302b4717c22cad850e5255c4bf555da"
+  integrity sha512-HNTm8CPD8R10qSOgDqed5syd9QPMYwrapRrcV3qETbJjivBlVjBmU7CQvgHGiNh/vdoNCnzvQdcqXKKqqSyr9w==
+  dependencies:
+    "@langfuse/core" "^5.11.0"
+    "@langfuse/tracing" "^5.11.0"
+
+"@langfuse/tracing@^5.11.0":
+  version "5.11.0"
+  resolved "https://registry.yarnpkg.com/@langfuse/tracing/-/tracing-5.11.0.tgz#511585b7e42c331312440ccef1ce1209b69522c7"
+  integrity sha512-RrAradZuRVYnr7TLv1tHwLzyYxli96E8ujPmrt5LXLsEYsqUlfAhweW8khE1wqwj7uooLFg2FVvw1+IAIQx/+Q==
+  dependencies:
+    "@langfuse/core" "^5.11.0"
 
 "@lexical/a11y@0.49.0":
   version "0.49.0"
@@ -2211,6 +2240,11 @@
   version "1.9.0"
   resolved "https://registry.yarnpkg.com/@opentelemetry/api/-/api-1.9.0.tgz#d03eba68273dc0f7509e2a3d5cba21eae10379fe"
   integrity sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==
+
+"@opentelemetry/api@^1.9.1":
+  version "1.9.1"
+  resolved "https://registry.yarnpkg.com/@opentelemetry/api/-/api-1.9.1.tgz#c1b0346de336ba55af2d5a7970882037baedec05"
+  integrity sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==
 
 "@opentelemetry/semantic-conventions@^1.40.0":
   version "1.43.0"
@@ -6525,6 +6559,20 @@ langchain@^1.5.10:
     "@langchain/langgraph-checkpoint" "^1.1.5"
     langsmith ">=0.5.0 <1.0.0"
     zod "^3.25.76 || ^4"
+
+langfuse-core@^3.38.20:
+  version "3.38.20"
+  resolved "https://registry.yarnpkg.com/langfuse-core/-/langfuse-core-3.38.20.tgz#c47a2e66de11b07a3362961a4e1b89c21074c936"
+  integrity sha512-zBKVmQN/1oT5VWZUBYlWzvokIlkC/6mnpgr/2atMyTeAm+jR3ia7w2iJMjlrF5/oG8ukO1s8+LDRCzJpF1QeEA==
+  dependencies:
+    mustache "^4.2.0"
+
+langfuse@^3.38.20:
+  version "3.38.20"
+  resolved "https://registry.yarnpkg.com/langfuse/-/langfuse-3.38.20.tgz#6076b28c68fa1915c467de4cf09f677981d261c1"
+  integrity sha512-MAmBAASSzJtmK1O9HQegA1mFsQhT8Yf+OJRGvE7FXkyv3g/eiBE0glLD0Ohg3pkxhoPdggM5SejK7ue9ctlaMA==
+  dependencies:
+    langfuse-core "^3.38.20"
 
 "langsmith@>=0.4.0 <1.0.0", "langsmith@>=0.5.0 <1.0.0":
   version "0.5.8"

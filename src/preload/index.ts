@@ -6,7 +6,6 @@ import * as AgentChannels from '../shared/ipc/agent/channels'
 import * as CheckpointChannels from '../shared/ipc/checkpoints/channels'
 import * as SkillsChannels from '../shared/ipc/skills/channels'
 
-
 // Custom APIs for renderer
 const api = {}
 
@@ -26,7 +25,8 @@ const configIPC = {
   toggleMCPServer: (req: any) => ipcRenderer.invoke(ConfigChannels.CONFIG_TOGGLE_MCP_SERVER, req),
   setToolApiKey: (req: any) => ipcRenderer.invoke(ConfigChannels.CONFIG_SET_TOOL_API_KEY, req),
   checkKey: (req: any) => ipcRenderer.invoke(ConfigChannels.CONFIG_CHECK_KEY, req),
-  fetchMCPTools: (req: any) => ipcRenderer.invoke(ConfigChannels.CONFIG_FETCH_MCP_TOOLS, req)
+  fetchMCPTools: (req: any) => ipcRenderer.invoke(ConfigChannels.CONFIG_FETCH_MCP_TOOLS, req),
+  testTelemetry: (req: any) => ipcRenderer.invoke(ConfigChannels.CONFIG_TEST_TELEMETRY, req)
 }
 
 // Agent IPC Handlers
@@ -36,76 +36,76 @@ const agentIPC = {
   stream: async function* (req: any) {
     // Generate a threadId if one isn't provided to ensure we can filter events (optional logic, but beneficial)
     // However, for now we mirror the main process logic: pass what we have.
-    
+
     // We create a temporary listener setup
-    const responseQueue: any[] = [];
-    let signalData: ((val?: any) => void) | null = null;
-    let signalError: ((err: any) => void) | null = null;
-    let isFinished = false;
+    const responseQueue: any[] = []
+    let signalData: ((val?: any) => void) | null = null
+    let signalError: ((err: any) => void) | null = null
+    let isFinished = false
 
     const chunkHandler = (_: any, data: any) => {
-        // We could filter by threadId here if we wanted to enforce strictness
-         responseQueue.push({ type: 'chunk', data });
-         if (signalData) signalData();
-    };
+      // We could filter by threadId here if we wanted to enforce strictness
+      responseQueue.push({ type: 'chunk', data })
+      if (signalData) signalData()
+    }
 
     const endHandler = (_: any, data: any) => {
-         responseQueue.push({ type: 'end', data });
-         if (signalData) signalData();
-    };
-    
+      responseQueue.push({ type: 'end', data })
+      if (signalData) signalData()
+    }
+
     const errorHandler = (_: any, data: any) => {
-         if (signalError) signalError(new Error(data.error));
-         isFinished = true;
-    };
+      if (signalError) signalError(new Error(data.error))
+      isFinished = true
+    }
 
-    const streamId = req.streamId || crypto.randomUUID();
-    req.streamId = streamId;
-    if (!req.clientSentAt) req.clientSentAt = Date.now();
-    const chunkChannel = AgentChannels.agentStreamChannel(streamId);
-    const endChannel = AgentChannels.agentStreamEndChannel(streamId);
-    const errorChannel = AgentChannels.agentStreamErrorChannel(streamId);
+    const streamId = req.streamId || crypto.randomUUID()
+    req.streamId = streamId
+    if (!req.clientSentAt) req.clientSentAt = Date.now()
+    const chunkChannel = AgentChannels.agentStreamChannel(streamId)
+    const endChannel = AgentChannels.agentStreamEndChannel(streamId)
+    const errorChannel = AgentChannels.agentStreamErrorChannel(streamId)
 
-    ipcRenderer.on(chunkChannel, chunkHandler);
-    ipcRenderer.on(endChannel, endHandler);
-    ipcRenderer.on(errorChannel, errorHandler);
+    ipcRenderer.on(chunkChannel, chunkHandler)
+    ipcRenderer.on(endChannel, endHandler)
+    ipcRenderer.on(errorChannel, errorHandler)
 
     // Start
-    ipcRenderer.send(AgentChannels.AGENT_STREAM, req);
+    ipcRenderer.send(AgentChannels.AGENT_STREAM, req)
 
     try {
-        while (true) {
-            if (responseQueue.length > 0) {
-                const item = responseQueue.shift();
-                if (item.type === 'end') {
-                    isFinished = true;
-                    return;
-                }
-                if (item.type === 'chunk') {
-                    yield item.data;
-                }
-            } else {
-                if (isFinished) return;
-                // Wait for next event
-                await new Promise<void>((resolve, reject) => {
-                    signalData = () => {
-                        signalData = null;
-                        signalError = null;
-                        resolve();
-                    };
-                    signalError = (err) => {
-                        signalData = null;
-                        signalError = null;
-                        reject(err);
-                    }
-                });
+      while (true) {
+        if (responseQueue.length > 0) {
+          const item = responseQueue.shift()
+          if (item.type === 'end') {
+            isFinished = true
+            return
+          }
+          if (item.type === 'chunk') {
+            yield item.data
+          }
+        } else {
+          if (isFinished) return
+          // Wait for next event
+          await new Promise<void>((resolve, reject) => {
+            signalData = () => {
+              signalData = null
+              signalError = null
+              resolve()
             }
+            signalError = (err) => {
+              signalData = null
+              signalError = null
+              reject(err)
+            }
+          })
         }
+      }
     } finally {
-        // Cleanup listeners
-        ipcRenderer.removeListener(chunkChannel, chunkHandler);
-        ipcRenderer.removeListener(endChannel, endHandler);
-        ipcRenderer.removeListener(errorChannel, errorHandler);
+      // Cleanup listeners
+      ipcRenderer.removeListener(chunkChannel, chunkHandler)
+      ipcRenderer.removeListener(endChannel, endHandler)
+      ipcRenderer.removeListener(errorChannel, errorHandler)
     }
   }
 }
@@ -116,18 +116,16 @@ const checkpointIPC = {
   list: (req: any) => ipcRenderer.invoke(CheckpointChannels.CHECKPOINT_LIST, req),
   cancel: (req?: any) => ipcRenderer.invoke(CheckpointChannels.CHECKPOINT_CANCEL, req),
   onQuiesce: (handler: () => void) => {
-    const listener = () => handler();
-    ipcRenderer.on(CheckpointChannels.CHECKPOINT_QUIESCE, listener);
-    return () => ipcRenderer.removeListener(CheckpointChannels.CHECKPOINT_QUIESCE, listener);
+    const listener = () => handler()
+    ipcRenderer.on(CheckpointChannels.CHECKPOINT_QUIESCE, listener)
+    return () => ipcRenderer.removeListener(CheckpointChannels.CHECKPOINT_QUIESCE, listener)
   },
   onResume: (handler: () => void) => {
-    const listener = () => handler();
-    ipcRenderer.on(CheckpointChannels.CHECKPOINT_RESUME, listener);
-    return () => ipcRenderer.removeListener(CheckpointChannels.CHECKPOINT_RESUME, listener);
+    const listener = () => handler()
+    ipcRenderer.on(CheckpointChannels.CHECKPOINT_RESUME, listener)
+    return () => ipcRenderer.removeListener(CheckpointChannels.CHECKPOINT_RESUME, listener)
   }
 }
-
-
 
 const fileIPC = {
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
@@ -165,7 +163,6 @@ const skillsIPC = {
   delete: (req: any) => ipcRenderer.invoke(SkillsChannels.SKILLS_DELETE, req),
   pickDirectory: () => ipcRenderer.invoke(SkillsChannels.SKILLS_PICK_DIRECTORY)
 }
-
 
 if (process.contextIsolated) {
   try {

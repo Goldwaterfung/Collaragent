@@ -21,8 +21,25 @@ export interface AppConfig {
   /** MCP Server configurations */
   mcpServers: MCPServerConfig[]
 
+  /** Telemetry and observability configuration */
+  telemetry?: TelemetryConfig
+
   /** Recent files list */
   recentFiles: RecentFile[]
+}
+
+/**
+ * Telemetry configuration for live Langfuse observability
+ */
+export interface TelemetryConfig {
+  /** Whether telemetry tracing is enabled */
+  enabled: boolean
+
+  /** Base URL for the Langfuse server (e.g. http://localhost:3000) */
+  baseUrl: string
+
+  /** Public Key for Langfuse authentication */
+  publicKey?: string
 }
 
 /**

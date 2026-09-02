@@ -9,7 +9,7 @@
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Local-First](https://img.shields.io/badge/Storage-Local--First%20(%2Ecagent)-success.svg)](#local-first-data-privacy--portability)
+[![Local-First](<https://img.shields.io/badge/Storage-Local--First%20(%2Ecagent)-success.svg>)](#local-first-data-privacy--portability)
 [![Multi-Provider](https://img.shields.io/badge/LLM-OpenAI%20%7C%20Anthropic%20%7C%20Gemini%20%7C%20Ollama-blueviolet.svg)](#key-features)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](#project-setup)
 [![Design Catalog](https://img.shields.io/badge/Architecture-C4%20Catalog%20%26%20ADRs-orange.svg)](docs/design-catalog/README.md)
@@ -25,6 +25,7 @@
   <a href="#what-your-ai-agent-can-do">Agent Capabilities</a> •
   <a href="#key-features">Key Features</a> •
   <a href="#project-setup">Quick Start</a> •
+  <a href="#observability--evaluations-langfuse">Observability</a> •
   <a href="#architecture--design">Architecture</a>
 </p>
 
@@ -44,13 +45,13 @@ You opened your editor to write a breakthrough paper, synthesize research, or cr
 
 Drafting essays, literature reviews, and research papers requires multi-dimensional thinking. Traditional tools force a painful compromise between visual mapping, structured writing, and fragmented generative tools.
 
-| Traditional Research & Writing Workflow | CollarAgent Visual & Agentic Workflow |
-| :--- | :--- |
-| **Fragmented Toolchains**: Constant context-switching between standalone whiteboard tools, separate note editors, and isolated AI web interfaces. | **Unified 3-Pane Studio**: Canvas, document editor, and autonomous agent run side-by-side in one synchronized workspace. |
+| Traditional Research & Writing Workflow                                                                                                            | CollarAgent Visual & Agentic Workflow                                                                                                |
+| :------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| **Fragmented Toolchains**: Constant context-switching between standalone whiteboard tools, separate note editors, and isolated AI web interfaces.  | **Unified 3-Pane Studio**: Canvas, document editor, and autonomous agent run side-by-side in one synchronized workspace.             |
 | **Destructive Generative Overwrites**: Traditional generative tools silently replace entire drafts or delete structural notes with no review step. | **Safe Staged Proposals**: All agent edits are staged as visual diffs on the canvas and in the document for one-click accept/reject. |
-| **Broken Context on Rollbacks**: Undoing a mistake requires manual text reverts while reasoning context remains polluted. | **Multi-Domain Time Travel**: Captures atomic snapshots across conversation history, agent reasoning memory, and workspace files. |
-| **Manual Formula & Export Hassles**: Clunky equation formatting and broken copy-pasting into word processors. | **Scholarly Lexical Engine**: Native LaTeX ($\text{KaTeX}$), GFM tables, Prism syntax, and direct export to Word (`.docx`). |
-| **Cloud Data Lock-in**: Research drafts, private notes, and proprietary data hosted on third-party cloud servers. | **100% Local-First Ownership**: Self-contained `.cagent` archives stored on your disk with OS keychain encryption. |
+| **Broken Context on Rollbacks**: Undoing a mistake requires manual text reverts while reasoning context remains polluted.                          | **Multi-Domain Time Travel**: Captures atomic snapshots across conversation history, agent reasoning memory, and workspace files.    |
+| **Manual Formula & Export Hassles**: Clunky equation formatting and broken copy-pasting into word processors.                                      | **Scholarly Lexical Engine**: Native LaTeX ($\text{KaTeX}$), GFM tables, Prism syntax, and direct export to Word (`.docx`).          |
+| **Cloud Data Lock-in**: Research drafts, private notes, and proprietary data hosted on third-party cloud servers.                                  | **100% Local-First Ownership**: Self-contained `.cagent` archives stored on your disk with OS keychain encryption.                   |
 
 ---
 
@@ -109,24 +110,28 @@ CollarAgent brings together three synchronized environments inside a flexible, m
 CollarAgent supports broad academic disciplines and research workflows:
 
 ### 🔬 1. Psychology & Social Sciences: Literature Reviews & Theoretical Frameworks
-* **Visual Hypothesis Mapping**: Map independent, dependent, and moderating variables across empirical studies on the canvas.
-* **Thematic Clustering**: Automatically group qualitative findings and literature themes using Leiden community detection.
-* **Structured Synthesis**: Draft literature reviews with structured evidence tables and inline citation notes.
+
+- **Visual Hypothesis Mapping**: Map independent, dependent, and moderating variables across empirical studies on the canvas.
+- **Thematic Clustering**: Automatically group qualitative findings and literature themes using Leiden community detection.
+- **Structured Synthesis**: Draft literature reviews with structured evidence tables and inline citation notes.
 
 ### 📐 2. Mathematics & Quantitative Sciences: Formal Proofs & Theorem Topologies
-* **LaTeX Formula Authoring**: Write complex equations and derivations using instant $\text{KaTeX}$ rendering.
-* **Theorem Dependency Graphs**: Connect lemmas, definitions, and theorems visually to verify logical consistency.
-* **Proof Drafting**: Structure step-by-step mathematical proofs with synchronized explanations.
+
+- **LaTeX Formula Authoring**: Write complex equations and derivations using instant $\text{KaTeX}$ rendering.
+- **Theorem Dependency Graphs**: Connect lemmas, definitions, and theorems visually to verify logical consistency.
+- **Proof Drafting**: Structure step-by-step mathematical proofs with synchronized explanations.
 
 ### 📜 3. Linguistics, Humanities & Language Studies: Semantic Analysis & Essays
-* **Semantic & Etymology Graphs**: Map character etymology trees, linguistic roots, and semantic shifts (e.g., Chinese character evolution, historical linguistics).
-* **Thematic Essay Outlining**: Structure multi-chapter historical theses, comparative literature essays, and historiographical debates.
-* **Multilingual Typography**: Full Unicode support for non-Latin scripts, ancient texts, and phonetics.
+
+- **Semantic & Etymology Graphs**: Map character etymology trees, linguistic roots, and semantic shifts (e.g., Chinese character evolution, historical linguistics).
+- **Thematic Essay Outlining**: Structure multi-chapter historical theses, comparative literature essays, and historiographical debates.
+- **Multilingual Typography**: Full Unicode support for non-Latin scripts, ancient texts, and phonetics.
 
 ### 🎓 4. Educators & Course Designers: Curriculum Mapping & Lesson Plans
-* **Curriculum Mind-Maps**: Visually sequence lecture modules, prerequisite knowledge, and learning outcomes.
-* **Drag-to-Handout Assembly**: Drag conceptual cards directly from your canvas map into your syllabus document.
-* **One-Click Word Export**: Export finished course outlines and student study guides to polished `.docx` files.
+
+- **Curriculum Mind-Maps**: Visually sequence lecture modules, prerequisite knowledge, and learning outcomes.
+- **Drag-to-Handout Assembly**: Drag conceptual cards directly from your canvas map into your syllabus document.
+- **One-Click Word Export**: Export finished course outlines and student study guides to polished `.docx` files.
 
 ---
 
@@ -135,8 +140,8 @@ CollarAgent supports broad academic disciplines and research workflows:
 Here is what collaborating with CollarAgent looks like during active research:
 
 ```text
-User    ❯ @Canvas Map out the relationship between Cognitive Load Theory (Sweller) 
-          and Dual-Coding Theory (Paivio), connect their working memory channels, 
+User    ❯ @Canvas Map out the relationship between Cognitive Load Theory (Sweller)
+          and Dual-Coding Theory (Paivio), connect their working memory channels,
           and draft an introduction section with a summary table.
 
 Agent   ❯ [CollarAgent Engine]
@@ -145,13 +150,13 @@ Agent   ❯ [CollarAgent Engine]
           ✓ Connected directional relationship: Visual Channel ──[dual-coding]──> Long-Term Memory
           ✓ Generated staged canvas proposal (4 nodes, 3 links added)
           ✓ Drafted introduction with comparison table in Document Editor
-          
+
           [Proposal Banner: 4 nodes added to Canvas | 1 block updated in Editor]
           [Accept Changes]  [Reject Changes]
 ```
 
 ```text
-User    ❯ @Document Add the mathematical formula for Shannon Entropy in LaTeX and 
+User    ❯ @Document Add the mathematical formula for Shannon Entropy in LaTeX and
           connect it to our Information Theory node on the canvas.
 
 Agent   ❯ [CollarAgent Engine]
@@ -204,11 +209,11 @@ Agent   ❯ [CollarAgent Engine]
 
 Instead of simple conversational replies, your autonomous research agent actively orchestrates your research workspace:
 
-* **Visual Graph Modeling**: Construct concept nodes, connect directional relationships, auto-arrange layouts (Dagre / Radial), and run off-thread Leiden community clustering.
-* **Scholarly Document Authoring**: Write and edit sections, insert LaTeX equations, generate comparison tables, format code blocks, and attach inline commentary.
-* **Safe Proposal Staging**: Propose additions and refactors as non-destructive staged diffs that require user confirmation.
-* **Deep Literature Synthesis**: Spawn sub-agents for multi-step background investigation, search web sources, and synthesize findings.
-* **Point-in-Time Checkpointing**: Automatically capture snapshots before major turns and coordinate rollbacks across conversation, agent state, and workspace files.
+- **Visual Graph Modeling**: Construct concept nodes, connect directional relationships, auto-arrange layouts (Dagre / Radial), and run off-thread Leiden community clustering.
+- **Scholarly Document Authoring**: Write and edit sections, insert LaTeX equations, generate comparison tables, format code blocks, and attach inline commentary.
+- **Safe Proposal Staging**: Propose additions and refactors as non-destructive staged diffs that require user confirmation.
+- **Deep Literature Synthesis**: Spawn sub-agents for multi-step background investigation, search web sources, and synthesize findings.
+- **Point-in-Time Checkpointing**: Automatically capture snapshots before major turns and coordinate rollbacks across conversation, agent state, and workspace files.
 
 ---
 
@@ -216,8 +221,8 @@ Instead of simple conversational replies, your autonomous research agent activel
 
 ### Prerequisites
 
-* **[Node.js](https://nodejs.org/)** (v20 or higher recommended)
-* **npm**
+- **[Node.js](https://nodejs.org/)** (v20 or higher recommended)
+- **npm**
 
 ### Installation
 
@@ -254,14 +259,51 @@ npm run build:linux
 
 ---
 
+## Observability & Evaluations (Langfuse)
+
+CollarAgent integrates [Langfuse](https://langfuse.com) for real-time agent execution DAG tracing, token economics, latency profiling, and automated real-trace evaluation.
+
+### 1. Launch the Local Langfuse Stack
+
+Start the self-hosted distributed Langfuse v4 stack (Web UI, Worker, ClickHouse, Redis, PostgreSQL, and MinIO) using Docker Compose:
+
+```bash
+docker compose -f docker-compose.langfuse.yml up -d
+```
+
+- Access the Langfuse UI at [`http://localhost:3000`](http://localhost:3000).
+- Sign up / log in to create a project, then navigate to **Project Settings $\to$ API Keys** to generate a key pair (`pk-lf-...` and `sk-lf-...`).
+
+### 2. Configure Telemetry in CollarAgent
+
+1. Open CollarAgent and go to **Settings $\to$ Telemetry & Observability**.
+2. Toggle telemetry on, enter your **Host URL** (`http://localhost:3000`), **Public Key**, and **Secret Key** (encrypted in the OS Keychain).
+3. Click **Test Connection** to verify health and reachability, then click **Save Telemetry Settings**.
+
+### 3. Run Real-Trace Invariant Evaluations
+
+Evaluate real user session traces directly from your local Langfuse database against Zod tool schemas, Lexical AST integrity, and Canvas DAG invariants:
+
+```bash
+# Evaluate real session traces stored in Langfuse DB
+yarn eval:traces
+
+# Run live benchmark test scenarios
+yarn eval
+```
+
+For full architecture details, scoring taxonomy, C3/C4 diagrams, and ADRs, see the [Evaluation & Telemetry Architecture Catalog](docs/evaluations/README.md) and [Langfuse Guide](docs/evaluations/langfuse.md).
+
+---
+
 ## Architecture & Design
 
 CollarAgent is architected for extreme responsiveness, deterministic state transitions, and absolute data safety:
 
-* **Multi-Process Electron Host**: Electron Main Host for runtime orchestration, Chromium Renderer at 60 FPS, and an isolated Node.js `UtilityProcess` storage daemon ([ADR-001](docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)).
-* **Sharded V3 Storage Engine**: Sub-millisecond incremental writes with atomic MessagePack snapshots (`.cagent` / `.collar`) ([ADR-002](docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)).
-* **Deterministic Inversion Engine**: Mathematical inverse command calculations powering undo/redo and proposal rollbacks ([ADR-005](docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)).
-* **Progressive Skills Architecture**: Token-efficient dynamic skill loading following the [Agent Skills standard](https://agentskills.io) ([ADR-004](docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)).
+- **Multi-Process Electron Host**: Electron Main Host for runtime orchestration, Chromium Renderer at 60 FPS, and an isolated Node.js `UtilityProcess` storage daemon ([ADR-001](docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)).
+- **Sharded V3 Storage Engine**: Sub-millisecond incremental writes with atomic MessagePack snapshots (`.cagent` / `.collar`) ([ADR-002](docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)).
+- **Deterministic Inversion Engine**: Mathematical inverse command calculations powering undo/redo and proposal rollbacks ([ADR-005](docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)).
+- **Progressive Skills Architecture**: Token-efficient dynamic skill loading following the [Agent Skills standard](https://agentskills.io) ([ADR-004](docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)).
 
 For full C4 diagrams, EventStorming workflows, and ADR specifications, explore the [Architecture Design Catalog](docs/design-catalog/README.md).
 

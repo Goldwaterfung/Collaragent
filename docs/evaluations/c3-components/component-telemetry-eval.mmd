@@ -1,0 +1,39 @@
+flowchart TB
+    %% C3 Component Styling
+    classDef component fill:#1168bd,stroke:#0b4884,color:#fff;
+    classDef database fill:#1e40af,stroke:#1d4ed8,color:#fff;
+    classDef external fill:#6b7280,stroke:#4b5563,color:#fff;
+    classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
+
+    subgraph TelemetryEvalBoundary ["Evaluation & Telemetry Subsystem [Module: evals / collaragent]"]
+        EvalRunner["🏃 Eval Runner<br/>[Component: TypeScript / CLI Runner]<br/>Orchestrates live scenario execution, batching, and timeout handling"]:::component
+        TraceEvalRunner["🔬 Trace Eval Runner<br/>[Component: Real-Trace Evaluator]<br/>Queries real session traces from Langfuse DB, runs assertions, auto-annotates scores"]:::component
+        AssertionEngine["⚖️ Assertion & Invariant Engine<br/>[Component: Deterministic Validator]<br/>Asserts Zod schemas, Lexical AST integrity, graph DAG acyclicity & rollback parity"]:::component
+        LangfuseCallbackBridge["🔌 Langfuse Callback Bridge<br/>[Component: @collaragent/telemetry/langfuse]<br/>Hooks into LangGraph lifecycle; propagates root inputs/outputs, captures tokens & spans"]:::component
+        DatasetScoreManager["📊 Dataset & Score Manager<br/>[Component: langfuse SDK Client]<br/>Records structured metric scores and synchronizes evaluation datasets"]:::component
+        CassetteEngine["📼 Cassette Replay Engine<br/>[Component: Deterministic VCR Player]<br/>Records & replays deterministic mock interactions for zero-cost CI gates"]:::component
+        MarkdownReporter["📝 Markdown Benchmark Reporter<br/>[Component: Report Generator]<br/>Aggregates traces & generates EVALS.md with performance matrices"]:::component
+    end
+
+    DeepAgentRuntime["🧠 DeepAgent Runtime<br/>[Component: LangGraph Engine]"]:::component
+    WorkspaceStorage["💾 CagentStorage Engine<br/>[Component: Sharded Disk I/O]"]:::component
+    LangfuseServer["📈 Self-Hosted Langfuse v4 Server<br/>[Container: Docker Compose / localhost:3000]<br/>Postgres 16 + ClickHouse + Redis + MinIO + Worker"]:::external
+
+    %% Real-Trace Evaluation Flow
+    TraceEvalRunner -->|"1. Queries real traces [GET /api/public/traces]"| LangfuseServer
+    TraceEvalRunner -->|"2. Passes extracted tool calls & AST/DAG payloads"| AssertionEngine
+    TraceEvalRunner -->|"3. Automatically ingests evaluation scores"| DatasetScoreManager
+    DatasetScoreManager -->|"POST /api/public/scores"| LangfuseServer
+
+    %% Live Scenario Evaluation Flow
+    EvalRunner -->|"Executes scenario prompts"| DeepAgentRuntime
+    EvalRunner -->|"Verifies state mutations"| AssertionEngine
+    AssertionEngine -->|"Reads post-mutation state & diffs"| WorkspaceStorage
+
+    DeepAgentRuntime -->|"Dispatches lifecycle callback events with root trace propagation"| LangfuseCallbackBridge
+    LangfuseCallbackBridge -->|"Flushes batched trace telemetry [HTTP/REST]"| LangfuseServer
+
+    EvalRunner -->|"Records assertion metrics & links traces"| DatasetScoreManager
+    EvalRunner -->|"Replays deterministic interactions in CI"| CassetteEngine
+    EvalRunner -->|"Emits benchmark results"| MarkdownReporter
+

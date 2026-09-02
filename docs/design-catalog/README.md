@@ -48,6 +48,9 @@ docs/design-catalog/
     └── adr-007-websocket-staged-proposal-protocol.md
 ```
 
+> [!NOTE]
+> **Evaluation & Telemetry Architecture Catalog**: The deterministic evaluation suite, OpenTelemetry/Langfuse tracing, metrics taxonomy, and evaluation ADRs are organized in a dedicated catalog under [docs/evaluations/](file:///Users/goldenfung/Documents/collaragent/docs/evaluations/README.md).
+
 ---
 
 ## 1. Requirements & Core Subsystem Specifications
@@ -55,6 +58,7 @@ docs/design-catalog/
 - **System Requirements & Constraints**: Refer to [requirements.md](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/requirements.md) for functional requirements, quality attributes, and architectural constraints.
 - **API & Protocol Specifications**: Refer to [api-requirements.md](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/api-requirements.md) for REST endpoints, WebSocket message taxonomy, Electron IPC contracts, and Workspace Tool schemas.
 - **Core Engine Subsystem Wiring**: Refer to [core-engine-wiring.md](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/core-engine-wiring.md) for detailed end-to-end wiring, sequence flows, block identity weakmaps, and staging proposal mechanics connecting Graph Canvas, Document Editor, and ReAct Agent Tool Calling.
+- **Evaluation & Telemetry Catalog**: Refer to [docs/evaluations/README.md](file:///Users/goldenfung/Documents/collaragent/docs/evaluations/README.md) for the evaluation harness and telemetry architecture.
 
 ---
 
@@ -198,19 +202,19 @@ flowchart TB
     User["👤 Desktop User<br/>[Person]"]:::person
 
     subgraph DesktopProcessBoundary ["CollarAgent Application Boundary (Electron Multi-Process)"]
-        
+
         RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders 3-pane layout, graph canvas, Lexical editor, streaming chat, and state trees"]:::container
-        
+
         PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / AsyncGenerators]<br/>Provides isolated, typed IPC channels and stream unbuffering"]:::container
-        
+
         MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
-        
+
         WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server for editor diffs and canvas commands"]:::container
-        
+
         UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, ZIP archiver, and CagentStorage engine"]:::container
 
         LocalVault[("🔐 Secure Storage Vault<br/>[Host: OS Keychain / DPAPI / Secret Service]<br/>Stores encrypted LLM and Tavily API keys (~/.collaragent/secrets.json)")]:::database
-        
+
         ProjectStore[("📦 Sharded Project Storage (.collar / .cagent)<br/>[Container: FileSystem + MessagePack]<br/>Stores manifest.json, state.json, instances/*.json, and snapshots/*.msgpack")]:::database
     end
 
@@ -222,13 +226,13 @@ flowchart TB
     PreloadBridge -->|"Bi-directional IPC [Electron IPC]"| MainHost
     RendererUI <-->|"Bi-directional State Sync & Proposal Diffs [WebSocket / JSON-RPC]"| WSServer
     RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
-    
+
     MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer
     MainHost -->|"Spawns & triggers flush [In-Memory Call]"| WSServer
     MainHost -->|"Encrypts / decrypts API credentials [safeStorage]"| LocalVault
     MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
     MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP
-    
+
     UtilityServer -->|"Reads / writes atomic JSON & MessagePack blobs [POSIX FS]"| ProjectStore
 ```
 
@@ -243,17 +247,17 @@ flowchart TB
     classDef cloud fill:#475569,stroke:#94a3b8,color:#fff;
 
     subgraph HostOS ["🖥️ Host Operating System (macOS / Windows / Linux)"]
-        
+
         subgraph ElectronApp ["Electron Runtime (v43)"]
-            
+
             subgraph MainProc ["Main Process [Node.js Runtime]"]
                 HostMain["index.js / WindowManager<br/>• AgentFactory & LangGraph<br/>• SecureStorage & Config<br/>• In-Process WS Server (:wsPort)"]:::process
             end
-            
+
             subgraph RendererProc ["BrowserWindow Process [Chromium]"]
                 WebUI["Renderer SPA (React 19)<br/>• Dockview & Infinite Canvas<br/>• Lexical CardEditor<br/>• Web Worker (Leiden Clustering)"]:::process
             end
-            
+
             subgraph UtilityProc ["UtilityProcess (Forked Node.js Daemon)"]
                 Daemon["process.js<br/>• Express 5 REST API (:fsPort)<br/>• CagentStorage Engine<br/>• ZIP Compression / yauzl"]:::process
             end
@@ -362,14 +366,14 @@ flowchart TB
 
     MainHost -->|"ParentPort Messages (start, prepare-close, export)"| ProcEntry
     RendererUI -->|"REST HTTP Queries (:fsPort)"| FSApi
-    
+
     ProcEntry -->|"Initializes & Configures"| FSApi
     ProcEntry -->|"Invokes ZIP archive pack/unpack"| ArchiveMgr
-    
+
     FSApi -->|"Reads/Writes instances"| InstanceStore
     FSApi -->|"Reads/Writes manifest, state & logs"| CagentEngine
     FSApi -->|"Persists LangGraph execution tuples"| FSSaver
-    
+
     CagentEngine -->|"Atomic JSON/MsgPack I/O"| ProjectDisk
     InstanceStore -->|"Atomic JSON I/O"| ProjectDisk
     FSSaver -->|"Persists checkpoint blobs"| ProjectDisk
@@ -389,7 +393,7 @@ flowchart TB
     classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
 
     subgraph RendererWorkspaceBoundary ["Renderer UI & Workspace Engine"]
-        
+
         subgraph StateLayer ["State Management & Contexts"]
             ChatStore["📦 useChatStore (Zustand)<br/>[Store]<br/>Thread-keyed messages, stream chunks, reasoning traces, subagent tasks"]:::store
             ConfigStore["📦 useConfigStore (Zustand)<br/>[Store]<br/>Cached application configuration, models, and tool settings"]:::store
@@ -400,14 +404,14 @@ flowchart TB
 
         subgraph ViewLayer ["Visual Component Tree"]
             DockviewHost["🗔 Workspace (Dockview)<br/>[Component]<br/>Multi-dock tabbed container hosting Canvas, Document, and Skill views"]:::component
-            
+
             subgraph CanvasView ["Graph Canvas Subsystem"]
                 CanvasViewport["🖼️ Canvas Viewport<br/>[Component]<br/>SVG cubic bezier edge layer, pan/zoom engine, and node renderer"]:::component
                 CanvasNodeComp["🔲 CanvasNode<br/>[Component]<br/>4-cardinal port handles (N, E, S, W), title editor, resize handles"]:::component
                 MemoEditor["📝 MemoEditor (Lexical)<br/>[Component]<br/>Compact markdown editor embedded within canvas cards"]:::component
                 LeidenWorker["🔬 Leiden Clustering Engine<br/>[Web Worker]<br/>Hierarchical community detection and automatic graph partitioning"]:::component
             end
-            
+
             subgraph DocumentView ["Rich Document Subsystem"]
                 CardEditor["📄 CardEditor (Lexical)<br/>[Component]<br/>Full document editor: typography, GFM tables, math (KaTeX), code blocks"]:::component
                 DocxExporter["📑 DocxExporter<br/>[Component]<br/>Compiles DocumentPayload block AST directly into Word (.docx)"]:::component
@@ -433,11 +437,11 @@ flowchart TB
     CanvasViewport --> CanvasNodeComp
     CanvasNodeComp --> MemoEditor
     CanvasViewport -.-> LeidenWorker
-    
+
     CardEditor --> DocxExporter
     ChatEngine --> MessageListComp
     ChatEngine --> SubagentPane
-    
+
     ChatEngine <--> ChatStore
     CanvasViewport <--> CanvasStore
     CanvasStore <--> CanvasSync
@@ -457,9 +461,9 @@ flowchart TB
     classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
 
     subgraph DeepAgentRuntime ["DeepAgent Execution Engine (LangGraph Core)"]
-        
+
         DeepAgentFac["🤖 createDeepAgent<br/>[Runtime Factory]<br/>Assembles ReAct execution loop, middleware stack, and state reducers"]:::component
-        
+
         subgraph MiddlewarePipeline ["Ordered Middleware Interceptor Stack"]
             PatchToolMW["🔧 PatchToolCallsMiddleware<br/>[Middleware]<br/>Appends synthetic cancellation ToolMessages for dangling calls"]:::middleware
             SkillsMW["📚 SkillsMiddleware<br/>[Middleware]<br/>Progressive disclosure catalog injection & on-demand skill reading"]:::middleware
@@ -492,7 +496,7 @@ flowchart TB
     FSMiddleware --> SubAgentMW
     SubAgentMW --> TodoMW
     TodoMW --> ContextMW
-    
+
     FSMiddleware --> CompositeBE
     CompositeBE --> FSBackend
     CompositeBE --> StateBE
@@ -628,12 +632,12 @@ erDiagram
 stateDiagram-v2
     [*] --> Idle : Application Ready
     Idle --> TurnInitializing : User submits message (@mentions attached)
-    
+
     TurnInitializing --> AutoCheckpointing : Capture pre-turn CheckpointBundle
     AutoCheckpointing --> PromptAssembling : Quiesce WS sync & bundle state
-    
+
     PromptAssembling --> ModelStreaming : Inject Date, Skills catalog, Memory, Tools
-    
+
     state ModelStreaming {
         [*] --> ReceivingChunks
         ReceivingChunks --> EmittingReasoning : Reasoning tokens detected
@@ -642,22 +646,22 @@ stateDiagram-v2
         EmittingReasoning --> ReceivingChunks
         EmittingContent --> ReceivingChunks
     }
-    
+
     ModelStreaming --> EvictingLargeTool : Tool output > 20,000 tokens (~80KB)
     EvictingLargeTool --> ToolExecuting : Evict to /large_tool_results/
     ModelStreaming --> ToolExecuting : Standard tool output
-    
+
     state ToolExecuting {
         [*] --> DispatchTool
         DispatchTool --> ExecutingWorkspaceTool : manageGraph / editDocument
         DispatchTool --> ExecutingFilesystemTool : read_file / write_file
         DispatchTool --> ExecutingSubagent : task / dynamic_task
-        
+
         ExecutingWorkspaceTool --> StageProposal : Broadcast with staged: true
         ExecutingSubagent --> SubagentRecursion : Run isolated ReactAgent (limit 200)
         SubagentRecursion --> ReturnSynthesis : Merge final synthesis
     }
-    
+
     ToolExecuting --> ModelStreaming : Tool result fed back to Model node
     ModelStreaming --> TurnCompleted : Stop token / No more tool calls
     TurnCompleted --> Idle : Resume WS sync & update ChatStore
@@ -668,29 +672,29 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> ActiveEditing : Live Workspace & Agent Interaction
-    
+
     ActiveEditing --> Quiescing : CheckpointCreateRequested (Manual or Auto)
     Quiescing --> SnapshotCapturing : Suppress WebSocket echo (SyncPause lock)
-    
+
     state SnapshotCapturing {
         [*] --> FlushWSBuffers : wsServer.flush()
         FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
         CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & MsgPack snapshot
         CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record
     }
-    
+
     SnapshotCapturing --> ActiveEditing : Release SyncPause & resume editing
-    
+
     ActiveEditing --> RestoreRequested : User clicks CheckpointMarker in Chat
     RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing
-    
+
     state QuiescingRestore {
         [*] --> RollbackChat : Truncate messages to target blockIndex
         RollbackChat --> ResetBranchRegistry : agentCheckpointRegistry.setPendingBranch()
         ResetBranchRegistry --> RestoreSnapshots : Reconstitute instances from MsgPack
         RestoreSnapshots --> InvertCommandLogs : Apply InverseCommandEngine deltas
     }
-    
+
     QuiescingRestore --> ActiveEditing : Broadcast state:reset to UI & resume
 ```
 
@@ -722,7 +726,7 @@ sequenceDiagram
     Preload->>Main: IPC send(AGENT_STREAM, req)
     Main->>Agent: Invoke createDeepAgent ReAct loop
     Agent->>ExtLLM: Stream prompt + injected skills catalog
-    
+
     loop Token Streaming
         ExtLLM-->>Agent: Token / Reasoning chunk
         Agent-->>Main: Stream chunk
@@ -762,21 +766,21 @@ sequenceDiagram
     User->>UI: Clicks "Restore to this point" on CheckpointMarker
     UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId })
     Preload->>Main: IPC invoke(CHECKPOINT_RESTORE)
-    
+
     Main->>UI: IPC send(checkpoint:quiesce) -> Activate SyncPause mutex
     Main->>Server: POST /api/checkpoints/restore { bundleId }
-    
+
     Server->>Storage: Read CheckpointBundle & target snapshot MsgPack
     Storage-->>Server: Hydrated Snapshot + Log Cursors
-    
+
     Server->>Registry: setPendingBranch(threadId, agentCheckpointId)
     Server->>Storage: Truncate chat messages to bundle.chat.messageId
     Server-->>Main: Restore completed { restored: true }
-    
+
     Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
     Main-->>Preload: Restore response
     Preload-->>UI: Success
-    
+
     UI->>Server: GET /api/instances/:id -> Reload restored snapshot
     UI->>UI: Re-render Canvas and Lexical Editor at exact historical state
 ```
@@ -810,7 +814,7 @@ sequenceDiagram
     Note over AgentTool: Tag commands with { staged: true }
     loop For each CanvasCommand in batch
         AgentTool->>WSS: Send { type: 'sync-command', command: { ...cmd, staged: true }, version: 1 }
-        
+
         %% Step 4: Server Mutation & Staging
         WSS->>WSS: validateIncomingCanvasCommand(cmd)
         WSS->>WSS: applyCommandToDto() & capture previousState
@@ -818,7 +822,7 @@ sequenceDiagram
         WSS->>WSS: nextSeq = commandSequences++
 
         WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
-        
+
         par Real-time Broadcast & Logging
             WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
             WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, commands: bufferedProposals }
@@ -829,7 +833,7 @@ sequenceDiagram
 
     %% Step 5: UI Proposal Banner
     Note over CanvasUI: CanvasProvider updates visual DOM & displays Proposal Banner
-    
+
     %% Step 6: User Accept/Reject
     alt User clicks "Keep" (Accept Changes)
         User->>CanvasUI: Clicks "Accept Changes"
@@ -866,19 +870,19 @@ flowchart LR
     classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
 
     Agent[🤖 DeepAgent ReAct Loop]:::actor
-    
+
     CmdWriteGraph[Command: writeGraph<br/>spec: WriteGraphSpec]:::command
     EvtSpecReceived[Event: GraphSpec Received]:::event
     AggDiffEngine[Aggregate: CanvasDiffEngine]:::aggregate
-    
+
     PolDiff[Policy: Whenever Spec Received -> Diff vs CanvasSnapshot & Order Commands]:::policy
-    
+
     EvtCmdsGenerated[Event: Atomic CanvasCommands Generated<br/>1. Remove links<br/>2. Remove nodes<br/>3. Add nodes<br/>4. Update attrs/layout<br/>5. Add links]:::event
-    
+
     CmdBroadcastStaged[Command: Broadcast Staged Commands]:::command
     SysWS[System: In-Process WS Server]:::system
     EvtStagedOnUI[Event: Proposal Banner Displayed in UI]:::event
-    
+
     User[👤 Knowledge Worker]:::actor
     CmdAccept[Command: Accept Changes]:::command
     EvtCommitted[Event: Changes Committed to History Stack]:::event
@@ -892,7 +896,7 @@ flowchart LR
     EvtCmdsGenerated --> CmdBroadcastStaged
     CmdBroadcastStaged --> SysWS
     SysWS --> EvtStagedOnUI
-    
+
     User --> CmdAccept
     CmdAccept --> EvtCommitted
     EvtCommitted --> AggGraph
@@ -912,19 +916,19 @@ flowchart LR
     classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
 
     Agent[🤖 DeepAgent ReAct Loop]:::actor
-    
+
     CmdEditDoc[Command: editDocument<br/>operations: JSONPatch[]]:::command
     EvtPatchReceived[Event: Document Patch Received]:::event
     AggPatchEngine[Aggregate: PatchCommandEngine]:::aggregate
-    
+
     PolValidate[Policy: Whenever Patch Received -> Validate Block Existence & Compute Diffs]:::policy
-    
+
     EvtEditorCmds[Event: Atomic EditorCommands Emitted<br/>• editor:update_block<br/>• editor:insert_block<br/>• editor:remove_block]:::event
-    
+
     CmdStagedWS[Command: Stage Over WebSocket /ws/editor/:id]:::command
     SysWS[System: WebSocket Sync Engine]:::system
     EvtDiffView[Event: Visual Inline Diff Rendered in Lexical]:::event
-    
+
     User[👤 Knowledge Worker]:::actor
     CmdReview[Command: Review & Commit Proposal]:::command
     EvtDocUpdated[Event: Document AST Updated & Persisted]:::event
@@ -938,7 +942,7 @@ flowchart LR
     EvtEditorCmds --> CmdStagedWS
     CmdStagedWS --> SysWS
     SysWS --> EvtDiffView
-    
+
     User --> CmdReview
     CmdReview --> EvtDocUpdated
     EvtDocUpdated --> AggDoc
@@ -958,22 +962,22 @@ flowchart LR
     classDef hotspot fill:#f44336,stroke:#b71c1c,color:#fff
 
     Agent[🤖 Agent Tool / Client]:::actor
-    
+
     CmdSyncCmd[Command: sync-command<br/>{ command, staged: true, clientId }]:::command
     EvtCmdReceived[Event: Staged Command Received]:::event
     AggWSServer[Aggregate: WsServer In-Memory DTO]:::aggregate
-    
+
     PolValidate[Policy: Whenever sync-command received -> validateCanonicalNodeId & applyCommandToDto]:::policy
-    
+
     EvtStateMutated[Event: DTO Mutated & previousState Captured]:::event
     EvtBuffered[Event: Command Buffered in proposals Map]:::event
-    
+
     CmdBroadcast[Command: Broadcast sync-command & sync-changes]:::command
     SysWSChannel[System: /ws/canvas/:instanceId Channel]:::system
-    
+
     EvtUIReflected[Event: UI Renders New Nodes & Shows Proposal Banner]:::event
     User[👤 Knowledge Worker]:::actor
-    
+
     CmdDecision[Command: accept-changes OR reject-changes]:::command
     PolResolve[Policy: If accept -> clear buffer & save; If reject -> revert via previousState & broadcast snapshot]:::policy
     EvtFinalized[Event: Workspace State Finalized & Persisted to Disk]:::event
@@ -996,15 +1000,15 @@ flowchart LR
 
 ## 6. Architecture Decision Records (ADRs)
 
-| ADR | Title | Decision & Key Rationale |
-|---|---|---|
-| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md) | **Multi-Process Electron Host with Forked Utility Daemons** | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS. |
-| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md) | **Sharded V3 Project Storage Engine (`.cagent` & `.collar`)** | Partition monolithic archives into lightweight `manifest.json`, `state.json`, `instances/*.json`, and `snapshots/*.msgpack` for fast incremental writes on every keystroke. |
-| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md) | **Nominal ID Branding for Graph Entities** | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time. |
-| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md) | **Progressive Disclosure Architecture for Agent Skills** | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%. |
-| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md) | **Deterministic Inverse Command Rollback Engine** | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration. |
-| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md) | **Large Tool Output Eviction Protocol** | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion. |
-| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md) | **WebSocket Real-Time Synchronization & Staged Proposal Protocol** | Stream real-time canvas mutations over dedicated WebSocket channels with `staged: true` buffering, monotonic sequence acks, and one-click accept/revert capabilities. |
+| ADR                                                                                                                                  | Title                                                              | Decision & Key Rationale                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)  | **Multi-Process Electron Host with Forked Utility Daemons**        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.          |
+| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)       | **Sharded V3 Project Storage Engine (`.cagent` & `.collar`)**      | Partition monolithic archives into lightweight `manifest.json`, `state.json`, `instances/*.json`, and `snapshots/*.msgpack` for fast incremental writes on every keystroke. |
+| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md) | **Nominal ID Branding for Graph Entities**                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                           |
+| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)    | **Progressive Disclosure Architecture for Agent Skills**           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.        |
+| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md) | **Deterministic Inverse Command Rollback Engine**                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.           |
+| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)    | **Large Tool Output Eviction Protocol**                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.   |
+| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)     | **WebSocket Real-Time Synchronization & Staged Proposal Protocol** | Stream real-time canvas mutations over dedicated WebSocket channels with `staged: true` buffering, monotonic sequence acks, and one-click accept/revert capabilities.       |
 
 ---
 

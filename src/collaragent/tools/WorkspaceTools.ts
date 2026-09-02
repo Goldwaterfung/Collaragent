@@ -1,11 +1,7 @@
 // WorkspaceTools.ts
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import {
-  DocumentSchema,
-  type Block,
-  type Comment
-} from '@workspace/persistence/editorContent'
+import { DocumentSchema, type Block, type Comment } from '@workspace/persistence/editorContent'
 import {
   convertBlocksToPatchView,
   convertHtmlToBlocks
@@ -19,7 +15,13 @@ import { createInstance } from '@workspace/wstools/createDocumentInstance'
 // Graph Canvas imports
 import { executeReadGraph, executeWriteGraph } from '@workspace/wstools/manageGraph'
 import { createProject, removeProject } from '@workspace/wstools/manageProject'
-import { WriteGraphSpecSchema, MindMapNodeSchema, flattenMindMap, DirectionSchema, assertUniqueNodeEntities } from '@workspace/wstools/graphSchemaConverter'
+import {
+  WriteGraphSpecSchema,
+  MindMapNodeSchema,
+  flattenMindMap,
+  DirectionSchema,
+  assertUniqueNodeEntities
+} from '@workspace/wstools/graphSchemaConverter'
 
 // ============================================================================
 // Constants
@@ -116,7 +118,9 @@ const editDocumentSchema = z.object({
         newHtml: z
           .string()
           .optional()
-          .describe('The new HTML content. Required for "update" and "insert". Can contain multiple tags.')
+          .describe(
+            'The new HTML content. Required for "update" and "insert". Can contain multiple tags.'
+          )
       })
     )
     .min(1)
@@ -241,9 +245,9 @@ interface EditDocumentSuccessResult {
   diff_view: string
 }
 
-type EditDocumentResult = EditDocumentErrorResult | EditDocumentSuccessResult
+export type EditDocumentResult = EditDocumentErrorResult | EditDocumentSuccessResult
 
-interface ReadDocumentErrorResult {
+export interface ReadDocumentErrorResult {
   status: 'error'
   action: 'Failed to read'
   instanceName: string
@@ -253,7 +257,7 @@ interface ReadDocumentErrorResult {
   recommendFix?: string
 }
 
-interface CreateDocumentErrorResult {
+export interface CreateDocumentErrorResult {
   status: 'error'
   action: 'Failed to create'
   instanceName: string
@@ -263,7 +267,7 @@ interface CreateDocumentErrorResult {
   recommendFix?: string
 }
 
-interface ListWorkspaceItemsErrorResult {
+export interface ListWorkspaceItemsErrorResult {
   status: 'error'
   action: 'Failed to list'
   code: string
@@ -271,7 +275,7 @@ interface ListWorkspaceItemsErrorResult {
   recommendFix?: string
 }
 
-interface GraphErrorResult {
+export interface GraphErrorResult {
   status: 'error'
   action: string
   instanceName: string
@@ -369,35 +373,39 @@ function buildEditableBlocks(blocks: Block[]): Array<{ id: string; html: string 
 }
 
 function generateUnifiedDiff(currentPatchView: string, updatedPatchView: string): string {
-  const oldLines = currentPatchView.split('\n').filter(l => l.trim() !== '')
-  const newLines = updatedPatchView.split('\n').filter(l => l.trim() !== '')
-  
+  const oldLines = currentPatchView.split('\n').filter((l) => l.trim() !== '')
+  const newLines = updatedPatchView.split('\n').filter((l) => l.trim() !== '')
+
   let start = 0
-  while (start < oldLines.length && start < newLines.length && oldLines[start] === newLines[start]) {
+  while (
+    start < oldLines.length &&
+    start < newLines.length &&
+    oldLines[start] === newLines[start]
+  ) {
     start++
   }
-  
+
   let oldEnd = oldLines.length - 1
   let newEnd = newLines.length - 1
   while (oldEnd >= start && newEnd >= start && oldLines[oldEnd] === newLines[newEnd]) {
     oldEnd--
     newEnd--
   }
-  
-  if (start > oldEnd && start > newEnd) return "No changes detected."
-  
+
+  if (start > oldEnd && start > newEnd) return 'No changes detected.'
+
   const ctx = 2 // Context lines
   const contextStart = Math.max(0, start - ctx)
   const contextOldEnd = Math.min(oldLines.length - 1, oldEnd + ctx)
-  
+
   const diffLines: string[] = ['[diff_block_start]']
   diffLines.push(`@@ -${start + 1},${oldEnd - start + 1} +${start + 1},${newEnd - start + 1} @@`)
-  
+
   for (let i = contextStart; i < start; i++) diffLines.push(` ${oldLines[i]}`)
   for (let i = start; i <= oldEnd; i++) diffLines.push(`-${oldLines[i]}`)
   for (let i = start; i <= newEnd; i++) diffLines.push(`+${newLines[i]}`)
   for (let i = oldEnd + 1; i <= contextOldEnd; i++) diffLines.push(` ${oldLines[i]}`)
-  
+
   diffLines.push('[diff_block_end]')
   return diffLines.join('\n')
 }
@@ -666,7 +674,7 @@ function filterInstances(
 
 /**
  * Resolves a human-readable instance name (and optional project name) to its persistent UUID.
- * 
+ *
  * Logic Flow:
  * 1. Fetches all instances and projects.
  * 2. If projectName is provided, resolves it to a projectId or throws PROJECT_NOT_FOUND.
@@ -711,7 +719,7 @@ async function resolveResourceId(
 
 /**
  * Resolves a resource name to a UUID, or performs an "upsert-like" creation.
- * 
+ *
  * If the resource exists within the specified (or default) project, returns its ID.
  * If not, it provisions a new instance of the requested type via REST API.
  */
@@ -750,8 +758,6 @@ async function resolveOrCreateResourceId(
   }
 }
 
-
-
 // ============================================================================
 // Tool Definitions
 // ============================================================================
@@ -761,11 +767,9 @@ async function resolveOrCreateResourceId(
  * Retrieves the full content of a Lexical document as HTML.
  * Automatically resolves the human-readable name to a UUID.
  */
-export const readDocument = tool(
-  readDocumentHandler,
-  {
-    name: 'readDocument',
-    description: `Read a document and return its content as a list of editable blocks and associated comments.
+export const readDocument = tool(readDocumentHandler, {
+  name: 'readDocument',
+  description: `Read a document and return its content as a list of editable blocks and associated comments.
 
 The editable_blocks are the preferred source for editDocument patches. Each item contains:
 - id: the stable block ID
@@ -784,20 +788,17 @@ Example comments:
 {
   "c1": { "id": "c1", "author": "Alice", "content": "This needs more detail." }
 }`,
-    schema: getDocumentInputSchema
-  }
-)
+  schema: getDocumentInputSchema
+})
 
 /**
  * createDocument - LangChain Tool
  * Creates or completely overwrites a document using HTML input.
  * If the document name does not exist, it is provisioned in the requested project.
  */
-export const createDocument = tool(
-  createDocumentHandler,
-  {
-    name: 'createDocument',
-    description: `Create a new document (or completely replace an existing one) using standard HTML tags.
+export const createDocument = tool(createDocumentHandler, {
+  name: 'createDocument',
+  description: `Create a new document (or completely replace an existing one) using standard HTML tags.
 
 Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>.
 Supported styles: <b>, <i>, <u>; style="text-align: center|right".
@@ -808,20 +809,17 @@ Example Input:
 {
   "html_content": "<h1>Title</h1><p style=\\"text-align: center\\">Centered Text</p><p>This has <b>bold</b>, <i>italic</i>, <u>underlined</u> text,<br>and a line break.</p><ul><li>Item 1</li><li>Item 2</li></ul>"
 }`,
-    schema: createDocumentHtmlSchema
-  }
-)
+  schema: createDocumentHtmlSchema
+})
 
 /**
  * editDocument - LangChain Tool
  * Performs granular block-level updates (edit, delete, split) on a document.
  * This is the preferred tool for modifications to existing documents.
  */
-export const editDocument = tool(
-  editDocumentHandler,
-  {
-    name: "editDocument",
-    description: `Edit an existing document using structured JSON operations.
+export const editDocument = tool(editDocumentHandler, {
+  name: 'editDocument',
+  description: `Edit an existing document using structured JSON operations.
  
 This tool allows you to update, insert, or delete blocks in a document without needing to provide the old HTML content or adhere to a strict text grammar.
 
@@ -860,9 +858,8 @@ Example Input:
     }
   ]
 }`,
-    schema: editDocumentSchema
-  }
-)
+  schema: editDocumentSchema
+})
 
 /**
  * listWorkspaceItems - LangChain Tool
@@ -921,7 +918,6 @@ export const listWorkspaceItems = tool(
   }
 )
 
-
 export const readGraph = tool(
   async (input, config) => {
     const context = config.configurable as ToolConnectionContext | undefined
@@ -965,7 +961,6 @@ export const readGraph = tool(
   }
 )
 
-
 /**
  * writeGraph - LangChain Tool
  * The primary entry point for managing knowledge graphs.
@@ -979,8 +974,8 @@ export const writeGraph = tool(
     try {
       const uuid = await resolveOrCreateResourceId(instanceName, projectName, 'canvas', context)
 
-      const nodesToResolve = spec.nodes || [];
-      const edgesToUse = spec.edges || [];
+      const nodesToResolve = spec.nodes || []
+      const edgesToUse = spec.edges || []
 
       assertUniqueNodeEntities(nodesToResolve)
 
@@ -1084,7 +1079,6 @@ Use meaningful document instance names in the "entity" field.`,
   }
 )
 
-
 export const writeMindMap = tool(
   async (input, config) => {
     const context = config.configurable as ToolConnectionContext | undefined
@@ -1174,7 +1168,6 @@ EXAMPLE:
     schema: writeMindMapInputSchema
   }
 )
-
 
 export const createProjectTool = tool(
   async (input, config) => {

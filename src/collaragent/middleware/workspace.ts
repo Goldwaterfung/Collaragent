@@ -1,4 +1,4 @@
-import { createMiddleware } from 'langchain'
+import { createMiddleware, type AgentMiddleware } from 'langchain'
 import {
   readDocument,
   createDocument,
@@ -35,7 +35,7 @@ Workspace System tools are available to you and all subagents at all times.
 1. **Information Discovery**: When starting a task, use \`listWorkspaceItems\` to discover relevant context already stored in the workspace.
 2. **Contextual Awareness**: Before editing a document, ensure you have read its current state with \`readDocument\`.
 3. **Knowledge Organization**: Use graphs and mind maps to represent complex relationships that are better served by a non-linear format.
-`;
+`
 
 const WORKSPACE_WRITING_SECTION = `
 #### Creation & Modification
@@ -45,9 +45,11 @@ const WORKSPACE_WRITING_SECTION = `
 - **writeMindMap**: Create a mind map from existing content or ideas.
 - **createProjectTool**: Register a new tool for use within this project.
 - **removeProjectTool**: Unregister a project-specific tool.
-`;
+`
 
-export const createWorkspaceMiddleware = (config: WorkspaceMiddlewareConfig = {}) => {
+export const createWorkspaceMiddleware = (
+  config: WorkspaceMiddlewareConfig = {}
+): AgentMiddleware => {
   // Define tool sets
   const readTools = [readDocument, listWorkspaceItems, readGraph]
   const writeTools = [
@@ -66,19 +68,19 @@ export const createWorkspaceMiddleware = (config: WorkspaceMiddlewareConfig = {}
     name: 'WorkspaceMiddleware',
     tools: activeTools,
     wrapModelCall: (request, handler) => {
-      const writingSection = config.readOnly ? "" : WORKSPACE_WRITING_SECTION;
+      const writingSection = config.readOnly ? '' : WORKSPACE_WRITING_SECTION
       const workspaceSection = WORKSPACE_SYSTEM_PROMPT.replace(
-        "{writing_section}",
-        writingSection,
-      ).trim();
+        '{writing_section}',
+        writingSection
+      ).trim()
 
       // Append to existing system prompt
-      const currentSystemPrompt = request.systemPrompt || "";
+      const currentSystemPrompt = request.systemPrompt || ''
       const newSystemPrompt = currentSystemPrompt
         ? `${currentSystemPrompt}\n\n${workspaceSection}`
-        : workspaceSection;
+        : workspaceSection
 
-      return handler({ ...request, systemPrompt: newSystemPrompt });
-    },
+      return handler({ ...request, systemPrompt: newSystemPrompt })
+    }
   })
 }

@@ -7,14 +7,10 @@ import {
   ClearToolUsesEdit,
   SystemMessage,
   type AgentMiddleware,
-  type ResponseFormat,
-} from "langchain";
-import type {
-  ClientTool,
-  ServerTool,
-  StructuredTool,
-} from "@langchain/core/tools";
-import type { BaseStore } from "@langchain/langgraph-checkpoint";
+  type ResponseFormat
+} from 'langchain'
+import type { ClientTool, ServerTool, StructuredTool } from '@langchain/core/tools'
+import type { BaseStore } from '@langchain/langgraph-checkpoint'
 
 import {
   createFilesystemMiddleware,
@@ -25,25 +21,26 @@ import {
   createWorkspaceMiddleware,
   todoListMiddleware,
   dateMiddleware,
-  type SubAgent,
-} from "../middleware/index.js";
-import { StateBackend } from "../backends/index.js";
-import { InteropZodObject } from "@langchain/core/utils/types";
-import { CompiledSubAgent } from "../middleware/subagents.js";
+  createModelResponseNormalizerMiddleware,
+  type SubAgent
+} from '../middleware/index.js'
+import { StateBackend } from '../backends/index.js'
+import { InteropZodObject } from '@langchain/core/utils/types'
+import { CompiledSubAgent } from '../middleware/subagents.js'
 import type {
   CreateDeepAgentParams,
   DeepAgent,
   DeepAgentTypeConfig,
-  FlattenSubAgentMiddleware,
-} from "../types.js";
+  FlattenSubAgentMiddleware
+} from '../types.js'
 
 /**
  * required for type inference
  */
-import type * as _messages from "@langchain/core/messages";
-import type * as _Command from "@langchain/langgraph";
+import type * as _messages from '@langchain/core/messages'
+import type * as _Command from '@langchain/langgraph'
 
-const BASE_PROMPT = `In order to complete the objective that the user asks of you, you have access to a number of standard tools.`;
+const BASE_PROMPT = `In order to complete the objective that the user asks of you, you have access to a number of standard tools.`
 
 /**
  * Create a Deep Agent with middleware-based architecture.
@@ -80,9 +77,8 @@ export function createDeepAgent<
   TResponse extends ResponseFormat = ResponseFormat,
   ContextSchema extends InteropZodObject = InteropZodObject,
   const TMiddleware extends readonly AgentMiddleware[] = readonly [],
-  const TSubagents extends readonly (SubAgent | CompiledSubAgent)[] =
-    readonly [],
-  const TTools extends readonly (ClientTool | ServerTool)[] = readonly [],
+  const TSubagents extends readonly (SubAgent | CompiledSubAgent)[] = readonly [],
+  const TTools extends readonly (ClientTool | ServerTool)[] = readonly []
 >(
   params: CreateDeepAgentParams<
     TResponse,
@@ -90,16 +86,19 @@ export function createDeepAgent<
     TMiddleware,
     TSubagents,
     TTools
-  > = {} as CreateDeepAgentParams<
+  > = {} as CreateDeepAgentParams<TResponse, ContextSchema, TMiddleware, TSubagents, TTools>
+): DeepAgent<
+  DeepAgentTypeConfig<
     TResponse,
+    undefined,
     ContextSchema,
-    TMiddleware,
-    TSubagents,
-    TTools
-  >,
-) {
+    readonly [...AgentMiddleware[], ...TMiddleware, ...FlattenSubAgentMiddleware<TSubagents>],
+    TTools,
+    TSubagents
+  >
+> {
   const {
-    model = "claude-sonnet-4-5-20250929",
+    model = 'claude-sonnet-4-5-20250929',
     tools = [],
     allAvailableTools = [],
     systemPrompt,
@@ -114,50 +113,49 @@ export function createDeepAgent<
     interruptOn,
     name,
     memory,
-    skills,
-  } = params;
+    skills
+  } = params
 
   // Middleware enabled by default
-  const hasTodoList = true;
-  const hasFilesystem = true;
-  const hasWorkspace = true;
-  const workspaceReadOnly = false;
+  const hasTodoList = true
+  const hasFilesystem = true
+  const hasWorkspace = true
+  const workspaceReadOnly = false
 
   // Combine system prompt with base prompt like Python implementation
   const finalSystemPrompt = systemPrompt
-    ? typeof systemPrompt === "string"
+    ? typeof systemPrompt === 'string'
       ? `${systemPrompt}\n\n${BASE_PROMPT}`
       : new SystemMessage({
           content: [
             {
-              type: "text",
-              text: BASE_PROMPT,
+              type: 'text',
+              text: BASE_PROMPT
             },
-            ...(typeof systemPrompt.content === "string"
-              ? [{ type: "text", text: systemPrompt.content }]
-              : systemPrompt.content),
-          ],
+            ...(typeof systemPrompt.content === 'string'
+              ? [{ type: 'text', text: systemPrompt.content }]
+              : systemPrompt.content)
+          ]
         })
-    : BASE_PROMPT;
+    : BASE_PROMPT
 
   // Create backend configuration for filesystem middleware
   // If no backend is provided, use a factory that creates a StateBackend
   const filesystemBackend = backend
     ? backend
-    : (config: { state: unknown; store?: BaseStore }) =>
-        new StateBackend(config);
+    : (config: { state: unknown; store?: BaseStore }) => new StateBackend(config)
 
   // Add skills middleware if skill sources provided
-  const skillsList = skills != null ? (Array.isArray(skills) ? skills : [skills]) : [];
+  const skillsList = skills != null ? (Array.isArray(skills) ? skills : [skills]) : []
   const skillsMiddleware = skillsList.map((source) =>
     createSkillsMiddleware({
       backend: filesystemBackend,
-      source,
-    }),
-  );
+      source
+    })
+  )
 
   // Built-in middleware array
-  const builtInMiddleware = [
+  const builtInMiddleware: AgentMiddleware[] = [
     // Injects the current date and time into the system prompt
     dateMiddleware(),
     // Provides todo list management capabilities for tracking tasks
@@ -165,13 +163,9 @@ export function createDeepAgent<
     // Add skills middleware if skill sources provided
     ...skillsMiddleware,
     // Enables filesystem operations and optional long-term memory storage
-    ...(hasFilesystem
-      ? [createFilesystemMiddleware({ backend: filesystemBackend })]
-      : []),
+    ...(hasFilesystem ? [createFilesystemMiddleware({ backend: filesystemBackend })] : []),
     // Enables workspace operations (documents, graphs)
-    ...(hasWorkspace
-      ? [createWorkspaceMiddleware({ readOnly: workspaceReadOnly })]
-      : []),
+    ...(hasWorkspace ? [createWorkspaceMiddleware({ readOnly: workspaceReadOnly })] : []),
     // Enables delegation to specialized subagents for complex tasks
     ...((subagents != null && subagents.length > 0) || dynamicEnabled
       ? [
@@ -180,69 +174,68 @@ export function createDeepAgent<
             defaultTools: tools as StructuredTool[],
             allAvailableTools: allAvailableTools as StructuredTool[],
             defaultMiddleware: [
-            // Subagent middleware: Injects the current date and time
-            dateMiddleware(),
-            // Subagent middleware: Todo list management
-            ...(hasTodoList ? [todoListMiddleware()] : []),
+              // Subagent middleware: Injects the current date and time
+              dateMiddleware(),
+              // Subagent middleware: Todo list management
+              ...(hasTodoList ? [todoListMiddleware()] : []),
               // Subagent middleware: Skills (if provided)
               ...skillsMiddleware,
               // Subagent middleware: Filesystem operations
               ...(hasFilesystem
                 ? [
                     createFilesystemMiddleware({
-                      backend: filesystemBackend,
-                    }),
+                      backend: filesystemBackend
+                    })
                   ]
-
                 : []),
               // Subagent middleware: Workspace operations
-              ...(hasWorkspace
-                ? [createWorkspaceMiddleware({ readOnly: workspaceReadOnly })]
-                : []),
+              ...(hasWorkspace ? [createWorkspaceMiddleware({ readOnly: workspaceReadOnly })] : []),
               summarizationMiddleware({
                 model,
                 trigger: { tokens: 120_000 },
-                keep: { messages: 15 },
+                keep: { messages: 15 }
               }),
               // Subagent middleware: Prunes old tool results to manage context size
               contextEditingMiddleware({
                 edits: [
                   new ClearToolUsesEdit({
                     trigger: { tokens: 100_000 },
-                    keep: { messages: 5 },
-                  }),
-                ],
+                    keep: { messages: 5 }
+                  })
+                ]
               }),
               // Subagent middleware: Anthropic prompt caching for improved performance
               anthropicPromptCachingMiddleware({
-                unsupportedModelBehavior: "ignore",
+                unsupportedModelBehavior: 'ignore'
               }),
               // Subagent middleware: Patches tool calls for compatibility
               createPatchToolCallsMiddleware(),
+              // Subagent middleware: Normalizes model responses into standard AIMessage instances
+              createModelResponseNormalizerMiddleware()
             ],
             defaultInterruptOn: interruptOn,
             subagents: subagents as unknown as (SubAgent | CompiledSubAgent)[],
-            generalPurposeAgent: true,
-          }),
+            generalPurposeAgent: true
+          })
         ]
       : []),
     summarizationMiddleware({
       model,
       trigger: { tokens: 120_000 },
-      keep: { messages: 15 },
+      keep: { messages: 15 }
     }),
     // Prunes old tool results to manage context size before they reach the summarization limit
     contextEditingMiddleware({
       edits: [
         new ClearToolUsesEdit({
           trigger: { tokens: 100_000 },
-          keep: { messages: 5 },
-        }),
-      ],
+          keep: { messages: 5 }
+        })
+      ]
     }),
     // Enables Anthropic prompt caching for improved performance and reduced costs
     anthropicPromptCachingMiddleware({
-      unsupportedModelBehavior: "ignore",
+      unsupportedModelBehavior: 'ignore'
     }),
     // Patches tool calls to ensure compatibility across different model providers
     createPatchToolCallsMiddleware(),
@@ -251,26 +244,25 @@ export function createDeepAgent<
       ? [
           createMemoryMiddleware({
             backend: filesystemBackend,
-            sources: memory,
-          }),
+            sources: memory
+          })
         ]
       : []),
-  ] as const;
+    // Normalizes model responses into standard AIMessage instances (e.g. for OpenAI-compatible/GLM models)
+    createModelResponseNormalizerMiddleware()
+  ]
 
   // Add human-in-the-loop middleware if interrupt config provided
   if (interruptOn) {
-    // builtInMiddleware is typed as readonly to enable type inference
-    // however, we need to push to it to add the middleware, so let's ignore the type error
-    // @ts-expect-error - builtInMiddleware is readonly
-    builtInMiddleware.push(humanInTheLoopMiddleware({ interruptOn }));
+    builtInMiddleware.push(humanInTheLoopMiddleware({ interruptOn }))
   }
 
   // Combine built-in middleware with custom middleware
   // The custom middleware is typed as TMiddleware to preserve type information
   const allMiddleware = [
     ...builtInMiddleware,
-    ...(customMiddleware as unknown as TMiddleware),
-  ] as const;
+    ...(customMiddleware as unknown as TMiddleware)
+  ] as const
 
   // Note: Recursion limit of 1000 (matching Python behavior) should be passed
   // at invocation time: agent.invoke(input, { recursionLimit: 1000 })
@@ -283,16 +275,16 @@ export function createDeepAgent<
     contextSchema,
     checkpointer,
     store,
-    name,
-  });
+    name
+  })
 
   // Combine custom middleware with flattened subagent middleware for complete type inference
   // This ensures InferMiddlewareStates captures state from both sources
   type AllMiddleware = readonly [
-    ...typeof builtInMiddleware,
+    ...AgentMiddleware[],
     ...TMiddleware,
-    ...FlattenSubAgentMiddleware<TSubagents>,
-  ];
+    ...FlattenSubAgentMiddleware<TSubagents>
+  ]
 
   // Return as DeepAgent with proper DeepAgentTypeConfig
   // - Response: TResponse (from responseFormat parameter)
@@ -302,13 +294,6 @@ export function createDeepAgent<
   // - Tools: TTools
   // - Subagents: TSubagents (for type-safe streaming)
   return agent as unknown as DeepAgent<
-    DeepAgentTypeConfig<
-      TResponse,
-      undefined,
-      ContextSchema,
-      AllMiddleware,
-      TTools,
-      TSubagents
-    >
-  >;
+    DeepAgentTypeConfig<TResponse, undefined, ContextSchema, AllMiddleware, TTools, TSubagents>
+  >
 }

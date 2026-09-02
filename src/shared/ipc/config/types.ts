@@ -110,6 +110,15 @@ export interface ConfigSetToolAPIKeyRequest {
 }
 
 /**
+ * Test telemetry connection request
+ */
+export interface ConfigTestTelemetryRequest {
+  baseUrl: string
+  publicKey?: string
+  secretKey?: string
+}
+
+/**
  * Check if a key exists request
  */
 export interface ConfigCheckKeyRequest {
@@ -212,6 +221,16 @@ export type ConfigSetToolAPIKeyResponse = { success: boolean; error?: string }
 export interface ConfigFetchMCPToolsResponse {
   success: boolean
   tools: { name: string; description?: string }[]
+  error?: string
+}
+
+/**
+ * Test telemetry connection response
+ */
+export interface ConfigTestTelemetryResponse {
+  success: boolean
+  status?: number
+  message?: string
   error?: string
 }
 // ============================================================================

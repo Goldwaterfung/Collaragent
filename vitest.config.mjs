@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'evals/**/*.test.ts'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
@@ -20,6 +20,7 @@ export default defineConfig({
       '@shared': resolve(import.meta.dirname, 'src/shared'),
       '@main': resolve(import.meta.dirname, 'src/main'),
       '@renderer': resolve(import.meta.dirname, 'src/renderer'),
+      '@evals': resolve(import.meta.dirname, 'evals'),
     },
   },
 });

@@ -1,0 +1,296 @@
+---
+title: Experiments Data Model
+description: Data model for Datasets, DatasetItems, DatasetRuns, DatasetRunItems, and function definitions for Tasks and Evaluators.
+sidebarTitle: Data Model
+---
+
+# Experiments Data Model
+
+This page describes the data model for experiment-related objects in Langfuse. For an overview of how these objects work together, see the [Concepts](/docs/evaluation/core-concepts) page. For score and score config objects, see the [Scores data model](/docs/evaluation/scores/data-model).
+
+For detailed reference please refer to
+
+- the [Python SDK reference](https://python.reference.langfuse.com)
+- the [JS/TS SDK reference](https://js.reference.langfuse.com)
+- the [API reference](https://api.reference.langfuse.com)
+
+## How experiments are created [#how-experiments-are-created]
+
+You create experiment runs in Langfuse through one of these paths:
+
+| Path                                                                                        | Use when                                                                                         |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [Experiments via SDK](/docs/evaluation/experiments/experiments-via-sdk)                     | Python or JS/TS Experiment runner                                                                |
+| [Experiments via UI](/docs/evaluation/experiments/experiments-via-ui)                       | Prompt or model experiments from the dataset page                                                |
+| [Experiments via OpenTelemetry](/docs/evaluation/experiments/experiments-via-opentelemetry) | Direct OTEL ingestion: other languages, custom OTLP pipelines, or re-ingesting experiment traces |
+
+To **read** experiment runs, items, and scores after they exist, use the [Experiments API](/docs/api-and-data-platform/features/experiments-api). There is no public REST endpoint for creating new experiment runs; the legacy `POST /api/public/dataset-run-items` path is deprecated.
+
+## Objects
+
+### Datasets [#datasets]
+
+Datasets are a collection of inputs and, optionally, expected outputs that can be used during Dataset runs.
+
+`Dataset`s are a collection of `DatasetItem`s.
+
+```mermaid
+classDiagram
+direction LR
+    class Dataset {
+        name
+        description
+        metadata
+    }
+
+    class DatasetItem {
+        datasetName
+        input
+        expectedOutput
+        metadata
+        sourceTraceId
+        sourceObservationId
+        id
+        status
+    }
+
+    Dataset "1" --> "n" DatasetItem
+```
+
+#### Dataset object [#dataset-object]
+
+| Attribute                 | Type   | Required | Description                                 |
+| ------------------------- | ------ | -------- | ------------------------------------------- |
+| `id`                      | string | Yes      | Unique identifier for the dataset           |
+| `name`                    | string | Yes      | Name of the dataset                         |
+| `description`             | string | No       | Description of the dataset                  |
+| `metadata`                | object | No       | Additional metadata for the dataset         |
+| `remoteExperimentUrl`     | string | No       | Webhook endpoint for triggering experiments |
+| `remoteExperimentPayload` | object | No       | Payload for triggering experiments          |
+
+#### DatasetItem object [#datasetitem-object]
+
+| Attribute             | Type          | Required | Description                                                                                                                                                          |
+| --------------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | string        | Yes      | Unique identifier for the dataset item. Dataset items are upserted on their id. Id needs to be unique (project-level) and cannot be reused across datasets.          |
+| `datasetId`           | string        | Yes      | ID of the dataset this item belongs to                                                                                                                               |
+| `input`               | object        | No       | Input data for the dataset item                                                                                                                                      |
+| `expectedOutput`      | object        | No       | Expected output data for the dataset item                                                                                                                            |
+| `metadata`            | object        | No       | Additional metadata for the dataset item                                                                                                                             |
+| `mediaReferences`     | object[]      | No       | Resolved media references found in `input`, `expectedOutput`, and `metadata`. Included on SDK dataset fetches and API responses that include resolved dataset media. |
+| `sourceTraceId`       | string        | No       | ID of the source trace to link this dataset item to                                                                                                                  |
+| `sourceObservationId` | string        | No       | ID of the source observation to link this dataset item to                                                                                                            |
+| `status`              | DatasetStatus | No       | Status of the dataset item. Defaults to ACTIVE for newly created items. Possible values: `ACTIVE`, `ARCHIVED`                                                        |
+
+#### DatasetItemMediaReference object [#datasetitemmediareference-object]
+
+Dataset item media references point from a stored media token in `input`, `expectedOutput`, or `metadata` to a signed media download URL.
+
+| Attribute         | Type   | Required       | Description                                                                                                                                 |
+| ----------------- | ------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `field`           | string | Yes            | Field enum for the dataset item property containing the reference. One of `input`, `expected_output` (for `expectedOutput`), or `metadata`. |
+| `referenceString` | string | Yes            | Original Langfuse media reference string stored in the dataset item.                                                                        |
+| `jsonPath`        | string | Yes            | JSONPath of the string holding the reference inside the field, for example `$['image']`.                                                    |
+| `media`           | object | Yes (nullable) | Resolved media metadata. `null` if the referenced media does not exist or has not been uploaded successfully.                               |
+
+The nested `media` object contains `mediaId`, `contentType`, `contentLength`, `url`, and `urlExpiry`. The `url` is a signed download URL and should be used before its expiration date. To refresh the signed URL, refetch the dataset.
+
+### DatasetRun (Experiment Run) [#datasetrun-experiment-run]
+
+Dataset runs are used to run a dataset through your LLM application and optionally apply evaluation methods to the results. This is often referred to as Experiment run.
+
+<br />
+
+```mermaid
+classDiagram
+direction LR
+    class DatasetRun {
+        id
+        name
+        description
+        metadata
+        datasetId
+    }
+
+    DatasetRun "1" --> "n" DatasetRunItem
+
+    class DatasetRunItem {
+        id
+        datasetRunId
+        datasetItemId
+        traceId
+        observationId
+    }
+```
+
+#### DatasetRun object [#datasetrun-object]
+
+| Attribute     | Type   | Required | Description                             |
+| ------------- | ------ | -------- | --------------------------------------- |
+| `id`          | string | Yes      | Unique identifier for the dataset run   |
+| `name`        | string | Yes      | Name of the dataset run                 |
+| `description` | string | No       | Description of the dataset run          |
+| `metadata`    | object | No       | Additional metadata for the dataset run |
+| `datasetId`   | string | Yes      | ID of the dataset this run belongs to   |
+
+#### DatasetRunItem object [#datasetrunitem-object]
+
+| Attribute       | Type   | Required | Description                                |
+| --------------- | ------ | -------- | ------------------------------------------ |
+| `id`            | string | Yes      | Unique identifier for the dataset run item |
+| `datasetRunId`  | string | Yes      | ID of the dataset run this item belongs to |
+| `datasetItemId` | string | Yes      | ID of the dataset item to link to this run |
+| `traceId`       | string | Yes      | ID of the trace to link to this run        |
+| `observationId` | string | No       | ID of the observation to link to this run  |
+
+Langfuse currently assumes that experiments do not contain repetitions: each dataset item appears once per experiment. Accordingly, reads surface at most one experiment item per dataset item within an experiment. Repetition support is tracked in [#5855](https://github.com/langfuse/langfuse/issues/5855).
+
+Most of the time, we recommend that DatasetRunItems reference TraceIDs directly. The reference to ObservationID exists for backwards compatibility with older SDK versions.
+
+### End to End Data Relations [#end-to-end-data-relations]
+
+An experiment can combine a few Langfuse objects:
+
+- `DatasetRuns` (or Experiment runs) are created by looping through all or selected `DatasetItem`s of a `Dataset` with your LLM application.
+- For each `DatasetItem` passed into the LLM application as an Input a `DatasetRunItem` & a `Trace` are created.
+- Optionally `Score`s can be added to the `Trace`s to evaluate the output of the LLM application during the `DatasetRun`.
+
+<br />
+
+```mermaid
+classDiagram
+direction LR
+	namespace Datasets {
+        class Dataset {
+        }
+        class DatasetItem {
+        }
+    }
+    namespace DatasetRuns {
+        class DatasetRun {
+        }
+        class DatasetRunItem {
+        }
+    }
+    namespace Observability {
+        class Trace {
+        }
+        class Observation {
+        }
+        }
+    namespace Evals {
+        class Score {
+        }
+    }
+
+
+    class DatasetRun {
+    }
+
+    class DatasetRunItem {
+    }
+
+    class Dataset {
+    }
+
+    class DatasetItem {
+    }
+
+    class Trace {
+	    input
+	    output
+    }
+
+    class Observation {
+        input
+	    output
+    }
+
+    class Score {
+	    name
+	    value
+	    comment
+    }
+
+    Dataset "1" --> "n" DatasetItem
+    Dataset "1" --> "n" DatasetRun
+    DatasetRun "1" --> "n" DatasetRunItem
+    DatasetRunItem "1" --> "1" DatasetItem
+    Trace "1" --> "n" Observation
+    DatasetRunItem "1" --> "1" Trace
+    DatasetRunItem "1" --> "0..1" Observation
+    Observation "1" --> "n" Score
+    Trace "1" --> "n" Score
+```
+
+See the [Concepts page](/docs/evaluation/core-concepts) for more information on how these objects work together conceptually.
+See the [observability core concepts page](/docs/observability/data-model) for more details on traces and observations.
+See the [Scores data model](/docs/evaluation/scores/data-model) for more details on score and score config objects.
+
+## Function Definitions [#function-definitions]
+
+When running experiments via the SDK, you define **task** and **evaluator** functions. These are user-defined functions that the experiment runner calls for each dataset item. For more information on how experiments work conceptually, see the [Concepts page](/docs/evaluation/core-concepts).
+
+### Task [#task]
+
+A task is a function that takes a dataset item and returns an output during an experiment run.
+
+See SDK references for function signatures and parameters:
+
+- [Python SDK: `TaskFunction`](https://python.reference.langfuse.com/langfuse/experiment#TaskFunction)
+- [JS/TS SDK: `ExperimentTask`](https://js.reference.langfuse.com/types/_langfuse_client.ExperimentTask.html)
+
+### Evaluator [#evaluator]
+
+An evaluator is a function that scores the output of a task for a single dataset item. Evaluators receive the input, output, expected output, and metadata, and return an `Evaluation` object that becomes a Score in Langfuse.
+
+See SDK references for function signatures and parameters:
+
+- [Python SDK: `EvaluatorFunction`](https://python.reference.langfuse.com/langfuse/experiment#EvaluatorFunction)
+- [JS/TS SDK: `Evaluator`](https://js.reference.langfuse.com/types/_langfuse_client.Evaluator.html)
+
+### Run Evaluator [#run-evaluator]
+
+A run evaluator is a function that assesses the full experiment results and computes aggregate metrics. When run on Langfuse datasets, the resulting scores are attached to the dataset run.
+
+See SDK references for function signatures and parameters:
+
+- [Python SDK: `RunEvaluatorFunction`](https://python.reference.langfuse.com/langfuse/experiment#RunEvaluatorFunction)
+- [JS/TS SDK: `RunEvaluator`](https://js.reference.langfuse.com/types/_langfuse_client.RunEvaluator.html)
+
+For detailed usage examples of tasks and evaluators, see [Experiments via SDK](/docs/evaluation/experiments/experiments-via-sdk). For ingesting experiment traces without the SDK, see [Experiments via OpenTelemetry](/docs/evaluation/experiments/experiments-via-opentelemetry).
+
+## Local Datasets [#local-datasets]
+
+Currently, if an [Experiment via SDK](/docs/evaluation/experiments/experiments-via-sdk) is used to run experiments on local datasets, only traces are created in Langfuse - no dataset runs are generated. Each task execution creates an individual trace for observability and debugging.
+
+We have improvements on our roadmap to support similar functionality such as run overviews, comparison views, and more for experiments on local datasets as for Langfuse datasets.
+
+<!-- agent-instructions -->
+
+---
+
+## Agent Instructions
+
+This page is part of the [Langfuse](https://langfuse.com) documentation, published as plain Markdown for AI agents. Every page is available as Markdown by appending `.md` to its URL, or by sending an `Accept: text/markdown` header. This page: `https://langfuse.com/docs/evaluation/experiments/data-model.md`.
+
+### Querying these docs
+
+If the answer is not on this page, query the documentation instead of guessing:
+
+- **Semantic search** across all Langfuse docs, returning an answer with the relevant pages and excerpts. Ask a specific, self-contained question:
+
+  ```bash
+  curl -sG "https://langfuse.com/api/search-docs" --data-urlencode "query=How do I trace a LangGraph agent?"
+  ```
+
+- **Index of every page**: <https://langfuse.com/llms.txt>, with per-section indexes [llms-docs.txt](https://langfuse.com/llms-docs.txt), [llms-integrations.txt](https://langfuse.com/llms-integrations.txt), and [llms-self-hosting.txt](https://langfuse.com/llms-self-hosting.txt).
+
+### Before writing Langfuse code
+
+- **Install the [Langfuse Agent Skill](https://langfuse.com/docs/api-and-data-platform/features/agent-skill).** It encodes Langfuse's own best practices for instrumentation, prompt management, and evaluation, and materially improves results.
+- **Read [What does a good trace look like?](https://langfuse.com/docs/observability/best-practices.md)** before instrumenting an application.
+- **Verify endpoints, parameters, and response fields** against the [API reference](https://api.reference.langfuse.com) instead of inferring them from code examples.
+- **Use the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)** (`npx langfuse-cli api <resource> <action>`) to read or write traces, prompts, datasets, and scores from the terminal.
+
+Found an error in these docs? Please open an issue at <https://github.com/langfuse/langfuse-docs/issues>.
