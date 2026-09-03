@@ -8,7 +8,7 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     ssr: {
-      external: ['electron']
+      external: ['electron', 'better-sqlite3']
     },
     resolve: {
       alias: {

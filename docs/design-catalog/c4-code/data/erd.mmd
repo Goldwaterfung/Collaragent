@@ -21,6 +21,15 @@ erDiagram
     WORKSPACE_SNAPSHOT ||--|| INSTANCE_RESTORE_POINT : targets
     WORKSPACE_COMMAND_LOG ||--|| INSTANCE_LOG_POSITION : indexed_at
 
+    %% Physical SQLite V4 Persistence Schema
+    PROJECTS ||--o{ INSTANCES : owns
+    PROJECTS ||--o{ CHAT_SESSIONS : contains
+    CHAT_SESSIONS ||--o{ CHAT_MESSAGES : logs
+    CHAT_SESSIONS ||--o{ LARGE_TOOL_OUTPUTS : attaches
+    INSTANCES ||--o{ WORKSPACE_SNAPSHOTS : captures
+    INSTANCES ||--o{ WORKSPACE_COMMAND_LOGS : records
+    LANGGRAPH_CHECKPOINTS ||--o{ LANGGRAPH_WRITES : produces
+
     %% Entity Definitions
     GRAPH {
         GraphId id PK
@@ -102,4 +111,120 @@ erDiagram
         string source "ui | agent | sync"
         Command command
         Record previousState
+    }
+
+    %% Physical SQLite V4 Table Schemas
+    PROJECTS {
+        string id PK
+        string name
+        string metadata_json
+        integer created_at
+        integer updated_at
+    }
+
+    INSTANCES {
+        string id PK
+        string project_id FK
+        string type "document | canvas"
+        string name
+        blob content_msgpack "MessagePack binary"
+        string metadata_json
+        string created_at
+        string updated_at
+    }
+
+    CHAT_SESSIONS {
+        string id PK
+        string project_id FK
+        string title
+        integer created_at
+        integer updated_at
+    }
+
+    CHAT_MESSAGES {
+        string id PK
+        string session_id FK
+        string role "user | assistant | system"
+        string content
+        string tool_calls_json
+        string blocks_json
+        string actions_json
+        string usage_json
+        string metadata_json
+        integer timestamp
+    }
+
+    LANGGRAPH_CHECKPOINTS {
+        string thread_id PK
+        string checkpoint_ns PK
+        string checkpoint_id PK
+        string parent_checkpoint_id
+        string checkpoint_json
+        string metadata_json
+        integer created_at
+    }
+
+    LANGGRAPH_BLOBS {
+        string thread_id PK
+        string checkpoint_ns PK
+        string channel PK
+        string version PK
+        string type
+        blob data_blob "Serialized payload"
+        integer serialized
+    }
+
+    LANGGRAPH_WRITES {
+        string thread_id PK
+        string checkpoint_ns PK
+        string checkpoint_id PK
+        string task_id PK
+        integer idx PK
+        string channel
+        string type
+        string blob_json
+    }
+
+    LANGGRAPH_RESTORE_HEADS {
+        string thread_id PK
+        string checkpoint_ns PK
+        string checkpoint_id
+        integer updated_at
+    }
+
+    WORKSPACE_SNAPSHOTS {
+        string id PK
+        string instance_id FK
+        string project_id FK
+        string instance_type
+        string snapshot_ref UK
+        string snapshot_hash
+        string snapshot_cursor_json
+        blob snapshot_msgpack "Content-addressed binary"
+        string created_at
+    }
+
+    WORKSPACE_COMMAND_LOGS {
+        integer log_id PK
+        string instance_id FK
+        string command_id
+        string command_type
+        string payload_json
+        integer timestamp
+    }
+
+    FILE_REVISIONS {
+        string id PK
+        string name
+        string description
+        string snapshot_ref FK
+        string created_at
+    }
+
+    LARGE_TOOL_OUTPUTS {
+        string id PK
+        string session_id FK
+        blob content_blob "Evicted output"
+        integer byte_size
+        integer created_at
     }

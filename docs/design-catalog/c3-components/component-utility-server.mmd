@@ -6,33 +6,35 @@ flowchart TB
     classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
 
     subgraph UtilityProcessDaemon ["Storage Utility Process (Daemon)"]
-        ProcEntry["🚪 process.ts / ParentPort Handler<br/>[Component]<br/>Mounts .cagent archive, acquires lock, manages export lifecycle"]:::component
-        FSApi["🌐 Filesystem API (Express 5)<br/>[Component]<br/>REST controllers for instances, checkpoints, chat history, and projects"]:::component
-        CagentEngine["🗄️ CagentStorage Engine<br/>[Component]<br/>V3 sharded storage manager with atomic JSON writes and locking"]:::component
-        InstanceStore["📑 FolderInstanceContentStore<br/>[Component]<br/>Sharded instance content store (instances/<id>.json)"]:::component
-        FSSaver["💾 FileSystemSaver & FileCheckpointStore<br/>[Component]<br/>LangGraph BaseCheckpointSaver persisting tuples & blobs"]:::component
-        ArchiveMgr["📦 ArchiveManager<br/>[Component]<br/>ZIP compression/extraction (.cagent via yauzl & archiver)"]:::component
-        GC["🧹 BlobGarbageCollector<br/>[Component]<br/>Prunes orphaned checkpoint blobs and temporary files"]:::component
+        ProcEntry["🚪 process.ts / ParentPort Handler<br/>[Component]<br/>Sniffs format, runs migrations, manages <10ms WAL truncate lifecycle"]:::component
+        FSApi["🌐 Filesystem API (Express 5)<br/>[Component]<br/>Zod-validated REST router for instances, checkpoints, chat history & projects"]:::component
+        SqliteEngine["🗄️ SqliteStorageEngine<br/>[Component]<br/>IStorageEngine implementation: lazy MessagePack BLOBs, granular chat, snapshots"]:::component
+        CheckpointStore["⏱️ SqliteCheckpointStore<br/>[Component]<br/>ICheckpointStore: B-Tree point queries (<1.5ms), 3-turn writes pruning, ADR-006"]:::component
+        DbManager["💾 SqliteDatabase<br/>[Component]<br/>better-sqlite3 connection, WAL mode, PRAGMAs, migrations & transactions"]:::component
+        LockManager["🔒 ProjectLockManager<br/>[Component]<br/>Single-writer <path>.cagent.lock with dead PID auto-recovery"]:::component
+        MigrationEngine["📦 StorageMigrationEngine<br/>[Component]<br/>Non-destructive V2/V3 to V4 ETL pipeline with 5 integrity verification gates"]:::component
     end
 
     subgraph ExternalContainers ["Adjacent Containers"]
         MainHost["⚙️ Main Host Process"]:::external
         RendererUI["💻 Renderer Process (Chromium)"]:::external
-        ProjectDisk[("📦 .collar / .cagent Storage Files")]:::database
+        ProjectDb[("📦 Single-File SQLite Database (.cagent in WAL Mode)")]:::database
     end
 
-    MainHost -->|"ParentPort Messages (start, prepare-close, export)"| ProcEntry
+    MainHost -->|"ParentPort Messages (start, prepare-close)"| ProcEntry
     RendererUI -->|"REST HTTP Queries (:fsPort)"| FSApi
     
+    ProcEntry -->|"Acquires / Releases Lock"| LockManager
+    ProcEntry -->|"Executes ETL if V2/V3 detected"| MigrationEngine
     ProcEntry -->|"Initializes & Configures"| FSApi
-    ProcEntry -->|"Invokes ZIP archive pack/unpack"| ArchiveMgr
+    ProcEntry -->|"Flushes WAL & closes (<10ms)"| DbManager
     
-    FSApi -->|"Reads/Writes instances"| InstanceStore
-    FSApi -->|"Reads/Writes manifest, state & logs"| CagentEngine
-    FSApi -->|"Persists LangGraph execution tuples"| FSSaver
+    FSApi -->|"Delegates instance & chat persistence"| SqliteEngine
+    FSApi -->|"Delegates LangGraph checkpoints"| CheckpointStore
     
-    CagentEngine -->|"Atomic JSON/MsgPack I/O"| ProjectDisk
-    InstanceStore -->|"Atomic JSON I/O"| ProjectDisk
-    FSSaver -->|"Persists checkpoint blobs"| ProjectDisk
-    ArchiveMgr -->|"Packs/Unpacks ZIP"| ProjectDisk
-    GC -->|"Scans & Cleans"| ProjectDisk
+    MigrationEngine -->|"Migrates into staging DB"| DbManager
+    SqliteEngine -->|"Executes SQL queries & BLOB packs"| DbManager
+    CheckpointStore -->|"Executes indexed queries & writes"| DbManager
+    
+    DbManager -->|"better-sqlite3 WAL read/write transactions"| ProjectDb
+    LockManager -->|"Creates / removes .lock file"| ProjectDb

@@ -6,7 +6,7 @@ sequenceDiagram
     participant Main as ⚙️ Main Host (CheckpointOrchestrator)
     participant Registry as ⏱️ AgentCheckpointRegistry
     participant Server as 🗄️ Storage Utility Process
-    participant Storage as 📦 CagentStorage Engine
+    participant Storage as 📦 SqliteStorageEngine
 
     User->>UI: Clicks "Restore to this point" on CheckpointMarker
     UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId })

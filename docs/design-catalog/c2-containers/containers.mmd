@@ -18,11 +18,11 @@ flowchart TB
         
         WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server for editor diffs and canvas commands"]:::container
         
-        UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, ZIP archiver, and CagentStorage engine"]:::container
+        UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, SqliteStorageEngine, and SqliteCheckpointStore"]:::container
 
         LocalVault[("🔐 Secure Storage Vault<br/>[Host: OS Keychain / DPAPI / Secret Service]<br/>Stores encrypted LLM and Tavily API keys (~/.collaragent/secrets.json)")]:::database
         
-        ProjectStore[("📦 Sharded Project Storage (.collar / .cagent)<br/>[Container: FileSystem + MessagePack]<br/>Stores manifest.json, state.json, instances/*.json, and snapshots/*.msgpack")]:::database
+        ProjectStore[("📦 Embedded SQLite Database (.cagent in WAL Mode)<br/>[Container: better-sqlite3 + MessagePack]<br/>Stores relational schema, instance BLOBs, indexed checkpoints, and chat history")]:::database
     end
 
     ExternalLLM["🧠 LLM Cloud APIs<br/>[External: OpenAI / Anthropic / Gemini / Ollama]"]:::external
@@ -40,4 +40,4 @@ flowchart TB
     MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
     MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP
     
-    UtilityServer -->|"Reads / writes atomic JSON & MessagePack blobs [POSIX FS]"| ProjectStore
+    UtilityServer -->|"Executes atomic transactions & B-Tree indexed queries [better-sqlite3]"| ProjectStore

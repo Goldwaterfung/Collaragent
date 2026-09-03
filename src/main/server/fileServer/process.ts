@@ -1,154 +1,196 @@
-import { startFilesystemApi, type FilesystemApiHandle } from './filesystemAPI'
-import { ArchiveManager } from './ArchiveManager'
+/**
+ * process.ts: UtilityProcess Entry Point for CollarAgent V4 Embedded Storage Architecture
+ * Conforms to docs/sqlite-storage-architecture/spec.md (Section 6.1, Task 5.2)
+ * and .agents/rules/coding-rules.md (Zero any, no hardcoded constants, cause preservation).
+ */
+
 import fs from 'node:fs'
-import path from 'node:path'
-import { ImportCagentArchive } from './ImportCagentArchive'
+import { startFilesystemApi, type FilesystemApiHandle } from './filesystemAPI'
+import { StorageMigrationEngine } from './StorageMigrationEngine'
 
-let handle: FilesystemApiHandle | null = null
-const archiveManager = new ArchiveManager()
-let workingDirectory: string | null = null
-let openFilePath: string | null = null
-let sourceArchivePath: string | null = null
-let isArchiveBacked = false
+export interface ProcessMessage {
+  type: string
+  payload?: Record<string, unknown>
+}
 
-process.parentPort.on('message', async (e) => {
-  const { type, payload } = e.data
+export interface ProcessContext {
+  postMessage: (msg: unknown) => void
+  exit?: (code?: number) => void
+}
 
-  if (type === 'start') {
-    const { filePath } = payload
-    try {
-      // Calculate adjacent .collar directory
-      isArchiveBacked = filePath.endsWith('.cagent')
-      sourceArchivePath = isArchiveBacked ? filePath : null
-      const targetDir = isArchiveBacked 
-          ? path.join(path.dirname(filePath), path.basename(filePath, '.cagent') + '.collar')
-        : filePath
+export class UtilityProcessController {
+  private handle: FilesystemApiHandle | null = null
+  private openFilePath: string | null = null
+  private readonly migrationEngine: StorageMigrationEngine
 
-      openFilePath = isArchiveBacked ? targetDir : filePath // Future exports can target the cagent, but the active workspace is the folder
-      const lockFilePath = `${openFilePath}.lock`
-      
-      if (fs.existsSync(lockFilePath)) {
-        console.warn(`[WARNING] Lock file exists at ${lockFilePath}. Another instance may be modifying this archive.`)
+  constructor(migrationEngine?: StorageMigrationEngine) {
+    this.migrationEngine = migrationEngine ?? new StorageMigrationEngine()
+  }
+
+  public get apiHandle(): FilesystemApiHandle | null {
+    return this.handle
+  }
+
+  public get currentFilePath(): string | null {
+    return this.openFilePath
+  }
+
+  public async handleMessage(message: ProcessMessage, context: ProcessContext): Promise<void> {
+    const { type, payload } = message
+
+    if (type === 'start') {
+      const filePath = typeof payload?.filePath === 'string' ? payload.filePath : null
+      if (!filePath) {
+        context.postMessage({
+          type: 'error',
+          payload: { message: 'Missing filePath in start payload' }
+        })
+        return
       }
-      await fs.promises.writeFile(lockFilePath, JSON.stringify({ pid: process.pid, time: Date.now() })).catch(console.error)
 
-      // Reuse an existing live folder when present so unsaved archive changes survive app restarts.
-      if (isArchiveBacked) {
-        const hasLiveWorkspace = fs.existsSync(path.join(targetDir, 'manifest.json')) || fs.existsSync(path.join(targetDir, 'state.json'))
-        workingDirectory = hasLiveWorkspace ? targetDir : await archiveManager.mount(filePath, targetDir)
-      } else {
-        workingDirectory = filePath
-      }
-      
-      if (!workingDirectory) throw new Error("working directory resolution failed")
-      
-      const manifestPath = path.join(workingDirectory, "manifest.json")
-      if (!fs.existsSync(manifestPath) && fs.existsSync(path.join(workingDirectory, "cagent.json"))) {
-         console.log("[Migration] Legacy cagent.json detected. Running ImportCagentArchive migrator...")
-         const migrator = new ImportCagentArchive()
-         const report = await migrator.migrate(workingDirectory)
-           if (!report.success) {
-           console.error("Migration failed:", report.errors)
-           } else {
-           console.log("Migration successful! Artifacts migrated:", report.artifactsMigrated)
-           }
-      }
-      
-      handle = await startFilesystemApi({ 
-          filePath, 
-          workingDirectory,
+      try {
+        this.openFilePath = filePath
+
+        // Perform automated V2/V3 to V4 migration if existing archive is detected
+        if (fs.existsSync(filePath)) {
+          const format = this.migrationEngine.detectFormat(filePath)
+          if (format === 'legacy_zip') {
+            console.log(`[process] Legacy archive format detected. Executing V4 migration...`)
+            const migrationResult = await this.migrationEngine.executeMigration(filePath)
+            if (!migrationResult.success) {
+              const errorDetails = migrationResult.errors?.join('; ') || 'Unknown migration error'
+              throw new Error(`Storage migration failed: ${errorDetails}`)
+            }
+            console.log(
+              `[process] V4 migration completed successfully in ${migrationResult.durationMs}ms`
+            )
+          }
+        }
+
+        // Initialize V4 storage and loopback Express server
+        this.handle = await startFilesystemApi({
+          filePath,
           port: 0
-      })
-      
-      process.parentPort.postMessage({ type: 'ready', payload: { port: handle.port } })
+        })
 
-      // Forward rename events
-      handle.storage.on('renamed', (event) => {
-        process.parentPort.postMessage({ type: 'renamed', payload: event })
-      })
-    } catch (err: any) {
-      console.error('Failed to start filesystem API:', err)
-      process.parentPort.postMessage({ type: 'error', payload: { message: err.message } })
-    }
+        context.postMessage({
+          type: 'ready',
+          payload: { port: this.handle.port }
+        })
+
+        // Forward storage rename events to parent process
+        if (typeof this.handle.storage.on === 'function') {
+          this.handle.storage.on('renamed', (event: unknown) => {
+            context.postMessage({ type: 'renamed', payload: event })
+          })
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[process] Failed to start filesystem API:', message)
+        context.postMessage({ type: 'error', payload: { message } })
+      }
     } else if (type === 'get-close-state') {
-      if (!handle) {
-        process.parentPort.postMessage({
+      if (!this.handle) {
+        context.postMessage({
           type: 'close-state-ready',
           payload: {
-            sourceArchivePath,
+            sourceArchivePath: this.openFilePath,
             isUpdated: false,
             lastExportedAt: null,
-            liveWorkspacePath: workingDirectory,
-            isArchiveBacked,
+            liveWorkspacePath: null,
+            isArchiveBacked: true
           }
         })
         return
       }
 
-      process.parentPort.postMessage({
+      context.postMessage({
         type: 'close-state-ready',
-        payload: handle.storage.getCloseState(),
+        payload: this.handle.storage.getCloseState()
       })
     } else if (type === 'prepare-close') {
-      const saveToArchive = payload?.saveToArchive === true
-
       try {
-        if (handle) {
-          await handle.storage.flushPendingSaves()
-
-          if (saveToArchive) {
-            if (!sourceArchivePath || !workingDirectory) {
-              throw new Error('No source archive available for save-on-close')
-            }
-            await archiveManager.commit(workingDirectory, sourceArchivePath)
-          }
-
-          if (workingDirectory && openFilePath) {
-            const lockFilePath = `${openFilePath}.lock`
-            if (fs.existsSync(lockFilePath)) {
-              await fs.promises.rm(lockFilePath, { force: true }).catch(console.error)
-            }
-          }
-
-          await handle.close()
-          handle = null
+        if (this.handle) {
+          // V4 <10ms teardown budget: WAL checkpoint truncate and lock release
+          await this.handle.storage.prepareClose()
+          await this.handle.close()
+          this.handle = null
         }
 
-        process.parentPort.postMessage({ type: 'close-prepared', payload: { success: true } })
-      } catch (err: any) {
-        console.error('Failed to prepare close in process:', err)
-        process.parentPort.postMessage({ type: 'close-prepared', payload: { success: false, error: err.message } })
+        context.postMessage({ type: 'close-prepared', payload: { success: true } })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[process] Failed to prepare close:', message)
+        context.postMessage({
+          type: 'close-prepared',
+          payload: { success: false, error: message }
+        })
       }
-  } else if (type === 'set-ws-port') {
-    const { port } = payload
-    if (handle) {
-      handle.setWsPort(port)
-    }
-  } else if (type === 'close') {
-      if (handle) {
-          if (workingDirectory && openFilePath) {
-          const lockFilePath = `${openFilePath}.lock`
-              if (fs.existsSync(lockFilePath)) {
-            await fs.promises.rm(lockFilePath, { force: true }).catch(console.error)
-              }
-          }
-          await handle.close()
-          handle = null
+    } else if (type === 'set-ws-port') {
+      const wsPort = typeof payload?.port === 'number' ? payload.port : 0
+      if (this.handle && wsPort > 0) {
+        this.handle.setWsPort(wsPort)
       }
-      workingDirectory = null
-      process.exit(0)
-  } else if (type === 'export') {
-    const { targetPath } = payload
-    try {
-        if (!workingDirectory) throw new Error("No active working directory to export")
-      if (!handle) throw new Error("No active filesystem handle to export")
-      await handle.storage.flushPendingSaves()
-        await archiveManager.commit(workingDirectory, targetPath)
-      await handle.storage.markArchiveExported(targetPath)
-        process.parentPort.postMessage({ type: 'export-ready', payload: { success: true } })
-    } catch (err: any) {
-        console.error('Export failed in process:', err)
-        process.parentPort.postMessage({ type: 'export-ready', payload: { success: false, error: err.message } })
+    } else if (type === 'export') {
+      const targetPath = typeof payload?.targetPath === 'string' ? payload.targetPath : null
+      try {
+        if (!this.handle) {
+          throw new Error('No active filesystem handle to export')
+        }
+        if (!targetPath) {
+          throw new Error('Missing targetPath for export')
+        }
+
+        await this.handle.storage.flushPendingSaves()
+
+        if (
+          this.openFilePath &&
+          targetPath !== this.openFilePath &&
+          fs.existsSync(this.openFilePath)
+        ) {
+          await fs.promises.copyFile(this.openFilePath, targetPath)
+        }
+
+        await this.handle.storage.markArchiveExported(targetPath)
+        context.postMessage({ type: 'export-ready', payload: { success: true } })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[process] Export failed:', message)
+        context.postMessage({
+          type: 'export-ready',
+          payload: { success: false, error: message }
+        })
+      }
+    } else if (type === 'close') {
+      if (this.handle) {
+        await this.handle.close()
+        this.handle = null
+      }
+      this.openFilePath = null
+      if (context.exit) {
+        context.exit(0)
+      }
     }
   }
-})
+}
+
+// Global Controller Instance
+export const globalProcessController = new UtilityProcessController()
+
+// Wire to Electron UtilityProcess parentPort if available
+declare const process: NodeJS.Process & {
+  parentPort?: {
+    on(event: 'message', listener: (e: { data: ProcessMessage }) => void): void
+    postMessage(message: unknown): void
+  }
+}
+
+if (typeof process.parentPort !== 'undefined' && process.parentPort !== null) {
+  const parentPort = process.parentPort
+  parentPort.on('message', async (e: { data: ProcessMessage }) => {
+    await globalProcessController.handleMessage(e.data, {
+      postMessage: (msg: unknown) => parentPort.postMessage(msg),
+      exit: (code?: number) => process.exit(code)
+    })
+  })
+}

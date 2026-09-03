@@ -11,13 +11,13 @@ flowchart TB
         CollarAgentApp["🏢 CollarAgent<br/>[Software System]<br/>Local-first desktop agent environment providing interactive canvas, rich text editor, multi-agent orchestration, and project time-travel"]:::system
     end
 
-    LocalFS["💾 Local Filesystem<br/>[Host OS]<br/>Stores .cagent archives, .collar live state, skills, and configuration vaults"]:::external
+    LocalFS["💾 Local Filesystem<br/>[Host OS]<br/>Stores .cagent SQLite databases (WAL mode), locks, skills, and configuration vaults"]:::external
     LLMProviders["🧠 LLM Cloud Providers<br/>[External Systems: OpenAI, Anthropic, Google, Ollama]<br/>Executes generative completions, reasoning traces, and function calling"]:::external
     MCPServers["🔌 Model Context Protocol (MCP) Servers<br/>[External Processes / Remote Servers]<br/>Provides external tools, filesystem access, and domain integrations via STDIO/SSE"]:::external
     SearchGateway["🌐 Web Search Gateway<br/>[External API: Tavily]<br/>Performs live internet queries and web intelligence gathering"]:::external
 
     User -->|"Interacts via UI, Canvas, Editor, and Chat [Desktop GUI]"| CollarAgentApp
-    CollarAgentApp -->|"Reads & writes local archives, skills, and encrypted keys [POSIX FS]"| LocalFS
+    CollarAgentApp -->|"Reads & writes local SQLite databases, skills, and encrypted keys [POSIX FS]"| LocalFS
     CollarAgentApp -->|"Dispatches prompts & receives streaming completions [HTTPS / REST]"| LLMProviders
     CollarAgentApp -->|"Discovers & executes external tool schemas [STDIO / SSE / JSON-RPC]"| MCPServers
     CollarAgentApp -->|"Fetches real-time web search results [HTTPS / REST]"| SearchGateway
