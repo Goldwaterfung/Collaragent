@@ -23,6 +23,7 @@ build/installer.nsh
 .collar/
 *.cagent.lock
 *.lock.json
+skills-lock.json
 
 # TypeScript incremental build cache
 *.tsbuildinfo
