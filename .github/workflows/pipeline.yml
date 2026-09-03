@@ -75,7 +75,7 @@ jobs:
         include:
           - os: macos-latest
             build_cmd: yarn build:mac
-          - os: windows-latest
+          - os: windows-2022
             build_cmd: yarn build:win
           - os: ubuntu-latest
             build_cmd: yarn build:linux
