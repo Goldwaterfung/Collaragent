@@ -23,6 +23,7 @@
     "build:unpack": "electron-vite build && electron-builder --dir",
     "build:win": "electron-vite build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
+    "build:linux": "electron-vite build && electron-builder --linux",
     "build:backend": "node scripts/build-backend.mjs",
     "eval:live": "node scripts/run-eval.mjs",
     "eval:traces": "node scripts/run-eval.mjs --traces",

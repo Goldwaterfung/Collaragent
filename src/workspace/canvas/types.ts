@@ -66,6 +66,7 @@ export interface CanvasUiState {
   interaction: {
     connect: ConnectSessionState
   }
+  expandedNodeIds: Record<string, boolean>
 }
 
 export type CanvasHistorySnapshot = CanvasSnapshot
@@ -100,6 +101,8 @@ export type CanvasAction =
   | { type: 'SELECT_RELATIONSHIP'; payload: { id: RelationshipId; multi: boolean } }
   | { type: 'SET_SELECTION'; payload: { nodeIds: NodeId[]; relationshipIds?: RelationshipId[] } }
   | { type: 'DESELECT_ALL' }
+  | { type: 'TOGGLE_EXPAND_NODE'; payload: { nodeId: string } }
+  | { type: 'SET_NODE_EXPANDED'; payload: { nodeId: string; expanded: boolean } }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'COMMAND'; payload: CanvasCommand }

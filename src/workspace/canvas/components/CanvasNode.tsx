@@ -7,9 +7,11 @@ import { NodeHeader } from './NodeHeader'
 import { ResizeHandle } from './ResizeHandle'
 import { PortContainer } from './PortContainer'
 import { createCardinalPorts, type CardinalDirection } from '@workspace/canvas/domain/portUtils'
-import { NODE_HEADER_HEIGHT } from './nodeLayout'
+import { calculateHeaderHeight, NODE_HEADER_MAX_HEIGHT } from './nodeLayout'
 import type { NodeEntity, PortEntity } from '@workspace/canvas/domain/types'
 import { instanceService } from '@shared/services/InstanceService'
+import { MIN_NODE_EXPANDED_HEIGHT, MAX_NODE_EXPANDED_HEIGHT } from '@shared/constants'
+import { computeVerticalPushDown } from '@workspace/canvas/domain'
 
 /**
  * Props for a single canvas node component.
@@ -23,13 +25,11 @@ interface CanvasNodeProps {
   children: React.ReactNode
 }
 
-const expandedByNodeId = new Map<string, boolean>()
-
 export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }) => {
-  const [isExpanded, setIsExpanded] = useState(false)
   const { dispatch, dispatchCommand, dispatchTransaction, state } = useCanvas()
+  const isExpanded = !!state.ui.expandedNodeIds[node.id]
   const [isDragging, setIsDragging] = useState(false)
-  const [resizeHandle, setResizeHandle] = useState<string | null>(null)
+  const [resizeHandle, setResizeHandle] = useState<'s' | null>(null)
   const lastMousePos = useRef<{ x: number; y: number } | null>(null)
   const stateRef = useRef(state)
   stateRef.current = state
@@ -37,6 +37,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
   layoutRef.current = layout
   const hasDraggedRef = useRef<boolean>(false)
   const wasSelectedOnMouseDownRef = useRef<boolean>(false)
+  const initialResizeHeightRef = useRef<number>(layout.height)
 
   const isSelected = state.ui.selection.nodeIds.includes(node.id)
 
@@ -46,25 +47,32 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
   const [localName, setLocalName] = useState(displayName)
 
   const headerWidth = layout.width
+  const headerHeight = calculateHeaderHeight(localName, headerWidth)
+  const visibleHeight = isExpanded ? headerHeight + layout.height : headerHeight
 
   const headerPorts = React.useMemo(
-    () => createCardinalPorts(node.id, headerWidth, NODE_HEADER_HEIGHT),
-    [node.id, headerWidth]
+    () => createCardinalPorts(node.id, headerWidth, visibleHeight),
+    [node.id, headerWidth, visibleHeight]
   )
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    const newHeight = Math.min(textarea.scrollHeight, NODE_HEADER_MAX_HEIGHT)
+    textarea.style.height = `${newHeight}px`
+  }
+
+  useEffect(() => {
+    adjustTextareaHeight()
+  }, [localName, headerWidth])
 
   // Sync local state when external data changes
   useEffect(() => {
     setLocalName(displayName)
   }, [displayName])
-
-  useEffect(() => {
-    const stored = expandedByNodeId.get(node.id)
-    setIsExpanded(stored ?? false)
-  }, [node.id])
-
-  useEffect(() => {
-    expandedByNodeId.set(node.id, isExpanded)
-  }, [node.id, isExpanded])
 
   const commitNameUpdate = async () => {
     if (localName !== displayName) {
@@ -78,15 +86,25 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
     }
   }
 
-  const handleInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation() // Prevent canvas pan, zoom, and delete hotkeys
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
       commitNameUpdate()
-      ;(e.target as HTMLInputElement).blur()
+      ;(e.target as HTMLTextAreaElement).blur()
+      return
     }
-    e.stopPropagation() // Prevent other canvas hotkeys
+
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setLocalName(displayName)
+      ;(e.target as HTMLTextAreaElement).blur()
+      return
+    }
   }
 
-  const handleInputMouseDown = (e: React.MouseEvent) => {
+  const handleTextareaMouseDown = (e: React.MouseEvent<HTMLTextAreaElement>) => {
     e.stopPropagation() // Allow text selection, prevent node drag
   }
 
@@ -95,7 +113,24 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
   }
 
   const handleToggleClick = () => {
-    setIsExpanded((prev) => !prev)
+    if (!isExpanded) {
+      const targetVisibleHeight = headerHeight + layout.height
+      const shifts = computeVerticalPushDown(
+        node.id,
+        targetVisibleHeight,
+        state.layout.layoutByNodeId,
+        state.domain.graph.nodesById,
+        state.ui.expandedNodeIds
+      )
+      if (shifts.length > 0) {
+        const moveCommands: CanvasCommand[] = shifts.map((s) => ({
+          type: 'MoveNode',
+          payload: { nodeId: s.nodeId, x: s.x, y: s.y }
+        }))
+        dispatchTransaction(moveCommands)
+      }
+    }
+    dispatch({ type: 'TOGGLE_EXPAND_NODE', payload: { nodeId: node.id } })
   }
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -118,11 +153,12 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
     lastMousePos.current = { x: e.clientX, y: e.clientY }
   }
 
-  const handleResizeStart = (e: React.MouseEvent, handle: string) => {
+  const handleResizeStart = (e: React.MouseEvent, handle: 's') => {
     e.stopPropagation()
     e.preventDefault()
     if (e.button !== 0) return
 
+    initialResizeHeightRef.current = layoutRef.current.height
     setResizeHandle(handle)
     lastMousePos.current = { x: e.clientX, y: e.clientY }
   }
@@ -218,25 +254,14 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
         }
       } else if (resizeHandle) {
         const currentLayout = layoutRef.current
-        let newWidth = currentLayout.width
-        let newHeight = currentLayout.height
-        let newX = currentLayout.x
-        let newY = currentLayout.y
+        const newWidth = currentLayout.width
+        const newX = currentLayout.x
+        const newY = currentLayout.y
 
-        if (resizeHandle.includes('e')) newWidth += dx
-        if (resizeHandle.includes('s')) newHeight += dy
-        if (resizeHandle.includes('w')) {
-          newWidth -= dx
-          newX += dx
-        }
-        if (resizeHandle.includes('n')) {
-          newHeight -= dy
-          newY += dy
-        }
-
-        // Min dimensions
-        if (newWidth < 180) newWidth = 180
-        if (newHeight < 120) newHeight = 120
+        const newHeight = Math.min(
+          MAX_NODE_EXPANDED_HEIGHT,
+          Math.max(MIN_NODE_EXPANDED_HEIGHT, currentLayout.height + dy)
+        )
 
         dispatchCommand({
           type: 'ResizeNode',
@@ -263,6 +288,29 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
         ) {
           dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: false } })
         }
+      } else if (resizeHandle) {
+        const currentState = stateRef.current
+        const currentLayout = currentState.layout.layoutByNodeId[node.id] ?? layoutRef.current
+        if (currentLayout.height !== initialResizeHeightRef.current) {
+          const currentHeaderHeight = calculateHeaderHeight(localName, currentLayout.width)
+          const visibleHeight = isExpanded
+            ? currentHeaderHeight + currentLayout.height
+            : currentHeaderHeight
+          const shifts = computeVerticalPushDown(
+            node.id,
+            visibleHeight,
+            currentState.layout.layoutByNodeId,
+            currentState.domain.graph.nodesById,
+            currentState.ui.expandedNodeIds
+          )
+          if (shifts.length > 0) {
+            const moveCommands: CanvasCommand[] = shifts.map((s) => ({
+              type: 'MoveNode',
+              payload: { nodeId: s.nodeId, x: s.x, y: s.y }
+            }))
+            dispatchTransaction(moveCommands)
+          }
+        }
       }
       setIsDragging(false)
       setResizeHandle(null)
@@ -283,6 +331,8 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
     resizeHandle,
     node.id,
     isSelected,
+    isExpanded,
+    localName,
     dispatch,
     dispatchCommand,
     dispatchTransaction
@@ -296,7 +346,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
       x={layout.x}
       y={layout.y}
       width={headerWidth}
-      height={NODE_HEADER_HEIGHT}
+      height={visibleHeight}
       ports={headerPorts}
       onPortDragStart={handlePortDragStart}
       data-canvas-node="true"
@@ -315,7 +365,8 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
         >
           <NodeHeader
             selected={isSelected}
-            className="flex items-center justify-between px-3 gap-2"
+            style={{ minHeight: headerHeight, height: isExpanded ? headerHeight : '100%' }}
+            className={`flex items-center justify-between px-3 gap-2 ${isExpanded ? 'shrink-0' : 'h-full'}`}
           >
             <button
               type="button"
@@ -344,69 +395,61 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
               </svg>
             </button>
 
-            <div className="flex-1 min-w-0">
-              <input
+            <div className="flex-1 min-w-0 flex items-center justify-center">
+              <textarea
+                ref={textareaRef}
                 value={localName}
                 onChange={(e) => setLocalName(e.target.value)}
                 onBlur={commitNameUpdate}
-                onKeyDown={handleInputKeyDown}
-                onMouseDown={handleInputMouseDown}
-                className="w-full bg-transparent font-semibold text-lg text-neutral-800 dark:text-neutral-100 text-center truncate outline-none focus:ring-1 focus:ring-blue-400/50 rounded px-1 transition-all"
+                onKeyDown={handleTextareaKeyDown}
+                onMouseDown={handleTextareaMouseDown}
+                rows={1}
+                className="w-full bg-transparent font-semibold text-base text-neutral-800 dark:text-neutral-100 text-center resize-none outline-none focus:ring-1 focus:ring-blue-400/50 rounded px-1 leading-snug break-words overflow-y-auto"
                 style={{
                   cursor: isSelected ? 'text' : 'grab',
-                  pointerEvents: isSelected ? 'auto' : 'none'
+                  pointerEvents: isSelected ? 'auto' : 'none',
+                  maxHeight: `${NODE_HEADER_MAX_HEIGHT}px`
                 }}
               />
             </div>
 
             <div className="w-5 shrink-0" />
           </NodeHeader>
-        </NodeFrame>
 
-        {isExpanded && (
-          <div
-            style={{
-              position: 'absolute',
-              top: NODE_HEADER_HEIGHT,
-              left: 0,
-              width: layout.width,
-              height: layout.height,
-              zIndex: 40,
-              pointerEvents: 'auto'
-            }}
-            className="rounded-b-xl border-x border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-xl overflow-hidden"
-            onMouseDown={(e) => {
-              e.stopPropagation()
-              if (e.button !== 0) return
-              if (!isSelected) {
-                dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: e.shiftKey } })
-              }
-            }}
-          >
+          {isExpanded && (
             <div
               style={{
+                flex: 1,
+                minHeight: 0,
                 width: '100%',
-                height: '100%',
+                position: 'relative',
                 pointerEvents: 'auto'
               }}
+              className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden flex flex-col"
+              onMouseDown={(e) => {
+                e.stopPropagation()
+                if (e.button !== 0) return
+                if (!isSelected) {
+                  dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: e.shiftKey } })
+                }
+              }}
             >
-              {children}
-            </div>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'auto'
+                }}
+              >
+                {children}
+              </div>
 
-            {(isSelected || isHovered) && (
-              <>
-                <ResizeHandle position="n" onMouseDown={(e) => handleResizeStart(e, 'n')} />
-                <ResizeHandle position="e" onMouseDown={(e) => handleResizeStart(e, 'e')} />
+              {(isSelected || isHovered) && (
                 <ResizeHandle position="s" onMouseDown={(e) => handleResizeStart(e, 's')} />
-                <ResizeHandle position="w" onMouseDown={(e) => handleResizeStart(e, 'w')} />
-                <ResizeHandle position="se" onMouseDown={(e) => handleResizeStart(e, 'se')} />
-                <ResizeHandle position="sw" onMouseDown={(e) => handleResizeStart(e, 'sw')} />
-                <ResizeHandle position="ne" onMouseDown={(e) => handleResizeStart(e, 'ne')} />
-                <ResizeHandle position="nw" onMouseDown={(e) => handleResizeStart(e, 'nw')} />
-              </>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </NodeFrame>
       </div>
     </PortContainer>
   )

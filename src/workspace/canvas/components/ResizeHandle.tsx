@@ -1,112 +1,133 @@
-import React from 'react';
+import React from 'react'
 
-type ResizePosition = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+type ResizePosition = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 interface ResizeHandleProps extends React.HTMLAttributes<HTMLDivElement> {
-    position: ResizePosition;
-    thickness?: number;
-    length?: number | string;
+  position: ResizePosition
+  thickness?: number
+  length?: number | string
 }
 
+const DEFAULT_HANDLE_THICKNESS = 8
+const CORNER_HANDLE_SIZE = 10
+const DEFAULT_HANDLE_LENGTH = '100%'
+
 export const ResizeHandle: React.FC<ResizeHandleProps> = ({
-    position,
-    thickness = 8,
-    length = '100%',
-    style,
-    ...props
+  position,
+  thickness = DEFAULT_HANDLE_THICKNESS,
+  length = DEFAULT_HANDLE_LENGTH,
+  style,
+  className,
+  children,
+  ...props
 }) => {
-    const isCorner = ['se', 'sw', 'ne', 'nw'].includes(position);
-    const cornerSize = 10;
+  const isCorner = ['se', 'sw', 'ne', 'nw'].includes(position)
+  const cornerSize = CORNER_HANDLE_SIZE
 
-    const getStyle = (): React.CSSProperties => {
-        const base: React.CSSProperties = {
-            position: 'absolute',
-            zIndex: isCorner ? 20 : 15,
-        };
+  const getStyle = (): React.CSSProperties => {
+    const base: React.CSSProperties = {
+      position: 'absolute',
+      zIndex: isCorner ? 20 : 15
+    }
 
-        switch (position) {
-            case 'e':
-                return {
-                    ...base,
-                    top: 0,
-                    right: -thickness / 2,
-                    width: thickness,
-                    height: length,
-                    cursor: 'ew-resize',
-                };
-            case 'w':
-                return {
-                    ...base,
-                    top: 0,
-                    left: -thickness / 2,
-                    width: thickness,
-                    height: length,
-                    cursor: 'ew-resize',
-                };
-            case 's':
-                return {
-                    ...base,
-                    bottom: -thickness / 2,
-                    left: 0,
-                    width: length,
-                    height: thickness,
-                    cursor: 'ns-resize',
-                };
-            case 'n':
-                return {
-                    ...base,
-                    top: -thickness / 2,
-                    left: 0,
-                    width: length,
-                    height: thickness,
-                    cursor: 'ns-resize',
-                };
-            case 'se':
-                return {
-                    ...base,
-                    bottom: -cornerSize / 2,
-                    right: -cornerSize / 2,
-                    width: cornerSize,
-                    height: cornerSize,
-                    cursor: 'nwse-resize',
-                };
-            case 'sw':
-                return {
-                    ...base,
-                    bottom: -cornerSize / 2,
-                    left: -cornerSize / 2,
-                    width: cornerSize,
-                    height: cornerSize,
-                    cursor: 'nesw-resize',
-                };
-            case 'ne':
-                return {
-                    ...base,
-                    top: -cornerSize / 2,
-                    right: -cornerSize / 2,
-                    width: cornerSize,
-                    height: cornerSize,
-                    cursor: 'nesw-resize',
-                };
-            case 'nw':
-                return {
-                    ...base,
-                    top: -cornerSize / 2,
-                    left: -cornerSize / 2,
-                    width: cornerSize,
-                    height: cornerSize,
-                    cursor: 'nwse-resize',
-                };
-            default:
-                return base;
+    switch (position) {
+      case 'e':
+        return {
+          ...base,
+          top: 0,
+          right: -thickness / 2,
+          width: thickness,
+          height: length,
+          cursor: 'ew-resize'
         }
-    };
+      case 'w':
+        return {
+          ...base,
+          top: 0,
+          left: -thickness / 2,
+          width: thickness,
+          height: length,
+          cursor: 'ew-resize'
+        }
+      case 's':
+        return {
+          ...base,
+          bottom: -thickness / 2,
+          left: 0,
+          width: length,
+          height: thickness,
+          cursor: 'ns-resize'
+        }
+      case 'n':
+        return {
+          ...base,
+          top: -thickness / 2,
+          left: 0,
+          width: length,
+          height: thickness,
+          cursor: 'ns-resize'
+        }
+      case 'se':
+        return {
+          ...base,
+          bottom: -cornerSize / 2,
+          right: -cornerSize / 2,
+          width: cornerSize,
+          height: cornerSize,
+          cursor: 'nwse-resize'
+        }
+      case 'sw':
+        return {
+          ...base,
+          bottom: -cornerSize / 2,
+          left: -cornerSize / 2,
+          width: cornerSize,
+          height: cornerSize,
+          cursor: 'nesw-resize'
+        }
+      case 'ne':
+        return {
+          ...base,
+          top: -cornerSize / 2,
+          right: -cornerSize / 2,
+          width: cornerSize,
+          height: cornerSize,
+          cursor: 'nesw-resize'
+        }
+      case 'nw':
+        return {
+          ...base,
+          top: -cornerSize / 2,
+          left: -cornerSize / 2,
+          width: cornerSize,
+          height: cornerSize,
+          cursor: 'nwse-resize'
+        }
+      default:
+        return base
+    }
+  }
 
-    return (
+  const isSouthHandle = position === 's'
+  const baseClassName = isCorner
+    ? 'bg-blue-500 dark:bg-blue-400 border-2 border-white dark:border-neutral-900 rounded-sm shadow-xs hover:scale-125 transition-transform'
+    : isSouthHandle
+      ? 'group flex items-center justify-center hover:bg-blue-400/10 transition-colors'
+      : 'hover:bg-blue-400/20 transition-colors'
+
+  return (
+    <div
+      style={{ ...getStyle(), ...style }}
+      className={className ? `${baseClassName} ${className}` : baseClassName}
+      {...props}
+    >
+      {isSouthHandle && (
         <div
-            style={{ ...getStyle(), ...style }}
-            className={isCorner ? 'bg-blue-500 dark:bg-blue-400 border-2 border-white dark:border-neutral-900 rounded-sm shadow-xs hover:scale-125 transition-transform' : 'hover:bg-blue-400/20 transition-colors'}
-            {...props}
+          className="w-8 h-1 rounded-full bg-neutral-400/40 group-hover:bg-blue-500 dark:group-hover:bg-blue-400 group-hover:w-12 transition-all pointer-events-none"
+          aria-hidden="true"
         />
-    );
-};
+      )}
+      {children}
+    </div>
+  )
+}

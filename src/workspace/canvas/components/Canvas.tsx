@@ -12,7 +12,7 @@ import { runHierarchicalLeidenOnDto } from '../domain/analysis/clustering/leiden
 import { runHierarchicalLeidenOnDtoInWorker } from '../domain/analysis/clustering/leiden/workerClient'
 import { instanceService } from '@shared/services/InstanceService'
 import { createCardinalPorts } from '../domain/portUtils'
-import { NODE_HEADER_HEIGHT } from './nodeLayout'
+import { calculateHeaderHeight } from './nodeLayout'
 import { asNodeId, type NodeId } from '../domain/ids'
 import type { CanvasCommand } from '../commands/types'
 
@@ -574,11 +574,30 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
             const targetLayout = state.layout.layoutByNodeId[rel.to.nodeId]
             if (!sourceLayout || !targetLayout) return null
 
+            const isSourceExpanded = !!state.ui.expandedNodeIds[rel.from.nodeId]
+            const isTargetExpanded = !!state.ui.expandedNodeIds[rel.to.nodeId]
+
+            const sourceHeaderHeight = calculateHeaderHeight(
+              sourceNode?.name ?? '',
+              sourceLayout.width
+            )
+            const targetHeaderHeight = calculateHeaderHeight(
+              targetNode?.name ?? '',
+              targetLayout.width
+            )
+
+            const sourceVisibleHeight = isSourceExpanded
+              ? sourceHeaderHeight + sourceLayout.height
+              : sourceHeaderHeight
+            const targetVisibleHeight = isTargetExpanded
+              ? targetHeaderHeight + targetLayout.height
+              : targetHeaderHeight
+
             const sourceHeaderPorts = sourceNode
-              ? createCardinalPorts(sourceNode.id, sourceLayout.width, NODE_HEADER_HEIGHT)
+              ? createCardinalPorts(sourceNode.id, sourceLayout.width, sourceVisibleHeight)
               : undefined
             const targetHeaderPorts = targetNode
-              ? createCardinalPorts(targetNode.id, targetLayout.width, NODE_HEADER_HEIGHT)
+              ? createCardinalPorts(targetNode.id, targetLayout.width, targetVisibleHeight)
               : undefined
 
             const sourceHeaderNode =
@@ -593,12 +612,12 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
             const sourceHeaderLayout = {
               ...sourceLayout,
               width: sourceLayout.width,
-              height: NODE_HEADER_HEIGHT
+              height: sourceVisibleHeight
             }
             const targetHeaderLayout = {
               ...targetLayout,
               width: targetLayout.width,
-              height: NODE_HEADER_HEIGHT
+              height: targetVisibleHeight
             }
 
             return (

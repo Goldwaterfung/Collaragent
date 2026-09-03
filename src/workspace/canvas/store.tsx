@@ -58,7 +58,8 @@ const initialState: CanvasState = {
     },
     interaction: {
       connect: { status: 'idle' }
-    }
+    },
+    expandedNodeIds: {}
   },
   history: {
     undoStack: [],
@@ -66,6 +67,8 @@ const initialState: CanvasState = {
     maxSize: 100
   }
 }
+
+export const initialCanvasState = initialState
 
 const snapshotOf = (state: CanvasState): CanvasHistorySnapshot => ({
   graph: state.domain.graph,
@@ -332,6 +335,35 @@ function canvasReducer(state: CanvasState, action: CanvasAction): CanvasState {
           }
         }
       }
+
+    case 'TOGGLE_EXPAND_NODE': {
+      const { nodeId } = action.payload
+      const current = !!state.ui.expandedNodeIds[nodeId]
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          expandedNodeIds: {
+            ...state.ui.expandedNodeIds,
+            [nodeId]: !current
+          }
+        }
+      }
+    }
+
+    case 'SET_NODE_EXPANDED': {
+      const { nodeId, expanded } = action.payload
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          expandedNodeIds: {
+            ...state.ui.expandedNodeIds,
+            [nodeId]: expanded
+          }
+        }
+      }
+    }
 
     case 'UNDO': {
       const undoStack = state.history.undoStack

@@ -24,7 +24,8 @@ describe('Canvas Multi-Node Movement & Commands', () => {
         },
         interaction: {
           connect: { status: 'idle' }
-        }
+        },
+        expandedNodeIds: {}
       },
       history: {
         undoStack: [],
