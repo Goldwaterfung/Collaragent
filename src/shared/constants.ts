@@ -10,6 +10,4 @@ export const NODE_SPACING = 200
 export const MIN_NODE_EXPANDED_HEIGHT = 120
 export const MAX_NODE_EXPANDED_HEIGHT = 1200
 export const MIN_NODE_WIDTH = 200
-export const MAX_NODE_WIDTH = 600
-
-export const NODE_COLLISION_MARGIN = 32
+export const MAX_NODE_WIDTH = 800

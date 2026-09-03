@@ -577,14 +577,15 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
             const isSourceExpanded = !!state.ui.expandedNodeIds[rel.from.nodeId]
             const isTargetExpanded = !!state.ui.expandedNodeIds[rel.to.nodeId]
 
-            const sourceHeaderHeight = calculateHeaderHeight(
-              sourceNode?.name ?? '',
-              sourceLayout.width
-            )
-            const targetHeaderHeight = calculateHeaderHeight(
-              targetNode?.name ?? '',
-              targetLayout.width
-            )
+            const sourceWidth = isSourceExpanded
+              ? (sourceLayout.memoWidth ?? sourceLayout.width)
+              : sourceLayout.width
+            const targetWidth = isTargetExpanded
+              ? (targetLayout.memoWidth ?? targetLayout.width)
+              : targetLayout.width
+
+            const sourceHeaderHeight = calculateHeaderHeight(sourceNode?.name ?? '', sourceWidth)
+            const targetHeaderHeight = calculateHeaderHeight(targetNode?.name ?? '', targetWidth)
 
             const sourceVisibleHeight = isSourceExpanded
               ? sourceHeaderHeight + sourceLayout.height
@@ -594,10 +595,10 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
               : targetHeaderHeight
 
             const sourceHeaderPorts = sourceNode
-              ? createCardinalPorts(sourceNode.id, sourceLayout.width, sourceVisibleHeight)
+              ? createCardinalPorts(sourceNode.id, sourceWidth, sourceVisibleHeight)
               : undefined
             const targetHeaderPorts = targetNode
-              ? createCardinalPorts(targetNode.id, targetLayout.width, targetVisibleHeight)
+              ? createCardinalPorts(targetNode.id, targetWidth, targetVisibleHeight)
               : undefined
 
             const sourceHeaderNode =
@@ -611,12 +612,12 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
 
             const sourceHeaderLayout = {
               ...sourceLayout,
-              width: sourceLayout.width,
+              width: sourceWidth,
               height: sourceVisibleHeight
             }
             const targetHeaderLayout = {
               ...targetLayout,
-              width: targetLayout.width,
+              width: targetWidth,
               height: targetVisibleHeight
             }
 
