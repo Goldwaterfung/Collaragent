@@ -8,22 +8,37 @@ CollarAgent provides a local, self-hosted Langfuse stack and an evaluation runne
 
 ### Step 1: Start the Local Langfuse Stack (Official Langfuse v4)
 
-CollarAgent runs the official **Langfuse v4 (`docker.langfuse.com/langfuse/langfuse:4`)** distributed architecture for local observability and evaluations. The stack includes the web server, async worker, ClickHouse analytics engine, Redis queue, PostgreSQL database, and MinIO storage:
+CollarAgent runs the official **Langfuse v4 (`docker.langfuse.com/langfuse/langfuse:4`)** distributed architecture for local observability and evaluations. The stack includes the web server, async worker, ClickHouse analytics engine, Redis queue, PostgreSQL database, and MinIO storage.
+
+To prevent security risks and network exposure on shared networks, all ports are bound strictly to `127.0.0.1` (localhost loopback), and all database and cryptographic secrets must be defined in your `.env.eval` file (or exported in environment) rather than hardcoded.
+
+Before starting the containers, ensure your `.env.eval` file is initialized from [`.env.eval.example`](file:///Users/goldenfung/Documents/collaragent/.env.eval.example):
+
+```bash
+cp .env.eval.example .env.eval
+```
+
+Then start the stack using either the provided yarn helper scripts or `docker compose`:
 
 ```bash
 # 1. Stop and remove any existing containers
-docker compose -f docker-compose.langfuse.yml down
+yarn langfuse:down
+# (or: docker compose --env-file .env.eval -f docker-compose.langfuse.yml down)
 
 # 2. Start the distributed v4 stack
-docker compose -f docker-compose.langfuse.yml up -d
+yarn langfuse:up
+# (or: docker compose --env-file .env.eval -f docker-compose.langfuse.yml up -d)
 
 # 3. Follow the startup logs
-docker compose -f docker-compose.langfuse.yml logs -f langfuse-server
+yarn langfuse:logs
+# (or: docker compose --env-file .env.eval -f docker-compose.langfuse.yml logs -f langfuse-server)
 ```
 
-- The Langfuse UI will be accessible at [`http://localhost:3000`](http://localhost:3000).
-- PostgreSQL database runs on port `5432` internally (`5433` on host).
-- ClickHouse runs on port `8123` / `9000`.
+- The Langfuse UI will be accessible at [`http://localhost:3000`](http://localhost:3000) (bound strictly to `127.0.0.1:3000`).
+- PostgreSQL database runs on port `5432` internally (`127.0.0.1:5433` on host).
+- ClickHouse runs on port `8123` / `9000` (bound to `127.0.0.1`).
+- Redis runs on port `6379` (bound to `127.0.0.1` with `--requirepass` authentication).
+- MinIO runs on ports `9090` (API) and `9091` (Console) (bound to `127.0.0.1`).
 - Look for `Ready in ...ms` / `Listening on port 3000` in the logs.
 
 ---
@@ -33,11 +48,7 @@ docker compose -f docker-compose.langfuse.yml logs -f langfuse-server
 1. Open [`http://localhost:3000`](http://localhost:3000) in your browser.
 2. Sign up / log in to create an organization and project (e.g. `CollarAgent`).
 3. Navigate to **Project Settings $\to$ API Keys** and generate a new key pair (`pk-lf-...` and `sk-lf-...`).
-4. Create your `.env.eval` file from the template [`.env.eval.example`](file:///Users/goldenfung/Documents/collaragent/.env.eval.example):
-
-```bash
-cp .env.eval.example .env.eval
-```
+4. Set your Langfuse API credentials in `.env.eval` (or export them in your shell):
 
 5. Set your Langfuse credentials in `.env.eval` or export them in your shell:
 

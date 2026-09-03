@@ -27,7 +27,10 @@
     "build:backend": "node scripts/build-backend.mjs",
     "eval:live": "node scripts/run-eval.mjs",
     "eval:traces": "node scripts/run-eval.mjs --traces",
-    "eval": "node scripts/run-eval.mjs"
+    "eval": "node scripts/run-eval.mjs",
+    "langfuse:up": "docker compose --env-file .env.eval -f docker-compose.langfuse.yml up -d",
+    "langfuse:down": "docker compose --env-file .env.eval -f docker-compose.langfuse.yml down",
+    "langfuse:logs": "docker compose --env-file .env.eval -f docker-compose.langfuse.yml logs -f langfuse-server"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
