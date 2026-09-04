@@ -3,16 +3,21 @@ import {
   estimateNodeDimensions,
   computeAutoLayout,
   applyGraphSpec,
+  NodeSpecSchema,
+  mergeClusterAttrs,
+  flattenMindMap,
   type NodeSpec,
   type EdgeSpec
 } from '../graphSchemaConverter'
 import {
   DEFAULT_NODE_WIDTH,
   DEFAULT_NODE_HEIGHT,
-  MIN_NODE_EXPANDED_HEIGHT,
-  NODE_SPACING
+  DEFAULT_NODE_SEP,
+  DEFAULT_RANK_SEP,
+  MIN_NODE_EXPANDED_HEIGHT
 } from '@shared/constants'
 import { calculateHeaderHeight } from '@workspace/canvas/components/nodeLayout'
+import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 
 describe('Content-Aware Auto-Layout', () => {
   describe('estimateNodeDimensions', () => {
@@ -160,8 +165,8 @@ describe('Content-Aware Auto-Layout', () => {
       const parentBottomEdge = parentLayout.y + parentLayout.height
       expect(childLayout.y).toBeGreaterThanOrEqual(parentBottomEdge)
 
-      // Verify rank separation matches or exceeds NODE_SPACING
-      expect(childLayout.y - parentBottomEdge).toBeGreaterThanOrEqual(NODE_SPACING - 1)
+      // Verify rank separation matches or exceeds DEFAULT_RANK_SEP
+      expect(childLayout.y - parentBottomEdge).toBeGreaterThanOrEqual(DEFAULT_RANK_SEP - 1)
     })
 
     it('spaces downstream ranks to the right of wide parent nodes in LR mode', () => {
@@ -185,7 +190,28 @@ describe('Content-Aware Auto-Layout', () => {
 
       const leftRightEdge = leftLayout.x + leftLayout.width
       expect(rightLayout.x).toBeGreaterThanOrEqual(leftRightEdge)
-      expect(rightLayout.x - leftRightEdge).toBeGreaterThanOrEqual(NODE_SPACING - 1)
+      expect(rightLayout.x - leftRightEdge).toBeGreaterThanOrEqual(DEFAULT_RANK_SEP - 1)
+    })
+
+    it('spaces sibling nodes within the same rank according to DEFAULT_NODE_SEP in TD mode', () => {
+      const parent: NodeSpec = { entity: 'root', name: 'Root' }
+      const child1: NodeSpec = { entity: 'child-1', name: 'Child 1' }
+      const child2: NodeSpec = { entity: 'child-2', name: 'Child 2' }
+      const edges: EdgeSpec[] = [
+        { from: 'root', to: 'child-1' },
+        { from: 'root', to: 'child-2' }
+      ]
+
+      const layout = computeAutoLayout([parent, child1, child2], edges, 'TD')
+      const c1 = layout['child-1']
+      const c2 = layout['child-2']
+
+      expect(c1).toBeDefined()
+      expect(c2).toBeDefined()
+
+      const [leftNode, rightNode] = c1.x < c2.x ? [c1, c2] : [c2, c1]
+      const siblingGap = rightNode.x - (leftNode.x + leftNode.width)
+      expect(siblingGap).toBeGreaterThanOrEqual(DEFAULT_NODE_SEP - 1)
     })
 
     it('uses existingLayout dimensions when provided to computeAutoLayout', () => {
@@ -267,6 +293,155 @@ describe('Content-Aware Auto-Layout', () => {
 
       // The new node must be placed below the anchor node's true bottom edge
       expect(newLayout.y).toBeGreaterThanOrEqual(anchorLayout.y + anchorLayout.height)
+    })
+  })
+
+  describe('NodeSpecSchema & Cluster Grouping', () => {
+    it('validates a node spec with group property', () => {
+      const parsed = NodeSpecSchema.parse({
+        entity: 'service-a',
+        name: 'Service A',
+        group: 'Backend'
+      })
+      expect(parsed.group).toBe('Backend')
+    })
+
+    it('maps group to attrs.clusterId when merging cluster attrs', () => {
+      const attrs = mergeClusterAttrs({}, { group: 'Data Pipeline' })
+      expect(attrs.clusterId).toBe('Data Pipeline')
+    })
+
+    it('clears clusterId when group is an empty or whitespace string', () => {
+      const attrs = mergeClusterAttrs({ clusterId: 'Old Group' }, { group: '  ' })
+      expect(attrs.clusterId).toBeUndefined()
+      expect('clusterId' in attrs).toBe(false)
+    })
+
+    it('stamps attrs.clusterId when creating graph via applyGraphSpec', () => {
+      const graph = applyGraphSpec(null, {
+        instanceId: 'cluster-test',
+        mode: 'replace',
+        direction: 'LR',
+        nodes: [
+          { entity: 'ui-node', name: 'UI Card', group: 'Frontend' },
+          { entity: 'api-node', name: 'API Card', group: 'Backend' }
+        ],
+        edges: [{ from: 'ui-node', to: 'api-node' }]
+      })
+
+      expect(graph.graph.nodes['ui-node'].attrs?.clusterId).toBe('Frontend')
+      expect(graph.graph.nodes['api-node'].attrs?.clusterId).toBe('Backend')
+    })
+
+    it('updates existing node name, memo, and cluster group in merge mode', () => {
+      const initial = applyGraphSpec(null, {
+        instanceId: 'test-merge-update',
+        mode: 'replace',
+        direction: 'LR',
+        nodes: [{ entity: 'card-1', name: 'Original Card' }],
+        edges: []
+      })
+
+      expect(initial.graph.nodes['card-1'].name).toBe('Original Card')
+      expect(initial.graph.nodes['card-1'].attrs?.clusterId).toBeUndefined()
+
+      const merged = applyGraphSpec(initial, {
+        instanceId: 'test-merge-update',
+        mode: 'merge',
+        direction: 'LR',
+        nodes: [
+          {
+            entity: 'card-1',
+            name: 'Updated Card',
+            memo: 'Updated Memo Content',
+            group: 'Core Domain'
+          }
+        ],
+        edges: []
+      })
+
+      expect(merged.graph.nodes['card-1'].name).toBe('Updated Card')
+      expect(merged.graph.nodes['card-1'].attrs?.memo).toBe('Updated Memo Content')
+      expect(merged.graph.nodes['card-1'].attrs?.clusterId).toBe('Core Domain')
+    })
+
+    it('automatically assigns branch groups to children in flattenMindMap', () => {
+      const root = {
+        entity: 'Root Idea',
+        children: [
+          {
+            entity: 'Frontend Branch',
+            children: [{ entity: 'React View' }, { entity: 'Tailwind CSS' }]
+          },
+          {
+            entity: 'Backend Branch',
+            children: [{ entity: 'Express API' }]
+          }
+        ]
+      }
+
+      const { nodes, edges } = flattenMindMap(root)
+      const nodesByEntity = Object.fromEntries(nodes.map((n) => [n.entity, n]))
+
+      expect(nodesByEntity['Root Idea'].group).toBeUndefined()
+      expect(nodesByEntity['Frontend Branch'].group).toBe('Frontend Branch')
+      expect(nodesByEntity['React View'].group).toBe('Frontend Branch')
+      expect(nodesByEntity['Tailwind CSS'].group).toBe('Frontend Branch')
+      expect(nodesByEntity['Backend Branch'].group).toBe('Backend Branch')
+      expect(nodesByEntity['Express API'].group).toBe('Backend Branch')
+
+      expect(edges.length).toBe(5)
+    })
+
+    it('throws WorkspaceError with WORKSPACE_INVALID_CLUSTER_SPEC on duplicate entity aliases', () => {
+      const spec = {
+        instanceId: 'test-instance',
+        mode: 'replace' as const,
+        direction: 'LR' as const,
+        nodes: [
+          { entity: 'duplicate-node', name: 'Node 1' },
+          { entity: 'duplicate-node', name: 'Node 2' }
+        ],
+        edges: []
+      }
+
+      expect(() => {
+        applyGraphSpec(null, spec)
+      }).toThrowError(WorkspaceError)
+
+      try {
+        applyGraphSpec(null, spec)
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(WorkspaceError)
+        if (err instanceof WorkspaceError) {
+          expect(err.code).toBe(WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC)
+          expect(err.message).toContain('Duplicate node entity aliases are not allowed')
+        }
+      }
+    })
+
+    it('throws WorkspaceError with WORKSPACE_INVALID_CLUSTER_SPEC on unknown edge endpoints', () => {
+      const spec = {
+        instanceId: 'test-instance',
+        mode: 'replace' as const,
+        direction: 'LR' as const,
+        nodes: [{ entity: 'node-a', name: 'Node A' }],
+        edges: [{ from: 'node-a', to: 'unknown-b' }]
+      }
+
+      expect(() => {
+        applyGraphSpec(null, spec)
+      }).toThrowError(WorkspaceError)
+
+      try {
+        applyGraphSpec(null, spec)
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(WorkspaceError)
+        if (err instanceof WorkspaceError) {
+          expect(err.code).toBe(WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC)
+          expect(err.message).toContain('Edge references unknown node alias')
+        }
+      }
     })
   })
 })

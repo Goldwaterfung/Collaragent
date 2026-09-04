@@ -1,27 +1,6 @@
-/**
- * CollarAgent Base Error Class & Storage Error Subsystem Taxonomy
- * Conforms to .agents/rules/coding-rules.md Section 6 and docs/sqlite-storage-architecture/spec.md
- */
+import { CollarError, type CollarErrorOptions } from '@shared/errors/CollarError'
 
-export abstract class CollarError extends Error {
-  public abstract readonly code: string
-  public abstract readonly subsystem: string
-  public readonly details?: unknown
-  public readonly recoverable: boolean
-  public override readonly cause?: Error
-
-  constructor(
-    message: string,
-    options?: { details?: unknown; recoverable?: boolean; cause?: Error }
-  ) {
-    super(message, options?.cause ? { cause: options.cause } : undefined)
-    this.name = this.constructor.name
-    this.details = options?.details
-    this.recoverable = options?.recoverable ?? false
-    this.cause = options?.cause
-    Object.setPrototypeOf(this, new.target.prototype)
-  }
-}
+export { CollarError, type CollarErrorOptions }
 
 /**
  * Centralized, typed const enum error codes scoped by STORAGE_ subsystem prefix.

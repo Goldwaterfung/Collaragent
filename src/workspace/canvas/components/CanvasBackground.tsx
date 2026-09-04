@@ -1,11 +1,11 @@
-import React from 'react';
-import type { ViewportState } from '../types';
+import React from 'react'
+import type { ViewportState } from '../types'
 
 interface CanvasBackgroundProps {
-  viewport: ViewportState;
-  gridSize?: number;
-  dotSize?: number;
-  className?: string;
+  viewport: ViewportState
+  gridSize?: number
+  dotSize?: number
+  className?: string
 }
 
 /**
@@ -16,14 +16,14 @@ export const CanvasBackground: React.FC<CanvasBackgroundProps> = ({
   viewport,
   gridSize = 36,
   dotSize = 1,
-  className = '',
+  className = ''
 }) => {
-  const scaledGridSize = gridSize * viewport.zoom;
-  const offsetX = ((viewport.x % scaledGridSize) + scaledGridSize) % scaledGridSize;
-  const offsetY = ((viewport.y % scaledGridSize) + scaledGridSize) % scaledGridSize;
+  const scaledGridSize = gridSize * viewport.zoom
+  const offsetX = ((viewport.x % scaledGridSize) + scaledGridSize) % scaledGridSize
+  const offsetY = ((viewport.y % scaledGridSize) + scaledGridSize) % scaledGridSize
 
   // Keep dots very subtle and small across zoom levels
-  const scaledDotSize = Math.max(0.75, Math.min(1.5, dotSize * Math.sqrt(viewport.zoom)));
+  const scaledDotSize = Math.max(0.75, Math.min(1.5, dotSize * Math.sqrt(viewport.zoom)))
 
   return (
     <svg
@@ -44,12 +44,12 @@ export const CanvasBackground: React.FC<CanvasBackgroundProps> = ({
             cx={scaledGridSize / 2}
             cy={scaledGridSize / 2}
             r={scaledDotSize}
-            className="fill-neutral-400 dark:fill-neutral-600"
+            className="fill-neutral-400"
             opacity={0.22}
           />
         </pattern>
       </defs>
       <rect width="100%" height="100%" fill="url(#canvas-dot-grid)" />
     </svg>
-  );
-};
+  )
+}

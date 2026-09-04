@@ -19,11 +19,11 @@ export interface ToolCall {
 }
 
 export interface TokenUsage {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  reasoningTokens?: number;
-  cachedInputTokens?: number;
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  reasoningTokens?: number
+  cachedInputTokens?: number
 }
 
 export interface ChatMessage {
@@ -39,5 +39,16 @@ export interface ChatMessage {
     threadId?: string
   }
   blocks?: MessageBlock[]
-  usage?: TokenUsage;
+  usage?: TokenUsage
+}
+
+export interface SubagentSessionData {
+  summary: string
+  messages: ChatMessage[]
+  toolCalls?: ToolCall[]
+  blocks?: MessageBlock[]
+  usage?: TokenUsage
+  totalTurns?: number
+  agentType?: string
+  description?: string
 }

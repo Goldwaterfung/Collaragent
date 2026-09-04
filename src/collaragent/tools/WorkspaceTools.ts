@@ -937,6 +937,7 @@ export const readGraph = tool(
         projectName: input.projectName,
         nodeCount: result.nodes.length,
         edgeCount: result.edges.length,
+        groups: result.groups,
         nodes: result.nodes,
         edges: result.edges
       }
@@ -1037,9 +1038,9 @@ EXAMPLE (replace mode - create new graph):
   "direction": "LR",
   "mode": "replace",
   "nodes": [
-    { "entity": "Machine Learning", "memo": "A subfield of AI." },
-    { "entity": "Deep Learning" },
-    { "entity": "Neural Networks" }
+    { "entity": "Machine Learning", "memo": "A subfield of AI.", "group": "Theory" },
+    { "entity": "Deep Learning", "group": "Applied" },
+    { "entity": "Neural Networks", "group": "Applied" }
   ],
   "edges": [
     { "from": "Machine Learning", "to": "Deep Learning", "label": "includes" },

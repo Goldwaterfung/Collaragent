@@ -4,6 +4,7 @@ import type { CanvasCommand } from '../commands/types'
 import { useCanvas } from '../store'
 import { NodeFrame } from './NodeFrame'
 import { NodeHeader } from './NodeHeader'
+import { getClusterColor } from './useClusterGroups'
 import { ResizeHandle } from './ResizeHandle'
 import { PortContainer } from './PortContainer'
 import { createCardinalPorts, type CardinalDirection } from '@workspace/canvas/domain/portUtils'
@@ -14,7 +15,8 @@ import {
   MIN_NODE_EXPANDED_HEIGHT,
   MAX_NODE_EXPANDED_HEIGHT,
   MIN_NODE_WIDTH,
-  MAX_NODE_WIDTH
+  MAX_NODE_WIDTH,
+  NODE_MEMO_GAP
 } from '@shared/constants'
 
 /**
@@ -51,13 +53,30 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
 
   const nodeWidth = layout.width
   const memoWidth = layout.memoWidth ?? layout.width
-  const currentWidth = isExpanded ? memoWidth : nodeWidth
-  const headerHeight = calculateHeaderHeight(localName, currentWidth)
-  const visibleHeight = isExpanded ? headerHeight + layout.height : headerHeight
+  const headerHeight = calculateHeaderHeight(localName, nodeWidth)
+  const memoHeight = layout.height
+
+  const clusterDisplayLevel = state.ui.clusterDisplayLevel
+  const clusterIdFromPath =
+    clusterDisplayLevel !== undefined &&
+    Array.isArray(node.attrs?.clusterPath) &&
+    typeof node.attrs.clusterPath[clusterDisplayLevel] === 'string' &&
+    node.attrs.clusterPath[clusterDisplayLevel].trim().length > 0
+      ? node.attrs.clusterPath[clusterDisplayLevel].trim()
+      : undefined
+
+  const clusterId =
+    clusterIdFromPath ??
+    (typeof node.attrs?.clusterId === 'string' && node.attrs.clusterId.trim().length > 0
+      ? node.attrs.clusterId.trim()
+      : typeof node.attrs?.group === 'string' && node.attrs.group.trim().length > 0
+        ? node.attrs.group.trim()
+        : undefined)
+  const clusterColor = clusterId ? getClusterColor(clusterId) : undefined
 
   const currentPorts = React.useMemo(
-    () => createCardinalPorts(node.id, currentWidth, visibleHeight),
-    [node.id, currentWidth, visibleHeight]
+    () => createCardinalPorts(node.id, nodeWidth, headerHeight),
+    [node.id, nodeWidth, headerHeight]
   )
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -72,7 +91,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
 
   useEffect(() => {
     adjustTextareaHeight()
-  }, [localName, currentWidth])
+  }, [localName, nodeWidth])
 
   // Sync local state when external data changes
   useEffect(() => {
@@ -313,120 +332,178 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({ node, layout, children }
   const [isHovered, setIsHovered] = useState(false)
 
   return (
-    <PortContainer
-      nodeId={node.id}
-      x={layout.x}
-      y={layout.y}
-      width={currentWidth}
-      height={visibleHeight}
-      ports={currentPorts}
-      onPortDragStart={handlePortDragStart}
+    <div
+      style={{
+        position: 'absolute',
+        left: layout.x,
+        top: layout.y,
+        pointerEvents: 'none',
+        zIndex: isSelected ? 20 : 10
+      }}
       data-canvas-node="true"
       data-canvas-node-id={node.id}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        style={{ width: '100%', height: '100%', position: 'relative', pointerEvents: 'auto' }}
+      {/* 1. Node Card containing Cardinal Ports */}
+      <PortContainer
+        nodeId={node.id}
+        x={0}
+        y={0}
+        width={nodeWidth}
+        height={headerHeight}
+        ports={currentPorts}
+        onPortDragStart={handlePortDragStart}
+        style={{ position: 'relative' }}
       >
-        <NodeFrame
-          selected={isSelected}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          style={{ width: currentWidth, height: '100%' }}
-        >
-          <NodeHeader
+        <div style={{ width: '100%', height: '100%', pointerEvents: 'auto' }}>
+          <NodeFrame
             selected={isSelected}
-            style={{ minHeight: headerHeight, height: isExpanded ? headerHeight : '100%' }}
-            className={`flex items-center justify-between px-3 gap-2 ${isExpanded ? 'shrink-0' : 'h-full'}`}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            style={{ width: nodeWidth, height: headerHeight }}
           >
-            <button
-              type="button"
-              onMouseDown={handleToggleMouseDown}
-              onClick={handleToggleClick}
-              className="p-1 rounded-md text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center justify-center shrink-0"
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              title={isExpanded ? 'Collapse Card' : 'Expand Card'}
+            <NodeHeader
+              selected={isSelected}
+              clusterColor={clusterColor}
+              clusterId={clusterId}
+              style={{ minHeight: headerHeight, height: '100%' }}
+              className="flex items-center justify-between px-3 gap-2 h-full"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 14 14"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden="true"
-                className={`transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+              <button
+                type="button"
+                onMouseDown={handleToggleMouseDown}
+                onClick={handleToggleClick}
+                className="p-1 rounded-md text-gray-500 hover:text-black hover:bg-surface-200 transition-colors flex items-center justify-center shrink-0 cursor-pointer focus:outline-none"
+                aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                title={isExpanded ? 'Collapse Card' : 'Expand Card'}
               >
-                <path
-                  d="M3 5L7 9L11 5"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                  className={`transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+                >
+                  <path
+                    d="M3 5L7 9L11 5"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+
+              <div className="flex-1 min-w-0 flex items-center justify-center">
+                <textarea
+                  ref={textareaRef}
+                  value={localName}
+                  onChange={(e) => setLocalName(e.target.value)}
+                  onBlur={commitNameUpdate}
+                  onKeyDown={handleTextareaKeyDown}
+                  onMouseDown={handleTextareaMouseDown}
+                  rows={1}
+                  className="w-full bg-transparent font-semibold text-base text-[var(--ev-c-text-1)] text-center resize-none outline-none focus:ring-1 focus:ring-primary/60 rounded px-1 leading-snug break-words overflow-y-auto"
+                  style={{
+                    cursor: isSelected ? 'text' : 'grab',
+                    pointerEvents: isSelected ? 'auto' : 'none',
+                    maxHeight: `${NODE_HEADER_MAX_HEIGHT}px`
+                  }}
                 />
-              </svg>
-            </button>
-
-            <div className="flex-1 min-w-0 flex items-center justify-center">
-              <textarea
-                ref={textareaRef}
-                value={localName}
-                onChange={(e) => setLocalName(e.target.value)}
-                onBlur={commitNameUpdate}
-                onKeyDown={handleTextareaKeyDown}
-                onMouseDown={handleTextareaMouseDown}
-                rows={1}
-                className="w-full bg-transparent font-semibold text-base text-neutral-800 dark:text-neutral-100 text-center resize-none outline-none focus:ring-1 focus:ring-blue-400/50 rounded px-1 leading-snug break-words overflow-y-auto"
-                style={{
-                  cursor: isSelected ? 'text' : 'grab',
-                  pointerEvents: isSelected ? 'auto' : 'none',
-                  maxHeight: `${NODE_HEADER_MAX_HEIGHT}px`
-                }}
-              />
-            </div>
-
-            <div className="w-5 shrink-0" />
-          </NodeHeader>
-
-          {isExpanded && (
-            <div
-              style={{
-                flex: 1,
-                minHeight: 0,
-                width: '100%',
-                position: 'relative',
-                pointerEvents: 'auto'
-              }}
-              className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden flex flex-col"
-              onMouseDown={(e) => {
-                e.stopPropagation()
-                if (e.button !== 0) return
-                if (!isSelected) {
-                  dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: e.shiftKey } })
-                }
-              }}
-            >
-              <div
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  pointerEvents: 'auto'
-                }}
-              >
-                {children}
               </div>
 
-              {(isSelected || isHovered) && (
-                <>
-                  <ResizeHandle position="s" onMouseDown={(e) => handleResizeStart(e, 's')} />
-                  <ResizeHandle position="e" onMouseDown={(e) => handleResizeStart(e, 'e')} />
-                  <ResizeHandle position="se" onMouseDown={(e) => handleResizeStart(e, 'se')} />
-                </>
-              )}
+              <div className="w-5 shrink-0 flex items-center justify-end">
+                {clusterColor && (
+                  <span
+                    style={{ backgroundColor: clusterColor }}
+                    className="w-2 h-2 rounded-full shadow-xs"
+                    title={`Cluster: ${clusterId}`}
+                  />
+                )}
+              </div>
+            </NodeHeader>
+          </NodeFrame>
+        </div>
+      </PortContainer>
+
+      {/* 2. Decoupled Memo Editor (Lexical Editor) */}
+      {isExpanded && (
+        <div
+          style={{
+            position: 'absolute',
+            top: headerHeight + NODE_MEMO_GAP,
+            left: 0,
+            width: memoWidth,
+            height: memoHeight,
+            pointerEvents: 'auto',
+            zIndex: 15
+          }}
+          className={`rounded-xl overflow-hidden flex flex-col border bg-white transition-shadow duration-150 ${
+            isSelected
+              ? 'ring-2 ring-primary/80 shadow-xl border-primary'
+              : 'shadow-md hover:shadow-lg hover:border-primary/60 border-surface-200'
+          }`}
+          onMouseDown={(e) => {
+            e.stopPropagation()
+            if (e.button !== 0) return
+            if (!isSelected) {
+              dispatch({ type: 'SELECT_NODE', payload: { id: node.id, multi: e.shiftKey } })
+            }
+          }}
+          onMouseUp={handleMouseUp}
+        >
+          {/* Memo Header Label Bar */}
+          <div className="flex items-center justify-between px-3 py-1.5 bg-surface-100 border-b border-surface-200 select-none shrink-0">
+            <div className="flex items-center gap-1.5 text-gray-700 text-xs font-medium">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-primary"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+              <span>Memo</span>
             </div>
+            <span className="text-[10px] text-gray-400 font-mono">
+              {Math.round(memoWidth)} × {Math.round(memoHeight)}
+            </span>
+          </div>
+
+          {/* Lexical Editor Content */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              width: '100%',
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+          >
+            {children}
+          </div>
+
+          {(isSelected || isHovered) && (
+            <>
+              <ResizeHandle position="s" onMouseDown={(e) => handleResizeStart(e, 's')} />
+              <ResizeHandle position="e" onMouseDown={(e) => handleResizeStart(e, 'e')} />
+              <ResizeHandle position="se" onMouseDown={(e) => handleResizeStart(e, 'se')} />
+            </>
           )}
-        </NodeFrame>
-      </div>
-    </PortContainer>
+        </div>
+      )}
+    </div>
   )
 }

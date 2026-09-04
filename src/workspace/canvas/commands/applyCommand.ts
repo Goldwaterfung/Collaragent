@@ -9,6 +9,8 @@ import {
   updateRelationship
 } from '../domain/operations'
 import { createCardinalPorts, updatePortPositions } from '../domain/portUtils'
+import { calculateHeaderHeight } from '../components/nodeLayout'
+import { DEFAULT_NODE_HEIGHT } from '@shared/constants'
 import { deserializeCanvas } from '@workspace/persistence/canvasSerialization'
 
 const assertNever = (value: never): never => value
@@ -18,13 +20,16 @@ export const applyCanvasCommand = (state: CanvasState, command: CanvasCommand): 
     case 'CreateNode': {
       const { nodeId, name, x, y, width, height, attrs } = command.payload
 
-      // Generate 4 cardinal ports (N, E, S, W) for the new node
-      const ports = createCardinalPorts(nodeId, width, height)
+      const nodeName = name ?? `Node ${String(nodeId).split('-').pop() ?? ''}`.trim()
+      const nodeHeaderHeight = calculateHeaderHeight(nodeName, width)
+
+      // Generate 4 cardinal ports (N, E, S, W) for the new node on its header boundary
+      const ports = createCardinalPorts(nodeId, width, nodeHeaderHeight)
 
       const nextGraphRes = addNode(state.domain.graph, {
         id: nodeId,
         type: 'card',
-        name: name ?? `Node ${String(nodeId).split('-').pop() ?? ''}`.trim(),
+        name: nodeName,
         attrs: attrs ?? {},
         ports
       })
@@ -73,9 +78,10 @@ export const applyCanvasCommand = (state: CanvasState, command: CanvasCommand): 
       const prev = state.layout.layoutByNodeId[nodeId]
       if (!prev) return state
 
-      // Get the existing node to update port positions
+      // Get the existing node to update port positions on the node header boundary
       const node = state.domain.graph.nodesById[nodeId]
-      const updatedPorts = node ? updatePortPositions(node.ports, width, height) : {}
+      const nodeHeaderHeight = node ? calculateHeaderHeight(node.name, width) : DEFAULT_NODE_HEIGHT
+      const updatedPorts = node ? updatePortPositions(node.ports, width, nodeHeaderHeight) : {}
 
       // Update node with recalculated port positions
       const updatedNode = node ? { ...node, ports: updatedPorts } : undefined

@@ -110,10 +110,10 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
 
   const isSouthHandle = position === 's'
   const baseClassName = isCorner
-    ? 'bg-blue-500 dark:bg-blue-400 border-2 border-white dark:border-neutral-900 rounded-sm shadow-xs hover:scale-125 transition-transform'
+    ? 'bg-primary border-2 border-white rounded-sm shadow-xs hover:scale-125 transition-transform'
     : isSouthHandle
-      ? 'group flex items-center justify-center hover:bg-blue-400/10 transition-colors'
-      : 'hover:bg-blue-400/20 transition-colors'
+      ? 'group flex items-center justify-center hover:bg-primary/10 transition-colors'
+      : 'hover:bg-primary/15 transition-colors'
 
   return (
     <div
@@ -123,7 +123,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
     >
       {isSouthHandle && (
         <div
-          className="w-8 h-1 rounded-full bg-neutral-400/40 group-hover:bg-blue-500 dark:group-hover:bg-blue-400 group-hover:w-12 transition-all pointer-events-none"
+          className="w-8 h-1 rounded-full bg-surface-300/60 group-hover:bg-primary group-hover:w-12 transition-all pointer-events-none"
           aria-hidden="true"
         />
       )}

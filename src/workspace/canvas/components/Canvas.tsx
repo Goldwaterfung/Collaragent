@@ -5,19 +5,21 @@ import { Edge } from './Edge'
 import { EdgePath } from './EdgePath'
 import { CanvasBackground } from './CanvasBackground'
 import { CanvasToolbar } from './CanvasToolbar'
+import { useClusterGroups } from './useClusterGroups'
+import { ClusterGroupContainer } from './ClusterGroupContainer'
+import { ClusterProgressPill } from './ClusterProgressPill'
 import { MemoEditor } from '../../editor/components/MemoEditor'
 import CanvasWebSocketSyncPlugin from '@workspace/sync/CanvasSyncPlugin'
-import { serializeCanvas } from '@workspace/persistence/canvasSerialization'
-import { runHierarchicalLeidenOnDto } from '../domain/analysis/clustering/leiden'
-import { runHierarchicalLeidenOnDtoInWorker } from '../domain/analysis/clustering/leiden/workerClient'
 import { instanceService } from '@shared/services/InstanceService'
+import { DEFAULT_NODE_WIDTH, DEFAULT_MEMO_HEIGHT, NODE_MEMO_GAP } from '@shared/constants'
 import { createCardinalPorts } from '../domain/portUtils'
 import { calculateHeaderHeight } from './nodeLayout'
 import { asNodeId, type NodeId } from '../domain/ids'
 import type { CanvasCommand } from '../commands/types'
 
 export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
-  const { state, dispatch, dispatchCommand, dispatchTransaction } = useCanvas()
+  const { state, dispatch, dispatchCommand, dispatchTransaction, runClustering, cancelClustering } =
+    useCanvas()
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [marquee, setMarquee] = useState<{
@@ -28,13 +30,18 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
   } | null>(null)
   const lastMousePos = useRef<{ x: number; y: number } | null>(null)
   const mousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const leidenAbortRef = useRef<AbortController | null>(null)
 
   const connect = state.ui.interaction.connect
 
   const isEmpty = useMemo(
     () => Object.keys(state.domain.graph.nodesById).length === 0,
     [state.domain.graph.nodesById]
+  )
+
+  const clusterGroups = useClusterGroups(
+    state.domain.graph.nodesById,
+    state.layout.layoutByNodeId,
+    state.ui.clusterDisplayLevel
   )
 
   const handleWheel = (e: WheelEvent) => {
@@ -144,8 +151,17 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
 
         const selectedNodeIds: NodeId[] = []
         for (const [nodeId, layout] of Object.entries(state.layout.layoutByNodeId)) {
-          const nodeX2 = layout.x + layout.width
-          const nodeY2 = layout.y + layout.height
+          const isExpanded = !!state.ui.expandedNodeIds[nodeId]
+          const nodeName = state.domain.graph.nodesById[asNodeId(nodeId)]?.name ?? ''
+          const headerHeight = calculateHeaderHeight(nodeName, layout.width)
+          const totalWidth = isExpanded
+            ? Math.max(layout.width, layout.memoWidth ?? layout.width)
+            : layout.width
+          const totalHeight = isExpanded
+            ? headerHeight + NODE_MEMO_GAP + layout.height
+            : headerHeight
+          const nodeX2 = layout.x + totalWidth
+          const nodeY2 = layout.y + totalHeight
           const intersects = !(
             layout.x > worldX2 ||
             nodeX2 < worldX1 ||
@@ -196,19 +212,9 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
                   name: 'New Node',
                   x,
                   y,
-                  width: 600,
-                  height: 400,
+                  width: DEFAULT_NODE_WIDTH,
+                  height: DEFAULT_MEMO_HEIGHT,
                   attrs: { memo: '' }
-                }
-              },
-              {
-                type: 'ResizeNode',
-                payload: {
-                  nodeId: newNodeId,
-                  x,
-                  y,
-                  width: 600,
-                  height: 400
                 }
               },
               {
@@ -253,8 +259,8 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
               name: 'New Node',
               x,
               y,
-              width: 400,
-              height: 300,
+              width: DEFAULT_NODE_WIDTH,
+              height: DEFAULT_MEMO_HEIGHT,
               attrs: { memo: content }
             }
           })
@@ -348,8 +354,8 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
       const rect = containerRef.current?.getBoundingClientRect()
       if (!rect) return
 
-      const defaultWidth = 600
-      const defaultHeight = 400
+      const defaultWidth = DEFAULT_NODE_WIDTH
+      const defaultHeight = DEFAULT_MEMO_HEIGHT
 
       let x: number
       let y: number
@@ -386,74 +392,17 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
     // Modifier-based shortcuts
     if (!isMod) return
 
-    // Ctrl/Cmd + Shift + L: run Leiden layout
+    // Ctrl/Cmd + Shift + L: run Leiden layout & auto-arrange
     if (e.shiftKey && key === 'l') {
       e.preventDefault()
-
-      if (leidenAbortRef.current && !leidenAbortRef.current.signal.aborted) {
-        leidenAbortRef.current.abort()
-      }
-      const abortController = new AbortController()
-      leidenAbortRef.current = abortController
-
-      const baseDto = serializeCanvas(state)
-      const snapshotDto =
-        typeof structuredClone === 'function'
-          ? structuredClone(baseDto)
-          : (JSON.parse(JSON.stringify(baseDto)) as typeof baseDto)
-
-      void (async () => {
-        let dto: any
-        try {
-          ;({ dto } = await runHierarchicalLeidenOnDtoInWorker(
-            snapshotDto as any,
-            {
-              signedMode: 'penalty'
-            },
-            {
-              signal: abortController.signal
-            }
-          ))
-        } catch (err) {
-          if ((err as any)?.name === 'AbortError') return
-
-          if (abortController.signal.aborted) return
-
-          ;({ dto } = await runHierarchicalLeidenOnDto(
-            snapshotDto,
-            { signedMode: 'penalty' },
-            {
-              onProgress: (ev) => {
-                console.log('[Leiden] progress', ev)
-              }
-            }
-          ))
-        }
-
-        if (abortController.signal.aborted) return
-
-        dispatchCommand({
-          type: 'ReplaceGraph',
-          payload: {
-            dto,
-            graphId: String((state.domain.graph as any).id)
-          }
-        })
-
-        if (leidenAbortRef.current === abortController) {
-          leidenAbortRef.current = null
-        }
-      })()
-
+      void runClustering('rearrange')
       return
     }
 
     // Ctrl/Cmd + Shift + C: cancel in-flight Leiden run
     if (e.shiftKey && key === 'c') {
       e.preventDefault()
-      if (leidenAbortRef.current && !leidenAbortRef.current.signal.aborted) {
-        leidenAbortRef.current.abort()
-      }
+      cancelClustering()
       return
     }
 
@@ -494,7 +443,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
       onDrop={handleDrop}
       onKeyDown={onKeyDown}
       tabIndex={0}
-      className="focus:outline-none w-full h-full bg-neutral-100/70 dark:bg-neutral-950 select-none relative overflow-hidden"
+      className="focus:outline-none w-full h-full bg-surface-50 select-none relative overflow-hidden"
       style={{
         flex: 1,
         minHeight: 0,
@@ -508,12 +457,17 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
       {/* Floating Viewport & Action Toolbar */}
       <CanvasToolbar containerRef={containerRef} />
 
+      {/* In-Flight Leiden Worker Progress Pill */}
+      {state.ui.clusteringProgress?.running && (
+        <ClusterProgressPill progress={state.ui.clusteringProgress} onCancel={cancelClustering} />
+      )}
+
       <CanvasWebSocketSyncPlugin />
 
       {/* Area Marquee Selection Rectangle */}
       {marquee && (
         <div
-          className="absolute border border-blue-500 bg-blue-500/15 pointer-events-none rounded-xs z-30"
+          className="absolute border border-primary bg-primary/15 pointer-events-none rounded-xs z-30"
           style={{
             left: Math.min(marquee.startX, marquee.currentX),
             top: Math.min(marquee.startY, marquee.currentY),
@@ -554,7 +508,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
               refY="3.5"
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+              <polygon points="0 0, 10 3.5, 0 7" fill="#cbd5e1" />
             </marker>
             <marker
               id="arrowhead-selected"
@@ -564,7 +518,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
               refY="3.5"
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb" />
+              <polygon points="0 0, 10 3.5, 0 7" fill="#f5afaf" />
             </marker>
           </defs>
           {Object.values(state.domain.graph.relationshipsById).map((rel) => {
@@ -574,31 +528,17 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
             const targetLayout = state.layout.layoutByNodeId[rel.to.nodeId]
             if (!sourceLayout || !targetLayout) return null
 
-            const isSourceExpanded = !!state.ui.expandedNodeIds[rel.from.nodeId]
-            const isTargetExpanded = !!state.ui.expandedNodeIds[rel.to.nodeId]
-
-            const sourceWidth = isSourceExpanded
-              ? (sourceLayout.memoWidth ?? sourceLayout.width)
-              : sourceLayout.width
-            const targetWidth = isTargetExpanded
-              ? (targetLayout.memoWidth ?? targetLayout.width)
-              : targetLayout.width
+            const sourceWidth = sourceLayout.width
+            const targetWidth = targetLayout.width
 
             const sourceHeaderHeight = calculateHeaderHeight(sourceNode?.name ?? '', sourceWidth)
             const targetHeaderHeight = calculateHeaderHeight(targetNode?.name ?? '', targetWidth)
 
-            const sourceVisibleHeight = isSourceExpanded
-              ? sourceHeaderHeight + sourceLayout.height
-              : sourceHeaderHeight
-            const targetVisibleHeight = isTargetExpanded
-              ? targetHeaderHeight + targetLayout.height
-              : targetHeaderHeight
-
             const sourceHeaderPorts = sourceNode
-              ? createCardinalPorts(sourceNode.id, sourceWidth, sourceVisibleHeight)
+              ? createCardinalPorts(sourceNode.id, sourceWidth, sourceHeaderHeight)
               : undefined
             const targetHeaderPorts = targetNode
-              ? createCardinalPorts(targetNode.id, targetWidth, targetVisibleHeight)
+              ? createCardinalPorts(targetNode.id, targetWidth, targetHeaderHeight)
               : undefined
 
             const sourceHeaderNode =
@@ -613,12 +553,12 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
             const sourceHeaderLayout = {
               ...sourceLayout,
               width: sourceWidth,
-              height: sourceVisibleHeight
+              height: sourceHeaderHeight
             }
             const targetHeaderLayout = {
               ...targetLayout,
               width: targetWidth,
-              height: targetVisibleHeight
+              height: targetHeaderHeight
             }
 
             return (
@@ -636,7 +576,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
           {connect.status === 'connecting' && connect.start && connect.current && (
             <EdgePath
               path={`M ${connect.start.x} ${connect.start.y} L ${connect.current.x} ${connect.current.y}`}
-              stroke="#3b82f6"
+              stroke="#f5afaf"
               strokeWidth={2}
               dashed
             />
@@ -656,18 +596,25 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
               userSelect: 'none',
               zIndex: 0
             }}
-            className="text-neutral-400 dark:text-neutral-600 gap-2"
+            className="text-gray-400 gap-2"
           >
             <div className="text-sm font-medium">No cards on this canvas yet</div>
             <div className="text-xs flex items-center gap-1.5">
               Press{' '}
-              <kbd className="px-2 py-0.5 rounded bg-neutral-200/80 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 font-mono text-[11px] text-neutral-700 dark:text-neutral-300">
+              <kbd className="px-2 py-0.5 rounded bg-surface-100 border border-surface-200 font-mono text-[11px] text-gray-700">
                 N
               </kbd>{' '}
               or click <b>Add Card</b> to start
             </div>
           </div>
         )}
+
+        {/* Cluster Group Enclosures */}
+        <div style={{ pointerEvents: 'none' }}>
+          {clusterGroups.map((group) => (
+            <ClusterGroupContainer key={group.clusterId} group={group} />
+          ))}
+        </div>
 
         <div style={{ pointerEvents: 'auto' }}>
           {Object.values(state.domain.graph.nodesById).map((node) => {
@@ -678,7 +625,7 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
               <CanvasNode key={node.id} node={node} layout={layout}>
                 {node.type === 'card' && (
                   <MemoEditor
-                    value={(node.attrs as any)?.memo || ''}
+                    value={typeof node.attrs?.memo === 'string' ? node.attrs.memo : ''}
                     editable={state.ui.selection.nodeIds.includes(node.id)}
                     onCommit={(nextValue) => {
                       dispatchCommand({

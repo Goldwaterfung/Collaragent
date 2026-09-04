@@ -34,7 +34,7 @@ export interface Node {
   width: number
   height: number
   type: 'card'
-  content?: any
+  content?: unknown
   selected?: boolean
 }
 
@@ -60,6 +60,15 @@ export interface CanvasLayoutState {
   layoutByNodeId: Record<NodeId, NodeLayout>
 }
 
+export interface ClusteringProgress {
+  running: boolean
+  stage?: 'clone' | 'validate' | 'adapt' | 'run' | 'stamp' | 'layout' | 'done' | 'error'
+  level?: number
+  levelsDone?: number
+  message?: string
+  error?: string
+}
+
 export interface CanvasUiState {
   viewport: ViewportState
   selection: UiSelectionState
@@ -67,6 +76,8 @@ export interface CanvasUiState {
     connect: ConnectSessionState
   }
   expandedNodeIds: Record<string, boolean>
+  clusteringProgress?: ClusteringProgress | null
+  clusterDisplayLevel?: number
 }
 
 export type CanvasHistorySnapshot = CanvasSnapshot
@@ -103,6 +114,8 @@ export type CanvasAction =
   | { type: 'DESELECT_ALL' }
   | { type: 'TOGGLE_EXPAND_NODE'; payload: { nodeId: string } }
   | { type: 'SET_NODE_EXPANDED'; payload: { nodeId: string; expanded: boolean } }
+  | { type: 'SET_CLUSTERING_PROGRESS'; payload: ClusteringProgress | null }
+  | { type: 'SET_CLUSTER_DISPLAY_LEVEL'; payload: number | undefined }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'COMMAND'; payload: CanvasCommand }

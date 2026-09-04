@@ -3,9 +3,8 @@ import { PersistenceManager } from '../storage/Persistence'
 import { AgentConfigLoader } from './config'
 import { createDeepAgent, DeepAgent } from '../../collaragent/index'
 import { createModel, createTools, createSubAgents } from './utils'
-import { createSkillsMiddleware } from '../../collaragent/middleware/skills'
 import { toolRetryMiddleware } from 'langchain'
-import { FilesystemBackend } from '../../collaragent/backends/filesystem'
+import { FilesystemBackend, createSkillsMiddleware } from 'deepagents'
 import crypto from 'crypto'
 import path from 'node:path'
 import os from 'node:os'
@@ -114,7 +113,7 @@ export class AgentFactory {
     const skillsMiddleware = skillsSource
       ? createSkillsMiddleware({
           backend: fsBackend,
-          source: skillsSource
+          sources: [skillsSource]
         })
       : null
 

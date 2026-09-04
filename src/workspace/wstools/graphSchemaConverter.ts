@@ -3,7 +3,8 @@ import type { GraphCanvasDTO } from '@workspace/persistence/graphCanvasDto'
 import {
   DEFAULT_NODE_WIDTH,
   DEFAULT_NODE_HEIGHT,
-  NODE_SPACING,
+  DEFAULT_NODE_SEP,
+  DEFAULT_RANK_SEP,
   MIN_NODE_EXPANDED_HEIGHT
 } from '@shared/constants'
 import { createPortId, getBestDirection } from '@workspace/canvas/domain/portUtils'
@@ -12,6 +13,11 @@ import {
   getHeaderWidthForName,
   calculateHeaderHeight
 } from '@workspace/canvas/components/nodeLayout'
+import {
+  computeClusterAutoLayout,
+  getNodeClusterId
+} from '@workspace/canvas/domain/analysis/clustering/clusterLayout'
+import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Schema Definitions
@@ -28,10 +34,27 @@ export const NodeSpecSchema = z
     entity: z.string().min(1).describe('Unique name for this node (stable ID or alias).'),
     name: z.string().optional().describe('Display name for the node.'),
     memo: z.string().optional().describe('Optional memo text (always in markdown format).'),
-    clearMemo: z.boolean().optional().describe('Set to true to clear existing memo content.')
+    clearMemo: z.boolean().optional().describe('Set to true to clear existing memo content.'),
+    group: z.string().optional().describe('Optional semantic group or cluster name for this node.')
   })
   .passthrough()
 export type NodeSpec = z.infer<typeof NodeSpecSchema>
+
+export function mergeClusterAttrs(
+  existingAttrs: Record<string, unknown> | undefined,
+  spec: { group?: string }
+): Record<string, unknown> {
+  const attrs = { ...(existingAttrs || {}) }
+  if (typeof spec.group === 'string') {
+    const trimmed = spec.group.trim()
+    if (trimmed.length > 0) {
+      attrs.clusterId = trimmed
+    } else {
+      delete attrs.clusterId
+    }
+  }
+  return attrs
+}
 
 export function mergeMemoAttrs(
   existingAttrs: Record<string, unknown> | undefined,
@@ -141,12 +164,13 @@ export function flattenMindMap(root: MindMapNode): { nodes: NodeSpec[]; edges: E
   const nodes: NodeSpec[] = []
   const edges: EdgeSpec[] = []
 
-  function traverse(node: MindMapNode) {
+  function traverse(node: MindMapNode, currentGroup?: string) {
     nodes.push({
       entity: node.entity,
       name: node.entity,
       memo: node.memo,
-      clearMemo: node.clearMemo
+      clearMemo: node.clearMemo,
+      group: currentGroup
     })
 
     if (node.children) {
@@ -155,12 +179,13 @@ export function flattenMindMap(root: MindMapNode): { nodes: NodeSpec[]; edges: E
           from: node.entity,
           to: child.entity
         })
-        traverse(child)
+        const nextGroup = currentGroup ?? child.entity
+        traverse(child, nextGroup)
       }
     }
   }
 
-  traverse(root)
+  traverse(root, undefined)
   return { nodes, edges }
 }
 
@@ -178,7 +203,8 @@ export function assertUniqueNodeEntities(nodes: NodeSpec[]): void {
   }
 
   if (duplicates.size > 0) {
-    throw new Error(
+    throw new WorkspaceError(
+      WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC,
       `Duplicate node entity aliases are not allowed: ${Array.from(duplicates).join(', ')}`
     )
   }
@@ -187,7 +213,10 @@ export function assertUniqueNodeEntities(nodes: NodeSpec[]): void {
 function assertEdgeEndpointsExist(edges: EdgeSpec[], nodeIds: ReadonlySet<string>): void {
   for (const edge of edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
-      throw new Error(`Edge references unknown node alias: ${edge.from} -> ${edge.to}`)
+      throw new WorkspaceError(
+        WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC,
+        `Edge references unknown node alias: ${edge.from} -> ${edge.to}`
+      )
     }
   }
 }
@@ -244,11 +273,12 @@ function collectConnectedNodeIds(
 // Layout Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const NODE_SPACING_VAL = NODE_SPACING
+const NODE_SEP_VAL = DEFAULT_NODE_SEP
+const RANK_SEP_VAL = DEFAULT_RANK_SEP
 
 // Step sizes for layout spacing
-const STEP_X = DEFAULT_NODE_WIDTH + NODE_SPACING_VAL
-const STEP_Y = DEFAULT_NODE_HEIGHT + NODE_SPACING_VAL
+const STEP_X = DEFAULT_NODE_WIDTH + NODE_SEP_VAL
+const STEP_Y = DEFAULT_NODE_HEIGHT + RANK_SEP_VAL
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auto-Layout Algorithm
@@ -360,6 +390,10 @@ export function estimateNodeDimensions(
     return { width, height }
   }
 
+  if (existingLayout?.height !== undefined && Number.isFinite(existingLayout.height)) {
+    return { width, height: Math.max(headerHeight, existingLayout.height) }
+  }
+
   return { width, height: headerHeight }
 }
 
@@ -392,8 +426,8 @@ export function computeAutoLayout(
   const g = new dagre.graphlib.Graph()
   g.setGraph({
     rankdir: direction,
-    nodesep: NODE_SPACING_VAL, // Horizontal spacing between nodes
-    ranksep: NODE_SPACING_VAL, // Vertical spacing between ranks
+    nodesep: NODE_SEP_VAL, // Spacing between nodes within the same rank
+    ranksep: RANK_SEP_VAL, // Spacing between successive ranks
     marginx: 0,
     marginy: 0
   })
@@ -532,10 +566,15 @@ function createFreshGraph(spec: WriteGraphSpec, timestamp: string): GraphCanvasD
   const nodeIds = new Set((spec.nodes || []).map((node) => node.entity))
   assertEdgeEndpointsExist(spec.edges || [], nodeIds)
 
+  const hasClusters = (spec.nodes || []).some((node) => Boolean(getNodeClusterId(node)))
+
   const layoutByNodeId =
     spec.direction === 'RADIAL'
       ? computeRadialLayout(spec.nodes || [], spec.edges || [])
-      : computeAutoLayout(spec.nodes || [], spec.edges || [], spec.direction)
+      : hasClusters
+        ? computeClusterAutoLayout(spec.nodes || [], spec.edges || [], spec.direction)
+            .layoutByNodeId
+        : computeAutoLayout(spec.nodes || [], spec.edges || [], spec.direction)
 
   // Build nodes and relationships records
   const nodes: GraphCanvasDTO['graph']['nodes'] = {}
@@ -599,12 +638,26 @@ function mergeIntoGraph(
   for (const existingNode of Object.values(nodes)) {
     mergedNodeSpecsById.set(existingNode.id, {
       entity: existingNode.id,
-      name: existingNode.name
+      name: existingNode.name,
+      attrs: existingNode.attrs
     })
   }
 
   for (const node of spec.nodes || []) {
-    mergedNodeSpecsById.set(node.entity, node)
+    const prev = mergedNodeSpecsById.get(node.entity)
+    if (prev) {
+      const existingAttrs = prev.attrs as Record<string, unknown> | undefined
+      const memoAttrs = mergeMemoAttrs(existingAttrs, node)
+      const mergedAttrs = mergeClusterAttrs(memoAttrs, node)
+      mergedNodeSpecsById.set(node.entity, {
+        ...prev,
+        ...node,
+        name: node.name || prev.name,
+        attrs: mergedAttrs
+      })
+    } else {
+      mergedNodeSpecsById.set(node.entity, node)
+    }
   }
 
   const existingEdgesForLayout: EdgeSpec[] = Object.values(relationships).map((relationship) => ({
@@ -640,11 +693,11 @@ function mergeIntoGraph(
     const anchorLayout = layoutByNodeId[spec.startFrom]
     // Position new nodes starting from anchor, offset by node dimensions in the direction
     if (spec.direction === 'LR') {
-      anchorX = anchorLayout.x + anchorLayout.width + NODE_SPACING_VAL
+      anchorX = anchorLayout.x + anchorLayout.width + RANK_SEP_VAL
       anchorY = anchorLayout.y
     } else {
       anchorX = anchorLayout.x
-      anchorY = anchorLayout.y + anchorLayout.height + NODE_SPACING_VAL
+      anchorY = anchorLayout.y + anchorLayout.height + RANK_SEP_VAL
     }
   } else {
     // No anchor: find the bounding box of existing layout and place new nodes outside
@@ -661,11 +714,11 @@ function mergeIntoGraph(
       }
 
       if (spec.direction === 'LR') {
-        anchorX = (Number.isFinite(maxX) && maxX !== -Infinity ? maxX : 0) + NODE_SPACING_VAL
+        anchorX = (Number.isFinite(maxX) && maxX !== -Infinity ? maxX : 0) + RANK_SEP_VAL
         anchorY = 0
       } else {
         anchorX = 0
-        anchorY = (Number.isFinite(maxY) && maxY !== -Infinity ? maxY : 0) + NODE_SPACING_VAL
+        anchorY = (Number.isFinite(maxY) && maxY !== -Infinity ? maxY : 0) + RANK_SEP_VAL
       }
     }
   }
@@ -698,47 +751,82 @@ function mergeIntoGraph(
     if (affectedNodes.length === 0) {
       newLayout = {}
     } else if (anchorNodeId) {
-      const localLayout = computeAutoLayout(
-        affectedNodes,
-        affectedEdges,
-        spec.direction,
-        0,
-        0,
-        undefined,
-        layoutByNodeId
-      )
+      const hasAffectedClusters = affectedNodes.some((n) => Boolean(getNodeClusterId(n)))
+      const localLayout = hasAffectedClusters
+        ? computeClusterAutoLayout(
+            affectedNodes,
+            affectedEdges,
+            spec.direction,
+            0,
+            0,
+            layoutByNodeId
+          ).layoutByNodeId
+        : computeAutoLayout(
+            affectedNodes,
+            affectedEdges,
+            spec.direction,
+            0,
+            0,
+            undefined,
+            layoutByNodeId
+          )
       const anchorLayout = layoutByNodeId[anchorNodeId]
       const localAnchorLayout = localLayout[anchorNodeId]
-      // Preserve spatial continuity by pinning one existing node and
-      // translating the newly computed component around it.
-      const offsetX = anchorLayout.x - localAnchorLayout.x
-      const offsetY = anchorLayout.y - localAnchorLayout.y
+      if (anchorLayout && localAnchorLayout) {
+        // Preserve spatial continuity by pinning one existing node and
+        // translating the newly computed component around it.
+        const offsetX = anchorLayout.x - localAnchorLayout.x
+        const offsetY = anchorLayout.y - localAnchorLayout.y
 
-      newLayout = {}
-      for (const [nodeId, layout] of Object.entries(localLayout)) {
-        newLayout[nodeId] = {
-          ...layout,
-          x: layout.x + offsetX,
-          y: layout.y + offsetY
+        newLayout = {}
+        for (const [nodeId, layout] of Object.entries(localLayout)) {
+          newLayout[nodeId] = {
+            ...layout,
+            x: layout.x + offsetX,
+            y: layout.y + offsetY
+          }
         }
+      } else {
+        newLayout = localLayout
       }
     } else {
-      newLayout = computeAutoLayout(
-        affectedNodes,
-        affectedEdges,
-        spec.direction,
-        anchorX,
-        anchorY,
-        undefined,
-        layoutByNodeId
-      )
+      const hasAffectedClusters = affectedNodes.some((n) => Boolean(getNodeClusterId(n)))
+      newLayout = hasAffectedClusters
+        ? computeClusterAutoLayout(
+            affectedNodes,
+            affectedEdges,
+            spec.direction,
+            anchorX,
+            anchorY,
+            layoutByNodeId
+          ).layoutByNodeId
+        : computeAutoLayout(
+            affectedNodes,
+            affectedEdges,
+            spec.direction,
+            anchorX,
+            anchorY,
+            undefined,
+            layoutByNodeId
+          )
     }
   }
 
-  // Step 5: Add new nodes and update positions
+  // Step 5: Add new nodes or update existing nodes
   for (const nodeSpec of spec.nodes || []) {
-    if (!nodes[nodeSpec.entity]) {
+    const existingNode = nodes[nodeSpec.entity]
+    if (!existingNode) {
       nodes[nodeSpec.entity] = buildGraphNode(nodeSpec)
+    } else {
+      const nextName = nodeSpec.name || existingNode.name
+      const existingAttrs = existingNode.attrs as Record<string, unknown> | undefined
+      const memoAttrs = mergeMemoAttrs(existingAttrs, nodeSpec)
+      const attrs = mergeClusterAttrs(memoAttrs, nodeSpec)
+      nodes[nodeSpec.entity] = {
+        ...existingNode,
+        name: nextName,
+        attrs
+      }
     }
   }
 
@@ -778,7 +866,8 @@ function getNodeAttrs(spec: NodeSpec): Record<string, unknown> {
 
 function buildGraphNode(spec: NodeSpec) {
   const baseAttrs = getNodeAttrs(spec)
-  const attrs = mergeMemoAttrs(baseAttrs, spec)
+  const memoAttrs = mergeMemoAttrs(baseAttrs, spec)
+  const attrs = mergeClusterAttrs(memoAttrs, spec)
   return {
     id: spec.entity,
     type: 'card' as const,
@@ -795,7 +884,10 @@ function buildRelationshipRecord(
   const relationships: GraphCanvasDTO['graph']['relationships'] = {}
   for (const edge of edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
-      throw new Error(`Edge references unknown node alias: ${edge.from} -> ${edge.to}`)
+      throw new WorkspaceError(
+        WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC,
+        `Edge references unknown node alias: ${edge.from} -> ${edge.to}`
+      )
     }
     const relId = generateRelationshipId(edge.from, edge.to)
     const { fromPort, toPort } = getPortId(edge.from, edge.to, layoutByNodeId)

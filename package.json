@@ -72,6 +72,7 @@
     "archiver": "^8.0.0",
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
+    "deepagents": "^1.13.3",
     "deno": "^2.9.5",
     "dockview-react": "^8.2.0",
     "express": "^5.2.1",

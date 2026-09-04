@@ -11,7 +11,7 @@ trigger: always_on
 ## 2. CODING STYLE
 
 1. Hardcoded values or parameters are forbidden in this project.
-2. AVOID using fallbacks in the project as fallback logic places unpredictable load on the system.
+2. AVOID using fallbacks in the project as fallback logic places unpredictable load on the system. Instead, design robust error code enum.
 
 ## 3. CODE QUALITY
 

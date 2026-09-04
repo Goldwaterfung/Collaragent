@@ -30,7 +30,7 @@ flowchart TB
 
     subgraph UtilityProcess ["Node.js Utility Process (Dynamic :apiPort)"]
         RESTServer["Express Storage API"]
-        StorageEngine["Sharded V3 Cagent Engine"]
+        StorageEngine["Single-File SQLite V4 Engine"]
     end
 
     subgraph External ["External Services"]
@@ -51,12 +51,12 @@ flowchart TB
     AgentRuntime -->|"STDIO / SSE"| MCP
 ```
 
-| Layer | Transport / Protocol | Port / Endpoint | Primary Responsibility |
-|---|---|---|---|
-| **Storage REST API** | HTTP 1.1 / JSON | `http://127.0.0.1:${apiPort}/api/*` (Dynamic ephemeral port) | Instance discovery, project management, binary export, checkpoint restoration |
-| **Realtime Sync API** | WebSocket / JSON | `ws://127.0.0.1:${wsPort}/ws/*` (Dynamic ephemeral port) | Realtime state synchronization, staged proposals, collaborative mutation, command inversion |
-| **Electron Desktop IPC** | Electron `ipcRenderer` / `ipcMain` | Dynamic channels | Chat invocation, token stream unbuffering, native dialogs, hardware key encryption |
-| **Agent Tool Calling** | TypeScript In-Process Functions | `WorkspaceTools.ts` | Programmatic manipulation of workspace documents, graph nodes, and files |
+| Layer                    | Transport / Protocol               | Port / Endpoint                                              | Primary Responsibility                                                                      |
+| ------------------------ | ---------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| **Storage REST API**     | HTTP 1.1 / JSON                    | `http://127.0.0.1:${apiPort}/api/*` (Dynamic ephemeral port) | Instance discovery, project management, binary export, checkpoint restoration               |
+| **Realtime Sync API**    | WebSocket / JSON                   | `ws://127.0.0.1:${wsPort}/ws/*` (Dynamic ephemeral port)     | Realtime state synchronization, staged proposals, collaborative mutation, command inversion |
+| **Electron Desktop IPC** | Electron `ipcRenderer` / `ipcMain` | Dynamic channels                                             | Chat invocation, token stream unbuffering, native dialogs, hardware key encryption          |
+| **Agent Tool Calling**   | TypeScript In-Process Functions    | `WorkspaceTools.ts`                                          | Programmatic manipulation of workspace documents, graph nodes, and files                    |
 
 ### 1.1 Dynamic Ephemeral Port Allocation & Session Discovery
 
@@ -78,6 +78,7 @@ The Storage REST API runs inside a dedicated Node.js `UtilityProcess` and provid
 All REST API responses must adhere to strictly typed JSON envelopes. Arbitrary top-level raw arrays or naked objects without field validation are forbidden.
 
 #### Standard Error Response Envelope
+
 ```json
 {
   "error": "WORKSPACE_INSTANCE_NOT_FOUND",
@@ -90,10 +91,11 @@ All REST API responses must adhere to strictly typed JSON envelopes. Arbitrary t
 ### 2.2 Endpoint Specifications
 
 #### 1. `GET /api/instances`
+
 Returns a list of all document and canvas instances in the active project.
 
 - **Query Parameters**:
-  - `projectId` *(optional, string)*: Filter instances by project ID.
+  - `projectId` _(optional, string)_: Filter instances by project ID.
 - **Success Response (`200 OK`)**:
   ```json
   {
@@ -124,22 +126,25 @@ Returns a list of all document and canvas instances in the active project.
 - **Validation Schema (Zod)**:
   ```typescript
   export const InstancesApiResponseSchema = z.object({
-    instances: z.array(z.object({
-      id: z.string().min(1),
-      projectId: z.string().optional(),
-      updatedAt: z.string().optional(),
-      name: z.string().optional(),
-      type: z.enum(['document', 'canvas']).optional(),
-      metadata: z.record(z.string(), z.unknown()).optional()
-    }))
-  });
+    instances: z.array(
+      z.object({
+        id: z.string().min(1),
+        projectId: z.string().optional(),
+        updatedAt: z.string().optional(),
+        name: z.string().optional(),
+        type: z.enum(['document', 'canvas']).optional(),
+        metadata: z.record(z.string(), z.unknown()).optional()
+      })
+    )
+  })
   ```
 
 #### 2. `GET /api/instances/:id`
+
 Retrieves the raw persisted state payload of an individual instance.
 
 - **Path Parameters**:
-  - `id` *(string, required)*: The UUID of the instance.
+  - `id` _(string, required)_: The UUID of the instance.
 - **Success Response (`200 OK`)**:
   - For Document: `{ "blocks": [...], "comments": [...] }`
   - For Canvas: `{ "type": "graph-canvas", "graph": { "nodes": [...], "edges": [...] }, "layout": { ... } }`
@@ -147,6 +152,7 @@ Retrieves the raw persisted state payload of an individual instance.
   - `404 Not Found`: `{ "error": "WORKSPACE_INSTANCE_NOT_FOUND", "message": "..." }`
 
 #### 3. `POST /api/instances`
+
 Creates a new document or canvas instance.
 
 - **Request Body**:
@@ -171,6 +177,7 @@ Creates a new document or canvas instance.
 - **Success Response (`201 Created`)**: `{ "success": true, "instanceId": "...", "createdAt": "..." }`
 
 #### 4. `GET /api/projects`
+
 Lists all workspaces/projects registered in the storage engine.
 
 - **Success Response (`200 OK`)**:
@@ -188,6 +195,7 @@ Lists all workspaces/projects registered in the storage engine.
   ```
 
 #### 5. `POST /api/checkpoints/workspace/restore`
+
 Restores the complete project state to a designated checkpoint sequence.
 
 - **Request Body**:
@@ -209,12 +217,12 @@ The WebSocket server provides bidirectional synchronization between UI clients (
 
 All WebSocket endpoints are served over the dynamically bound `${wsPort}` resolved during workspace initialization (`ws://127.0.0.1:${wsPort}`).
 
-| Route | Purpose | Message Types Handled |
-|---|---|---|
-| `/ws/canvas/:instanceId` | Realtime Graph Canvas Sync | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes` |
-| `/ws/editor/:instanceId` | Realtime Document Editor Sync | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes` |
-| `/ws/editor-content` | Legacy Single-Doc Route | Same as editor route |
-| `/ws/instances` | Live Instance Registry Watcher | `hello`, `watchInstances`, `instancesSync` |
+| Route                    | Purpose                        | Message Types Handled                                                                                  |
+| ------------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `/ws/canvas/:instanceId` | Realtime Graph Canvas Sync     | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes` |
+| `/ws/editor/:instanceId` | Realtime Document Editor Sync  | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes` |
+| `/ws/editor-content`     | Legacy Single-Doc Route        | Same as editor route                                                                                   |
+| `/ws/instances`          | Live Instance Registry Watcher | `hello`, `watchInstances`, `instancesSync`                                                             |
 
 ### 3.2 Protocol Sequence Flow
 
@@ -336,14 +344,14 @@ flowchart LR
     Preload -->>|"AsyncGenerator.next()"| Renderer
 ```
 
-| Channel Name | Direction | Payload Shape | Description |
-|---|---|---|---|
-| `workspace:chat` | Bidirectional | `{ message: string, threadId: string, modelConfig: ModelConfig }` | Initiates an agent execution turn |
-| `workspace:chat:stream:chunk` | Main -> Renderer | `{ type: 'token' \| 'tool_call' \| 'reasoning', content: string }` | Streams tokens and reasoning traces |
-| `app:open-project` | Renderer -> Main | `{ projectPath?: string }` | Opens native directory picker and mounts `.collar` |
-| `app:export-project` | Renderer -> Main | `{ targetZipPath: string }` | Bundles live state into standalone `.cagent` ZIP |
-| `settings:save-key` | Renderer -> Main | `{ provider: string, apiKey: string }` | Encrypts API key via OS `safeStorage` |
-| `settings:get-keys` | Renderer -> Main | `void` -> `{ [provider: string]: boolean }` | Checks key presence without leaking plaintext |
+| Channel Name                  | Direction        | Payload Shape                                                      | Description                                                             |
+| ----------------------------- | ---------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `workspace:chat`              | Bidirectional    | `{ message: string, threadId: string, modelConfig: ModelConfig }`  | Initiates an agent execution turn                                       |
+| `workspace:chat:stream:chunk` | Main -> Renderer | `{ type: 'token' \| 'tool_call' \| 'reasoning', content: string }` | Streams tokens and reasoning traces                                     |
+| `app:open-project`            | Renderer -> Main | `{ projectPath?: string }`                                         | Opens native file/directory picker and mounts workspace SQLite database |
+| `app:export-project`          | Renderer -> Main | `{ targetZipPath: string }`                                        | Exports/packages workspace database into standalone `.cagent` archive   |
+| `settings:save-key`           | Renderer -> Main | `{ provider: string, apiKey: string }`                             | Encrypts API key via OS `safeStorage`                                   |
+| `settings:get-keys`           | Renderer -> Main | `void` -> `{ [provider: string]: boolean }`                        | Checks key presence without leaking plaintext                           |
 
 ---
 
@@ -354,27 +362,28 @@ Workspace tools provide the ReAct agent with atomic, deterministic operations ov
 ### 5.1 Document Management Tools
 
 #### 1. `readDocument`
+
 Reads the complete block structure, identity mapping, and comments of a document.
 
 - **Input Parameters (Zod)**:
   ```typescript
   export const ReadDocumentInputSchema = z.object({
-    instanceName: z.string().describe("The name or UUID of the document to read."),
-    projectName: z.string().optional().describe("Optional project name to disambiguate.")
-  });
+    instanceName: z.string().describe('The name or UUID of the document to read.'),
+    projectName: z.string().optional().describe('Optional project name to disambiguate.')
+  })
   ```
 - **Return Type (`ReadDocumentResult`)**:
   ```typescript
   export interface ReadDocumentResult {
-    status: 'success';
-    action: 'Read';
-    instanceName: string;
-    projectName?: string;
+    status: 'success'
+    action: 'Read'
+    instanceName: string
+    projectName?: string
     editable_blocks: Array<{
-      id: string;      // Persistent UUID (e.g. "b7a2-...")
-      html: string;    // Clean HTML without data-block-id attributes
-    }>;
-    comments: CommentItem[];
+      id: string // Persistent UUID (e.g. "b7a2-...")
+      html: string // Clean HTML without data-block-id attributes
+    }>
+    comments: CommentItem[]
   }
   ```
 - **Error Invariants**:
@@ -383,17 +392,18 @@ Reads the complete block structure, identity mapping, and comments of a document
   - Throws `WORKSPACE_PAYLOAD_INVALID` if the document blocks structure is not an array.
 
 #### 2. `editDocument`
+
 Performs atomic block updates, insertions, or deletions with staged proposal tracking and unified diff generation.
 
 - **Input Parameters (Zod)**:
   ```typescript
   export const EditDocumentInputSchema = z.object({
-    instanceName: z.string().describe("Target document name or UUID."),
-    operation: z.enum(['update', 'insert', 'delete']).describe("Edit action."),
-    targetBlockId: z.string().optional().describe("Block ID to update, delete, or anchor against."),
-    anchor: z.enum(['before', 'after']).optional().describe("Anchor position for insert."),
-    newHtml: z.string().optional().describe("HTML string for update or insert.")
-  });
+    instanceName: z.string().describe('Target document name or UUID.'),
+    operation: z.enum(['update', 'insert', 'delete']).describe('Edit action.'),
+    targetBlockId: z.string().optional().describe('Block ID to update, delete, or anchor against.'),
+    anchor: z.enum(['before', 'after']).optional().describe('Anchor position for insert.'),
+    newHtml: z.string().optional().describe('HTML string for update or insert.')
+  })
   ```
 - **Unified Diff Output**:
   Every successful `editDocument` execution returns a structured unified diff:
@@ -408,15 +418,16 @@ Performs atomic block updates, insertions, or deletions with staged proposal tra
   ```
 
 #### 3. `createDocument`
+
 Creates a brand new document instance with initial HTML content.
 
 - **Input Parameters (Zod)**:
   ```typescript
   export const CreateDocumentInputSchema = z.object({
-    name: z.string().describe("Display name of the new document."),
-    content: z.string().optional().describe("Initial HTML or Markdown content."),
-    projectName: z.string().optional().describe("Target project name.")
-  });
+    name: z.string().describe('Display name of the new document.'),
+    content: z.string().optional().describe('Initial HTML or Markdown content.'),
+    projectName: z.string().optional().describe('Target project name.')
+  })
   ```
 
 ---
@@ -425,14 +436,14 @@ Creates a brand new document instance with initial HTML content.
 
 CollarAgent enforces a centralized, typed error code taxonomy across all subsystems:
 
-| Subsystem | Prefix | Example Code | Semantic Meaning & Recovery |
-|---|---|---|---|
-| **Workspace** | `WORKSPACE_` | `WORKSPACE_INSTANCE_NOT_FOUND` | Document or canvas does not exist. Call `listWorkspaceItems` to verify. |
-| | | `WORKSPACE_BLOCK_IDENTITY_MISSING` | Block payload is corrupted. Save/normalize document. |
-| | | `WORKSPACE_PAYLOAD_INVALID` | Payload does not match document or canvas schema. |
-| **System** | `SYS_` | `SYS_STORAGE_IO_ERROR` | Disk read/write failure in storage daemon. |
-| | | `SYS_UTILITY_PROCESS_CRASHED` | Storage background process crashed; respawn required. |
-| **Agent** | `AGENT_` | `AGENT_RECURSION_LIMIT_EXCEEDED` | Subagent loop exceeded max step count (200). |
-| | | `AGENT_TOOL_CALL_SCHEMA_ERROR` | LLM generated invalid tool arguments. Retried with feedback. |
-| **Sync** | `SYNC_` | `SYNC_HANDSHAKE_TIMEOUT` | WebSocket handshake failed to complete. |
-| | | `SYNC_COMMAND_VERSION_MISMATCH` | Sequence version mismatch. Client re-requests snapshot. |
+| Subsystem     | Prefix       | Example Code                       | Semantic Meaning & Recovery                                             |
+| ------------- | ------------ | ---------------------------------- | ----------------------------------------------------------------------- |
+| **Workspace** | `WORKSPACE_` | `WORKSPACE_INSTANCE_NOT_FOUND`     | Document or canvas does not exist. Call `listWorkspaceItems` to verify. |
+|               |              | `WORKSPACE_BLOCK_IDENTITY_MISSING` | Block payload is corrupted. Save/normalize document.                    |
+|               |              | `WORKSPACE_PAYLOAD_INVALID`        | Payload does not match document or canvas schema.                       |
+| **System**    | `SYS_`       | `SYS_STORAGE_IO_ERROR`             | Disk read/write failure in storage daemon.                              |
+|               |              | `SYS_UTILITY_PROCESS_CRASHED`      | Storage background process crashed; respawn required.                   |
+| **Agent**     | `AGENT_`     | `AGENT_RECURSION_LIMIT_EXCEEDED`   | Subagent loop exceeded max step count (200).                            |
+|               |              | `AGENT_TOOL_CALL_SCHEMA_ERROR`     | LLM generated invalid tool arguments. Retried with feedback.            |
+| **Sync**      | `SYNC_`      | `SYNC_HANDSHAKE_TIMEOUT`           | WebSocket handshake failed to complete.                                 |
+|               |              | `SYNC_COMMAND_VERSION_MISMATCH`    | Sequence version mismatch. Client re-requests snapshot.                 |

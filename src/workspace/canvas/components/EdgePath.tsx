@@ -1,13 +1,13 @@
-import React from 'react';
+import React from 'react'
 
 interface EdgePathProps extends React.SVGProps<SVGPathElement> {
-  path: string;
-  dashed?: boolean;
-  selected?: boolean;
-  hovered?: boolean;
-  onEdgeClick?: (e: React.MouseEvent) => void;
-  onEdgeMouseEnter?: () => void;
-  onEdgeMouseLeave?: () => void;
+  path: string
+  dashed?: boolean
+  selected?: boolean
+  hovered?: boolean
+  onEdgeClick?: (e: React.MouseEvent) => void
+  onEdgeMouseEnter?: () => void
+  onEdgeMouseLeave?: () => void
 }
 
 export const EdgePath: React.FC<EdgePathProps> = ({
@@ -23,8 +23,8 @@ export const EdgePath: React.FC<EdgePathProps> = ({
   style,
   ...props
 }) => {
-  const resolvedStroke = selected ? '#2563eb' : hovered ? '#3b82f6' : (stroke || '#94a3b8');
-  const resolvedWidth = selected ? 3 : hovered ? 2.5 : strokeWidth;
+  const resolvedStroke = selected ? '#f5afaf' : hovered ? '#f87171' : stroke || '#cbd5e1'
+  const resolvedWidth = selected ? 3 : hovered ? 2.5 : strokeWidth
 
   return (
     <g className="edge-path-group">
@@ -49,10 +49,10 @@ export const EdgePath: React.FC<EdgePathProps> = ({
         style={{
           pointerEvents: 'none',
           transition: 'stroke 0.15s ease, stroke-width 0.15s ease',
-          ...style,
+          ...style
         }}
         {...props}
       />
     </g>
-  );
-};
+  )
+}

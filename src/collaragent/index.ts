@@ -1,71 +1,21 @@
 /**
  * Deep Agents TypeScript Implementation
  *
- * A TypeScript port of the Python Deep Agents library for building controllable AI agents with LangGraph.
- * This implementation maintains 1:1 compatibility with the Python version.
+ * CollarAgent Studio Runtime powered by LangChain DeepAgents.
  */
 
 export * from './runtime/index.js'
-export type {
-  CreateDeepAgentParams,
-  MergedDeepAgentState,
-  // DeepAgent type bag and helper types
-  DeepAgent,
-  DeepAgentTypeConfig,
-  DefaultDeepAgentTypeConfig,
-  ResolveDeepAgentTypeConfig,
-  InferDeepAgentType,
-  InferDeepAgentSubagents,
-  InferSubagentByName,
-  InferSubagentReactAgentType,
-  // Subagent middleware extraction types
-  ExtractSubAgentMiddleware,
-  FlattenSubAgentMiddleware,
-  InferSubAgentMiddlewareStates
-} from './types.js'
+export * from './checkpoint/index.js'
+export * from './telemetry/index.js'
+export * from './tools/index.js'
 
-// Export config
-export { createSettings, findProjectRoot, type Settings, type SettingsOptions } from './config.js'
-
-// Export middleware (matches Python's interface)
+// Export core deepagents runtime, backends, and middleware from official package
 export {
-  createFilesystemMiddleware,
-  createSubAgentMiddleware,
-  createPatchToolCallsMiddleware,
-  createMemoryMiddleware,
-  // Skills middleware - matches Python's SkillsMiddleware interface
-  createSkillsMiddleware,
-  type SkillsMiddlewareOptions,
-  type SkillMetadata,
-  // Skills constants
-  MAX_SKILL_FILE_SIZE,
-  MAX_SKILL_NAME_LENGTH,
-  MAX_SKILL_DESCRIPTION_LENGTH,
-  // Other middleware types
-  type FilesystemMiddlewareOptions,
-  type SubAgentMiddlewareOptions,
-  type MemoryMiddlewareOptions,
-  type SubAgent,
-  type CompiledSubAgent,
-  type FileData
-} from './middleware/index.js'
-
-// Export agent memory middleware
-export {
-  createAgentMemoryMiddleware,
-  type AgentMemoryMiddlewareOptions
-} from './middleware/agent-memory.js'
-
-// Export skills loader (utility functions for direct filesystem access)
-export {
-  listSkills,
-  parseSkillMetadata,
-  type SkillMetadata as LoaderSkillMetadata,
-  type ListSkillsOptions
-} from './skills/index.js'
-
-// Export backends
-export {
+  createSettings,
+  findProjectRoot,
+  type Settings,
+  type SettingsOptions,
+  // Backends
   StateBackend,
   StoreBackend,
   FilesystemBackend,
@@ -78,14 +28,56 @@ export {
   type GrepMatch,
   type WriteResult,
   type EditResult,
-  // Sandbox execution types
   type ExecuteResponse,
   type FileOperationError,
   type FileDownloadResponse,
   type FileUploadResponse,
   type SandboxBackendProtocol,
-  type MaybePromise
-} from './backends/index.js'
+  type MaybePromise,
+  // Middleware
+  createFilesystemMiddleware,
+  createPatchToolCallsMiddleware,
+  createMemoryMiddleware,
+  createSkillsMiddleware,
+  createAgentMemoryMiddleware,
+  type AgentMemoryMiddlewareOptions,
+  type SkillsMiddlewareOptions,
+  type SkillMetadata,
+  MAX_SKILL_FILE_SIZE,
+  MAX_SKILL_NAME_LENGTH,
+  MAX_SKILL_DESCRIPTION_LENGTH,
+  type FilesystemMiddlewareOptions,
+  type MemoryMiddlewareOptions,
+  type FileData,
+  // Types
+  type MergedDeepAgentState,
+  type DeepAgent,
+  type DeepAgentTypeConfig,
+  type DefaultDeepAgentTypeConfig,
+  type ResolveDeepAgentTypeConfig,
+  type InferDeepAgentType,
+  type InferDeepAgentSubagents,
+  type InferSubagentByName,
+  type InferSubagentReactAgentType,
+  type ExtractSubAgentMiddleware,
+  type FlattenSubAgentMiddleware,
+  type InferSubAgentMiddlewareStates
+} from 'deepagents'
 
-// Export telemetry
-export * from './telemetry/index.js'
+// Export CollarAgent local extensions & loader
+export {
+  createSubAgentMiddleware,
+  type SubAgentMiddlewareOptions,
+  type SubAgent,
+  type CompiledSubAgent,
+  createWorkspaceMiddleware,
+  dateMiddleware,
+  createModelResponseNormalizerMiddleware
+} from './middleware/index.js'
+
+export {
+  listSkills,
+  parseSkillMetadata,
+  type SkillMetadata as LoaderSkillMetadata,
+  type ListSkillsOptions
+} from './skills/index.js'

@@ -1,4 +1,4 @@
-import { z } from "zod/v3";
+import { z } from 'zod/v3'
 import {
   createMiddleware,
   createAgent,
@@ -10,18 +10,26 @@ import {
   toolRetryMiddleware,
   type InterruptOnConfig,
   type ReactAgent,
-  StructuredTool,
-} from "langchain";
-import { Command, getCurrentTaskInput } from "@langchain/langgraph";
-import type { LanguageModelLike } from "@langchain/core/language_models/base";
-import type { Runnable } from "@langchain/core/runnables";
-import { HumanMessage } from "@langchain/core/messages";
+  StructuredTool
+} from 'langchain'
+import { Command, getCurrentTaskInput } from '@langchain/langgraph'
+import type { LanguageModelLike } from '@langchain/core/language_models/base'
+import type { Runnable } from '@langchain/core/runnables'
+import { HumanMessage } from '@langchain/core/messages'
+import type {
+  ChatMessage,
+  ToolCall,
+  MessageRole,
+  MessageBlock,
+  SubagentSessionData
+} from '@shared/agents/types'
+import { createDynamicTaskTool } from '../tools/DynamicTaskTool.js'
 
-export type { AgentMiddleware };
+export type { AgentMiddleware }
 
 // Constants
 const DEFAULT_SUBAGENT_PROMPT =
-  "In order to complete the objective that the user asks of you, you have access to a number of standard tools.";
+  'In order to complete the objective that the user asks of you, you have access to a number of standard tools.'
 
 // State keys that are excluded when passing state to subagents and when returning
 // updates from subagents.
@@ -31,15 +39,10 @@ const DEFAULT_SUBAGENT_PROMPT =
 //    and no clear meaning for returning them from a subagent to the main agent.
 // 3. The files key is excluded to prevent concurrent subagents from writing to the files
 //    channel simultaneously (which causes LastValue errors in LangGraph).
-const EXCLUDED_STATE_KEYS = [
-  "messages",
-  "todos",
-  "structuredResponse",
-  "files",
-] as const;
+const EXCLUDED_STATE_KEYS = ['messages', 'todos', 'structuredResponse', 'files'] as const
 
 const DEFAULT_GENERAL_PURPOSE_DESCRIPTION =
-  "General-purpose agent for researching complex questions, searching for files and content, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. This agent has access to all tools as the main agent.";
+  'General-purpose agent for researching complex questions, searching for files and content, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. This agent has access to all tools as the main agent.'
 
 // Comprehensive task tool description from Python
 function getTaskToolDescription(subagentDescriptions: string[]): string {
@@ -47,7 +50,7 @@ function getTaskToolDescription(subagentDescriptions: string[]): string {
 Launch an ephemeral subagent to handle complex, multi-step independent tasks with isolated context windows.
 
 Available agent types and the tools they have access to:
-${subagentDescriptions.join("\n")}
+${subagentDescriptions.join('\n')}
 
 When using the Task tool, you must specify a subagent_type parameter to select which agent type to use.
 
@@ -153,7 +156,7 @@ Since the user is greeting, use the greeting-responder agent to respond with a f
 </commentary>
 assistant: "I'm going to use the Task tool to launch with the greeting-responder agent"
 </example>
-  `.trim();
+  `.trim()
 }
 
 const TASK_SYSTEM_PROMPT = `## \`task\` (subagent spawner)
@@ -182,7 +185,7 @@ When NOT to use the task tool:
 ## Important Task Tool Usage Notes to Remember
 - Whenever possible, parallelize the work that you do. This is true for both tool_calls, and for tasks. Whenever you have independent steps to complete - make tool_calls, or kick off tasks (subagents) in parallel to accomplish them faster. This saves time for the user, which is incredibly important.
 - Remember to use the \`task\` tool to silo independent tasks within a multi-part objective.
-- You should use the \`task\` tool whenever you have a complex task that will take multiple steps, and is independent from other tasks that the agent needs to complete. These agents are highly competent and efficient.`;
+- You should use the \`task\` tool whenever you have a complex task that will take multiple steps, and is independent from other tasks that the agent needs to complete. These agents are highly competent and efficient.`
 
 /**
  * Type definitions for pre-compiled agents.
@@ -190,15 +193,13 @@ When NOT to use the task tool:
  * @typeParam TRunnable - The type of the runnable (ReactAgent or Runnable).
  *   When using `createAgent`, this preserves the middleware types for type inference.
  */
-export interface CompiledSubAgent<
-  TRunnable extends ReactAgent | Runnable = ReactAgent | Runnable,
-> {
+export interface CompiledSubAgent<TRunnable extends ReactAgent | Runnable = ReactAgent | Runnable> {
   /** The name of the agent */
-  name: string;
+  name: string
   /** The description of the agent */
-  description: string;
+  description: string
   /** The agent instance */
-  runnable: TRunnable;
+  runnable: TRunnable
 }
 
 /**
@@ -206,34 +207,168 @@ export interface CompiledSubAgent<
  */
 export interface SubAgent {
   /** The name of the agent */
-  name: string;
+  name: string
   /** The description of the agent */
-  description: string;
+  description: string
   /** The system prompt to use for the agent */
-  systemPrompt: string;
+  systemPrompt?: string | SystemMessage
   /** The tools to use for the agent (tool instances, not names). Defaults to defaultTools */
-  tools?: StructuredTool[];
+  tools?: StructuredTool[]
   /** The model for the agent. Defaults to default_model */
-  model?: LanguageModelLike | string;
+  model?: LanguageModelLike | string
   /** Additional middleware to append after default_middleware */
-  middleware?: readonly AgentMiddleware[];
+  middleware?: readonly AgentMiddleware[]
   /** The tool configs to use for the agent */
-  interruptOn?: Record<string, boolean | InterruptOnConfig>;
+  interruptOn?: Record<string, boolean | InterruptOnConfig>
 }
 
 /**
  * Filter state to exclude certain keys when passing to subagents
  */
-function filterStateForSubagent(
-  state: Record<string, unknown>,
-): Record<string, unknown> {
-  const filtered: Record<string, unknown> = {};
+function filterStateForSubagent(state: Record<string, unknown>): Record<string, unknown> {
+  const filtered: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(state)) {
     if (!EXCLUDED_STATE_KEYS.includes(key as never)) {
-      filtered[key] = value;
+      filtered[key] = value
     }
   }
-  return filtered;
+  return filtered
+}
+
+/**
+ * Extract structured subagent session execution history from subagent result
+ */
+function extractSubagentSessionData(
+  result: Record<string, unknown>,
+  context?: { subagentType?: string; description?: string }
+): SubagentSessionData {
+  const rawMessages = Array.isArray(result.messages) ? result.messages : []
+  const chatMessages: ChatMessage[] = []
+  const toolCallsMap = new Map<string, ToolCall>()
+
+  let lastContent = ''
+
+  for (let i = 0; i < rawMessages.length; i++) {
+    const msg = rawMessages[i]
+    if (!msg || typeof msg !== 'object') continue
+
+    const msgObj = msg as Record<string, unknown>
+    const type =
+      typeof msgObj._getType === 'function'
+        ? (msgObj._getType as () => string)()
+        : typeof msgObj.type === 'string'
+          ? msgObj.type
+          : ''
+
+    const rawContent = msgObj.content
+    let textContent = ''
+    const blocks: MessageBlock[] = []
+
+    if (typeof rawContent === 'string') {
+      textContent = rawContent
+      if (rawContent.trim()) {
+        blocks.push({ type: 'text', content: rawContent })
+      }
+    } else if (Array.isArray(rawContent)) {
+      for (const block of rawContent) {
+        if (typeof block === 'string') {
+          textContent += block
+          blocks.push({ type: 'text', content: block })
+        } else if (block && typeof block === 'object') {
+          const b = block as Record<string, unknown>
+          if (b.type === 'text' && typeof b.text === 'string') {
+            textContent += b.text
+            blocks.push({ type: 'text', content: b.text })
+          } else if (
+            (b.type === 'reasoning' || b.type === 'thinking') &&
+            typeof (b.reasoning || b.thinking) === 'string'
+          ) {
+            const reasoningText = String(b.reasoning || b.thinking)
+            blocks.push({ type: 'reasoning', content: reasoningText })
+          }
+        }
+      }
+    }
+
+    const additionalKwargs = msgObj.additional_kwargs as Record<string, unknown> | undefined
+    if (additionalKwargs) {
+      const reasoning = additionalKwargs.reasoning_content || additionalKwargs.thinking
+      if (typeof reasoning === 'string' && reasoning.trim()) {
+        blocks.unshift({ type: 'reasoning', content: reasoning })
+      }
+    }
+
+    const msgToolCalls: ToolCall[] = []
+    if (Array.isArray(msgObj.tool_calls)) {
+      for (const tc of msgObj.tool_calls) {
+        if (tc && typeof tc === 'object') {
+          const tcObj = tc as Record<string, unknown>
+          const id = typeof tcObj.id === 'string' ? tcObj.id : `sub_tc_${i}_${msgToolCalls.length}`
+          const name = typeof tcObj.name === 'string' ? tcObj.name : 'unknown_tool'
+          const args =
+            tcObj.args && typeof tcObj.args === 'object'
+              ? (tcObj.args as Record<string, unknown>)
+              : {}
+          const toolCall: ToolCall = {
+            id,
+            name,
+            args,
+            status: 'pending'
+          }
+          msgToolCalls.push(toolCall)
+          toolCallsMap.set(id, toolCall)
+          blocks.push({ type: 'tool', toolId: id })
+        }
+      }
+    }
+
+    if (type === 'tool') {
+      const toolCallId = typeof msgObj.tool_call_id === 'string' ? msgObj.tool_call_id : ''
+      if (toolCallId && toolCallsMap.has(toolCallId)) {
+        const tc = toolCallsMap.get(toolCallId)
+        if (tc) {
+          tc.status = msgObj.status === 'error' ? 'error' : 'completed'
+          let parsedResult: unknown = rawContent
+          if (typeof rawContent === 'string') {
+            try {
+              parsedResult = JSON.parse(rawContent)
+            } catch {
+              parsedResult = rawContent
+            }
+          }
+          tc.result = parsedResult
+        }
+      }
+      continue
+    }
+
+    if (textContent.trim()) {
+      lastContent = textContent
+    }
+
+    const role: MessageRole = type === 'human' ? 'user' : type === 'ai' ? 'assistant' : 'system'
+
+    chatMessages.push({
+      id: typeof msgObj.id === 'string' ? msgObj.id : `sub_msg_${i}`,
+      role,
+      content: textContent,
+      timestamp: new Date(),
+      toolCalls: msgToolCalls.length > 0 ? msgToolCalls : undefined,
+      blocks: blocks.length > 0 ? blocks : undefined
+    })
+  }
+
+  const summary = lastContent || 'Task completed'
+  const allToolCalls = Array.from(toolCallsMap.values())
+
+  return {
+    summary,
+    messages: chatMessages,
+    toolCalls: allToolCalls,
+    totalTurns: chatMessages.length,
+    agentType: context?.subagentType,
+    description: context?.description
+  }
 }
 
 /**
@@ -242,38 +377,40 @@ function filterStateForSubagent(
 function returnCommandWithStateUpdate(
   result: Record<string, unknown>,
   toolCallId: string,
+  toolName = 'task',
+  context?: { subagentType?: string; description?: string }
 ): Command {
-  const stateUpdate = filterStateForSubagent(result);
-  const messages = result.messages as Array<{ content: string }>;
-  const lastMessage = messages?.[messages.length - 1];
+  const stateUpdate = filterStateForSubagent(result)
+  const sessionData = extractSubagentSessionData(result, context)
 
   return new Command({
     update: {
       ...stateUpdate,
       messages: [
         new ToolMessage({
-          content: lastMessage?.content || "Task completed",
+          content: sessionData.summary,
           tool_call_id: toolCallId,
-          name: "task",
-        }),
-      ],
-    },
-  });
+          name: toolName,
+          artifact: sessionData
+        })
+      ]
+    }
+  })
 }
 
 /**
  * Create subagent instances from specifications
  */
 function getSubagents(options: {
-  defaultModel: LanguageModelLike | string;
-  defaultTools: StructuredTool[];
-  defaultMiddleware: AgentMiddleware[] | null;
-  defaultInterruptOn: Record<string, boolean | InterruptOnConfig> | null;
-  subagents: (SubAgent | CompiledSubAgent)[];
-  generalPurposeAgent: boolean;
+  defaultModel: LanguageModelLike | string
+  defaultTools: StructuredTool[]
+  defaultMiddleware: AgentMiddleware[] | null
+  defaultInterruptOn: Record<string, boolean | InterruptOnConfig> | null
+  subagents: readonly (SubAgent | CompiledSubAgent)[]
+  generalPurposeAgent: boolean
 }): {
-  agents: Record<string, ReactAgent | Runnable>;
-  descriptions: string[];
+  agents: Record<string, ReactAgent | Runnable>
+  descriptions: string[]
 } {
   const {
     defaultModel,
@@ -281,166 +418,74 @@ function getSubagents(options: {
     defaultMiddleware,
     defaultInterruptOn,
     subagents,
-    generalPurposeAgent,
-  } = options;
+    generalPurposeAgent
+  } = options
 
+  const hasToolRetry = (defaultMiddleware || []).some(
+    (m) => m.name === 'toolRetryMiddleware' || m.name === 'ToolRetryMiddleware'
+  )
   const defaultSubagentMiddleware = [
     ...(defaultMiddleware || []),
-    toolRetryMiddleware({ maxRetries: 2, onFailure: "continue" }),
-  ];
-  const agents: Record<string, ReactAgent | Runnable> = {};
-  const subagentDescriptions: string[] = [];
+    ...(hasToolRetry ? [] : [toolRetryMiddleware({ maxRetries: 2, onFailure: 'continue' })])
+  ]
+  const agents: Record<string, ReactAgent | Runnable> = {}
+  const subagentDescriptions: string[] = []
 
   // Create general-purpose agent if enabled
   if (generalPurposeAgent) {
-    const generalPurposeMiddleware = [...defaultSubagentMiddleware];
+    const generalPurposeMiddleware = [...defaultSubagentMiddleware]
     if (defaultInterruptOn) {
-      generalPurposeMiddleware.push(
-        humanInTheLoopMiddleware({ interruptOn: defaultInterruptOn }),
-      );
+      generalPurposeMiddleware.push(humanInTheLoopMiddleware({ interruptOn: defaultInterruptOn }))
     }
 
     const generalPurposeSubagent = createAgent({
       model: defaultModel,
       systemPrompt: DEFAULT_SUBAGENT_PROMPT,
-      tools: defaultTools as any,
-      middleware: generalPurposeMiddleware,
-    });
+      tools: defaultTools,
+      middleware: generalPurposeMiddleware
+    })
 
-    agents["general-purpose"] = generalPurposeSubagent;
-    subagentDescriptions.push(
-      `- general-purpose: ${DEFAULT_GENERAL_PURPOSE_DESCRIPTION}`,
-    );
+    agents['general-purpose'] = generalPurposeSubagent
+    subagentDescriptions.push(`- general-purpose: ${DEFAULT_GENERAL_PURPOSE_DESCRIPTION}`)
   }
 
   // Process custom subagents
   for (const agentParams of subagents) {
-    subagentDescriptions.push(
-      `- ${agentParams.name}: ${agentParams.description}`,
-    );
+    subagentDescriptions.push(`- ${agentParams.name}: ${agentParams.description}`)
 
-    if ("runnable" in agentParams) {
-      agents[agentParams.name] = agentParams.runnable;
+    if ('runnable' in agentParams) {
+      agents[agentParams.name] = agentParams.runnable
     } else {
       const middleware = agentParams.middleware
         ? [...defaultSubagentMiddleware, ...agentParams.middleware]
-        : [...defaultSubagentMiddleware];
+        : [...defaultSubagentMiddleware]
 
-      const interruptOn = agentParams.interruptOn || defaultInterruptOn;
-      if (interruptOn)
-        middleware.push(humanInTheLoopMiddleware({ interruptOn }));
+      const interruptOn = agentParams.interruptOn || defaultInterruptOn
+      if (interruptOn) middleware.push(humanInTheLoopMiddleware({ interruptOn }))
 
       agents[agentParams.name] = createAgent({
         model: agentParams.model ?? defaultModel,
         systemPrompt: agentParams.systemPrompt,
         tools: agentParams.tools ?? defaultTools,
-        middleware,
-      });
+        middleware
+      })
     }
   }
 
-  return { agents, descriptions: subagentDescriptions };
-}
-
-function getDynamicTaskToolDescription(): string {
-  return `
-Launch an ad-hoc, ephemeral subagent with a highly specific persona and custom toolset to handle unique, independent tasks.
-
-While the standard \`task\` tool is used for pre-configured, common agent types, the \`dynamic_task\` tool allows you to create a completely custom worker agent on-the-fly.
-
-## Usage Notes:
-1. **When to use**: Use this when you encounter a highly specialized task where a pre-configured subagent does not exist or doesn't fit the exact objective (e.g., a one-off legacy code migration, specialized medical research, custom statistical analysis).
-2. **System Prompt**: The \`systemPrompt\` you provide is critical. You must clearly define the agent's persona, its exact objective, constraints, and how it should format its final response back to you.
-3. **Minimal Toolset**: Only provide the dynamic subagent with the bare minimum tools it needs to accomplish the task. This prevents distraction.
-4. **Stateless Execution**: The dynamic subagent executes in complete isolation. It cannot communicate with you during its run. Your initial \`description\` and \`systemPrompt\` must contain all necessary context.
-5. **Parallel Execution**: Like the regular task tool, you can launch multiple dynamic subagents concurrently.
-
-##RULES:
-1. NEVER pass Filesystem Tools, Workspace System tools and write_todos tool to the dynamic subagent. They are already provided with access to all workspace tools and write_todos tool.
-  `.trim();
-}
-
-/**
- * Create the dynamic_task tool for ad-hoc agent creation
- */
-function createDynamicTaskTool(
-  availableTools: StructuredTool[],
-  defaultModel: LanguageModelLike | string,
-  defaultMiddleware: AgentMiddleware[] | null
-) {
-  const toolNames = availableTools.map((t) => t.name);
-
-  return tool(
-    async (
-      input: { description: string; subagent_config: { systemPrompt: string; tools: string[] } },
-      config,
-    ): Promise<Command | string> => {
-      const selectedTools = availableTools.filter((t) =>
-        input.subagent_config.tools.includes(t.name)
-      );
-
-      const subagent = (createAgent as any)({
-        model: defaultModel,
-        systemPrompt: input.subagent_config.systemPrompt,
-        tools: selectedTools as any,
-        middleware: [
-          ...(defaultMiddleware || []),
-          toolRetryMiddleware({ maxRetries: 2, onFailure: "continue" }),
-        ],
-      });
-
-      const currentState = getCurrentTaskInput<Record<string, unknown>>();
-      const subagentState = filterStateForSubagent(currentState);
-      subagentState.messages = [new HumanMessage({ content: input.description })];
-
-      const result = (await subagent.invoke(subagentState as any, { ...config, recursionLimit: 200 })) as Record<
-        string,
-        unknown
-      >;
-
-      if (!config.toolCall?.id) {
-        throw new Error("Tool call ID is required for subagent invocation");
-      }
-
-      return returnCommandWithStateUpdate(result, config.toolCall.id);
-    },
-    {
-      name: "dynamic_task",
-      description: getDynamicTaskToolDescription(),
-      schema: z.object({
-        description: z.string().describe("Task description for the agent to execute autonomously"),
-        subagent_config: z.object({
-          systemPrompt: z.string().describe("Highly specific system prompt defining the ad-hoc agent's instructions, persona, and objective"),
-          // Inline the enum directly (not as a variable) to prevent Zod from emitting
-          // a $ref in the JSON Schema output, which Google's API does not support.
-          tools: z
-            .array(
-              toolNames.length > 0
-                ? z.enum(toolNames as [string, ...string[]])
-                : z.string()
-            )
-            .describe(
-              toolNames.length > 0
-                ? `Available tools for subagent: ${toolNames.join(", ")}.`
-                : "No tools available"
-            ),
-        }),
-      }),
-    },
-  );
+  return { agents, descriptions: subagentDescriptions }
 }
 
 /**
  * Create the task tool for invoking subagents
  */
 function createTaskTool(options: {
-  defaultModel: LanguageModelLike | string;
-  defaultTools: StructuredTool[];
-  defaultMiddleware: AgentMiddleware[] | null;
-  defaultInterruptOn: Record<string, boolean | InterruptOnConfig> | null;
-  subagents: (SubAgent | CompiledSubAgent)[];
-  generalPurposeAgent: boolean;
-  taskDescription: string | null;
+  defaultModel: LanguageModelLike | string
+  defaultTools: StructuredTool[]
+  defaultMiddleware: AgentMiddleware[] | null
+  defaultInterruptOn: Record<string, boolean | InterruptOnConfig> | null
+  subagents: readonly (SubAgent | CompiledSubAgent)[]
+  generalPurposeAgent: boolean
+  taskDescription: string | null
 }) {
   const {
     defaultModel,
@@ -449,75 +494,87 @@ function createTaskTool(options: {
     defaultInterruptOn,
     subagents,
     generalPurposeAgent,
-    taskDescription,
-  } = options;
+    taskDescription
+  } = options
 
-  const { agents: subagentGraphs, descriptions: subagentDescriptions } =
-    getSubagents({
-      defaultModel,
-      defaultTools,
-      defaultMiddleware,
-      defaultInterruptOn,
-      subagents,
-      generalPurposeAgent,
-    });
+  const { agents: subagentGraphs, descriptions: subagentDescriptions } = getSubagents({
+    defaultModel,
+    defaultTools,
+    defaultMiddleware,
+    defaultInterruptOn,
+    subagents,
+    generalPurposeAgent
+  })
 
   const finalTaskDescription = taskDescription
     ? taskDescription
-    : getTaskToolDescription(subagentDescriptions);
+    : getTaskToolDescription(subagentDescriptions)
 
   return tool(
     async (
       input: { description: string; subagent_type: string },
-      config,
+      config
     ): Promise<Command | string> => {
-      const { description, subagent_type } = input;
+      const { description, subagent_type } = input
 
       // Validate subagent type
       if (!(subagent_type in subagentGraphs)) {
         const allowedTypes = Object.keys(subagentGraphs)
           .map((k) => `\`${k}\``)
-          .join(", ");
+          .join(', ')
         throw new Error(
-          `Error: invoked agent of type ${subagent_type}, the only allowed types are ${allowedTypes}`,
-        );
+          `Error: invoked agent of type ${subagent_type}, the only allowed types are ${allowedTypes}`
+        )
       }
 
-      const subagent = subagentGraphs[subagent_type];
+      const subagent = subagentGraphs[subagent_type]
 
       // Get current state and filter it for subagent
-      const currentState = getCurrentTaskInput<Record<string, unknown>>();
-      const subagentState = filterStateForSubagent(currentState);
-      subagentState.messages = [new HumanMessage({ content: description })];
+      const currentState = getCurrentTaskInput<Record<string, unknown>>()
+      const subagentState = filterStateForSubagent(currentState)
+      subagentState.messages = [new HumanMessage({ content: description })]
 
-      // Invoke the subagent
-      const result = (await subagent.invoke(subagentState as any, { ...config, recursionLimit: 200 })) as Record<
-        string,
-        unknown
-      >;
-
-      // Return command with filtered state update
-      if (!config.toolCall?.id) {
-        throw new Error("Tool call ID is required for subagent invocation");
+      const toolCallId = config.toolCall?.id
+      if (!toolCallId) {
+        throw new Error('Tool call ID is required for subagent invocation')
       }
 
-      return returnCommandWithStateUpdate(result, config.toolCall.id);
+      const subagentTags = [...(config.tags || []), `subagent:${toolCallId}`]
+      const subagentMetadata = {
+        ...(config.metadata || {}),
+        subagentToolCallId: toolCallId
+      }
+
+      // Invoke the subagent
+      const result = (await subagent.invoke(
+        subagentState as Parameters<typeof subagent.invoke>[0],
+        {
+          ...config,
+          tags: subagentTags,
+          metadata: subagentMetadata,
+          recursionLimit: 200
+        }
+      )) as Record<string, unknown>
+
+      // Return command with filtered state update
+      return returnCommandWithStateUpdate(result, toolCallId, 'task', {
+        subagentType: subagent_type,
+        description
+      })
     },
     {
-      name: "task",
+      name: 'task',
       description: finalTaskDescription,
       schema: z.object({
-        description: z
-          .string()
-          .describe("The task to execute with the selected agent"),
+        description: z.string().describe('The task to execute with the selected agent'),
         subagent_type: z
           .string()
           .describe(
-            `Name of the agent to use. Available: ${Object.keys(subagentGraphs).join(", ")}`,
-          ),
-      }),
-    },
-  );
+            `Name of the agent to use. Available: ${Object.keys(subagentGraphs).join(', ')}`
+          )
+      })
+    }
+  )
 }
 
 /**
@@ -525,23 +582,25 @@ function createTaskTool(options: {
  */
 export interface SubAgentMiddlewareOptions {
   /** The model to use for subagents */
-  defaultModel: LanguageModelLike | string;
+  defaultModel: LanguageModelLike | string
   /** The tools to use for the default general-purpose subagent */
-  defaultTools?: StructuredTool[];
+  defaultTools?: StructuredTool[]
   /** Unfiltered list of all tools, used by the dynamic_task tool to generate its full schema */
-  allAvailableTools?: StructuredTool[];
+  allAvailableTools?: StructuredTool[]
   /** Default middleware to apply to all subagents */
-  defaultMiddleware?: AgentMiddleware[] | null;
+  defaultMiddleware?: AgentMiddleware[] | null
   /** The tool configs for the default general-purpose subagent */
-  defaultInterruptOn?: Record<string, boolean | InterruptOnConfig> | null;
+  defaultInterruptOn?: Record<string, boolean | InterruptOnConfig> | null
   /** A list of additional subagents to provide to the agent */
-  subagents?: (SubAgent | CompiledSubAgent)[];
+  subagents?: readonly (SubAgent | CompiledSubAgent)[]
   /** Full system prompt override */
-  systemPrompt?: string | null;
+  systemPrompt?: string | null
   /** Whether to include the general-purpose agent */
-  generalPurposeAgent?: boolean;
+  generalPurposeAgent?: boolean
   /** Custom description for the task tool */
-  taskDescription?: string | null;
+  taskDescription?: string | null
+  /** Whether dynamic subagents (dynamic_task) are enabled */
+  dynamicEnabled?: boolean
 }
 
 /**
@@ -558,34 +617,47 @@ export function createSubAgentMiddleware(options: SubAgentMiddlewareOptions) {
     systemPrompt = TASK_SYSTEM_PROMPT,
     generalPurposeAgent = true,
     taskDescription = null,
-  } = options;
+    dynamicEnabled = true
+  } = options
 
-  const taskTool = createTaskTool({
-    defaultModel,
-    defaultTools,
-    defaultMiddleware,
-    defaultInterruptOn,
-    subagents,
-    generalPurposeAgent,
-    taskDescription,
-  });
+  const tools: StructuredTool[] = []
 
-  const toolsForDynamicTask = allAvailableTools.length > 0 ? allAvailableTools : defaultTools;
-  const dynamicTaskTool = createDynamicTaskTool(toolsForDynamicTask, defaultModel, defaultMiddleware);
+  if (subagents.length > 0 || generalPurposeAgent) {
+    const taskTool = createTaskTool({
+      defaultModel,
+      defaultTools,
+      defaultMiddleware,
+      defaultInterruptOn,
+      subagents,
+      generalPurposeAgent,
+      taskDescription
+    })
+    tools.push(taskTool)
+  }
+
+  if (dynamicEnabled) {
+    const toolsForDynamicTask = allAvailableTools.length > 0 ? allAvailableTools : defaultTools
+    if (toolsForDynamicTask.length > 0) {
+      const dynamicTaskTool = createDynamicTaskTool(
+        toolsForDynamicTask,
+        defaultModel,
+        defaultMiddleware
+      )
+      tools.push(dynamicTaskTool)
+    }
+  }
 
   return createMiddleware({
-    name: "subAgentMiddleware",
-    tools: [taskTool, dynamicTaskTool],
+    name: 'subAgentMiddleware',
+    tools,
     wrapModelCall: async (request, handler) => {
       if (systemPrompt !== null) {
         return handler({
           ...request,
-          systemMessage: request.systemMessage.concat(
-            new SystemMessage({ content: systemPrompt }),
-          ),
-        });
+          systemMessage: request.systemMessage.concat(new SystemMessage({ content: systemPrompt }))
+        })
       }
-      return handler(request);
-    },
-  });
+      return handler(request)
+    }
+  })
 }

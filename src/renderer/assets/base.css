@@ -1,15 +1,25 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @import 'dockview/dist/styles/dockview.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   /* User Palette */
-  --color-surface-50: #FCF8F8;
-  --color-surface-100: #FBEFEF;
-  --color-surface-200: #F9DFDF;
-  --color-surface-300: #F5AFAF;
-  --color-primary: #F5AFAF;
+  --color-surface-50: #fcf8f8;
+  --color-surface-100: #fbefef;
+  --color-surface-200: #f9dfdf;
+  --color-surface-300: #f5afaf;
+  --color-primary: #f5afaf;
   --color-accent: #818cf8;
   --color-accent-glow: rgba(129, 140, 248, 0.4);
+
+  /* Cluster Categorical Palette */
+  --color-cluster-1: #6366f1;
+  --color-cluster-2: #0ea5e9;
+  --color-cluster-3: #10b981;
+  --color-cluster-4: #f59e0b;
+  --color-cluster-5: #ec4899;
+  --color-cluster-6: #8b5cf6;
 
   /* Defaults */
   --radius-sm: 0.25rem;
@@ -47,6 +57,14 @@
   --color-background-soft: var(--color-surface-100);
   --color-background-mute: var(--color-surface-200);
   --color-text: var(--ev-c-text-1);
+
+  /* Cluster categorical palette variables */
+  --color-cluster-1: #6366f1;
+  --color-cluster-2: #0ea5e9;
+  --color-cluster-3: #10b981;
+  --color-cluster-4: #f59e0b;
+  --color-cluster-5: #ec4899;
+  --color-cluster-6: #8b5cf6;
 }
 
 *,

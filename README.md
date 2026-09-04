@@ -29,6 +29,10 @@
   <a href="#architecture--design">Architecture</a>
 </p>
 
+<p align="center">
+  <img src="assets/images/showcase-collaragent.gif" alt="CollarAgent Visual Research and Academic Writing Studio Showcase" width="100%" />
+</p>
+
 </div>
 
 ---
@@ -214,6 +218,7 @@ Instead of simple conversational replies, your autonomous research agent activel
 - **Safe Proposal Staging**: Propose additions and refactors as non-destructive staged diffs that require user confirmation.
 - **Deep Literature Synthesis**: Spawn sub-agents for multi-step background investigation, search web sources, and synthesize findings.
 - **Point-in-Time Checkpointing**: Automatically capture snapshots before major turns and coordinate rollbacks across conversation, agent state, and workspace files.
+- **Real-Time Context & Token Tracking**: Monitor token consumption, prompt cache hits, and context window limits directly within the workspace.
 
 ---
 
@@ -261,9 +266,23 @@ npm run build:linux
 
 ## Observability & Evaluations (Langfuse)
 
-CollarAgent integrates [Langfuse](https://langfuse.com) for real-time agent execution DAG tracing, token economics, latency profiling, and automated real-trace evaluation.
+CollarAgent provides visibility into agent execution, token economics, and prompt caching across both in-app runtime monitoring and distributed evaluations:
+
+### In-App Context & Token Usage Inspector
+
+Monitor token consumption, prompt cache hits, and context window headroom in real time directly from the chat composer:
+
+<p align="center">
+  <img src="assets/images/context-usage-window.png" alt="CollarAgent Context Status and Token Usage Window" width="380" />
+</p>
+
+- **Real-Time Context Tracking**: Inspect input tokens (conversation history), response size, and total context usage per model turn.
+- **Prompt Cache Hit Visibility**: Track provider prompt cache hits (e.g., Anthropic prompt caching) to optimize latency and token costs during deep research sessions.
+- **Context Window Safeguards**: Monitor token headroom to prevent unexpected context overflow during multi-turn agent tasks.
 
 ### 1. Launch the Local Langfuse Stack
+
+CollarAgent integrates [Langfuse](https://langfuse.com) for real-time agent execution DAG tracing, token economics, latency profiling, and automated real-trace evaluation.
 
 Start the self-hosted distributed Langfuse v4 stack (Web UI, Worker, ClickHouse, Redis, PostgreSQL, and MinIO) using Docker Compose:
 

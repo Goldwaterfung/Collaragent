@@ -13,13 +13,18 @@ import type { CanvasAction, CanvasState, ViewportState } from './types'
 import { applyCanvasCommand } from './commands/applyCommand'
 import type { CanvasCommand } from './commands/types'
 import type { CanvasCommand as SharedCanvasCommand } from '@shared/commands'
-import { asGraphId, createEmptyGraph } from './domain'
+import { asGraphId, asNodeId, createEmptyGraph } from './domain'
 import type { CanvasHistorySnapshot } from './types'
 import { useInstanceContext } from '@workspace/contexts/instance/InstanceContext'
 import { deserializeCanvas } from '@workspace/persistence/canvasSerialization'
 import { instanceService } from '@shared/services/InstanceService'
 import { canvasStateReducer } from './domain/canvasStateReducer'
 import type { GraphCanvasDTO } from '@workspace/persistence/graphCanvasDto'
+import {
+  runCanvasClustering,
+  type ClusteringMode
+} from './domain/analysis/clustering/clusteringLifecycle'
+import { isWorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 
 // Helper type for what we expect from the service
 type InstanceWithPayload = {
@@ -59,7 +64,9 @@ const initialState: CanvasState = {
     interaction: {
       connect: { status: 'idle' }
     },
-    expandedNodeIds: {}
+    expandedNodeIds: {},
+    clusteringProgress: null,
+    clusterDisplayLevel: undefined
   },
   history: {
     undoStack: [],
@@ -365,6 +372,24 @@ function canvasReducer(state: CanvasState, action: CanvasAction): CanvasState {
       }
     }
 
+    case 'SET_CLUSTERING_PROGRESS':
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          clusteringProgress: action.payload
+        }
+      }
+
+    case 'SET_CLUSTER_DISPLAY_LEVEL':
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          clusterDisplayLevel: action.payload
+        }
+      }
+
     case 'UNDO': {
       const undoStack = state.history.undoStack
       if (undoStack.length === 0) return state
@@ -449,6 +474,9 @@ const CanvasContext = createContext<{
   dispatchTransaction: (commands: CanvasCommand[]) => void
   applyWorkspaceRestore: (snapshot: GraphCanvasDTO, commands: SharedCanvasCommand[]) => void
   subscribe: (callback: (command: CanvasCommand) => void) => () => void
+  runClustering: (mode?: ClusteringMode) => Promise<void>
+  cancelClustering: () => void
+  clearClusters: () => void
 } | null>(null)
 
 export const CanvasProvider = ({ children }: { children: ReactNode }) => {
@@ -456,6 +484,9 @@ export const CanvasProvider = ({ children }: { children: ReactNode }) => {
   const { instanceId } = useInstanceContext()
 
   const subscribersRef = useRef<Set<(cmd: CanvasCommand) => void>>(new Set())
+  const stateRef = useRef(state)
+  stateRef.current = state
+  const leidenAbortRef = useRef<AbortController | null>(null)
 
   const subscribe = (callback: (cmd: CanvasCommand) => void) => {
     subscribersRef.current.add(callback)
@@ -565,6 +596,170 @@ export const CanvasProvider = ({ children }: { children: ReactNode }) => {
     [dispatch]
   )
 
+  const cancelClustering = useCallback(() => {
+    if (leidenAbortRef.current && !leidenAbortRef.current.signal.aborted) {
+      leidenAbortRef.current.abort()
+      leidenAbortRef.current = null
+    }
+    dispatch({ type: 'SET_CLUSTERING_PROGRESS', payload: null })
+  }, [dispatch])
+
+  const runClustering = useCallback(
+    async (mode: ClusteringMode = 'rearrange') => {
+      if (leidenAbortRef.current && !leidenAbortRef.current.signal.aborted) {
+        leidenAbortRef.current.abort()
+      }
+      const abortController = new AbortController()
+      leidenAbortRef.current = abortController
+
+      dispatch({
+        type: 'SET_CLUSTERING_PROGRESS',
+        payload: { running: true, stage: 'clone', message: 'Preparing graph snapshot...' }
+      })
+
+      try {
+        const result = await runCanvasClustering({
+          state: stateRef.current,
+          mode,
+          signal: abortController.signal,
+          onProgress: (progress) => {
+            if (!abortController.signal.aborted) {
+              dispatch({ type: 'SET_CLUSTERING_PROGRESS', payload: progress })
+            }
+          }
+        })
+
+        if (abortController.signal.aborted) return
+
+        const commands: CanvasCommand[] = []
+        const currentState = stateRef.current
+
+        for (const [nodeId, clusterAttrs] of Object.entries(result.clusterAttrsByNodeId)) {
+          const currentNode = currentState.domain.graph.nodesById[asNodeId(nodeId)]
+          if (!currentNode) continue
+
+          const currAttrs = (currentNode.attrs ?? {}) as Record<string, unknown>
+
+          const attrsChanged =
+            currAttrs.clusterId !== clusterAttrs.clusterId ||
+            currAttrs.clusterRunId !== clusterAttrs.clusterRunId ||
+            JSON.stringify(currAttrs.clusterPath) !== JSON.stringify(clusterAttrs.clusterPath) ||
+            JSON.stringify(currAttrs.clusterParams) !== JSON.stringify(clusterAttrs.clusterParams)
+
+          if (attrsChanged) {
+            commands.push({
+              type: 'UpdateNode',
+              payload: {
+                nodeId: asNodeId(nodeId),
+                patch: {
+                  attrs: {
+                    ...currAttrs,
+                    clusterId: clusterAttrs.clusterId,
+                    clusterPath: clusterAttrs.clusterPath,
+                    clusterRunId: clusterAttrs.clusterRunId,
+                    clusterParams: clusterAttrs.clusterParams
+                  }
+                }
+              }
+            })
+          }
+
+          if (result.layoutByNodeId) {
+            const nextLayout = result.layoutByNodeId[nodeId]
+            const currLayout = currentState.layout.layoutByNodeId[asNodeId(nodeId)]
+            if (nextLayout && (currLayout?.x !== nextLayout.x || currLayout?.y !== nextLayout.y)) {
+              commands.push({
+                type: 'MoveNode',
+                payload: {
+                  nodeId: asNodeId(nodeId),
+                  x: nextLayout.x,
+                  y: nextLayout.y
+                }
+              })
+            }
+          }
+        }
+
+        if (commands.length > 0) {
+          dispatchTransaction(commands)
+        }
+        dispatch({ type: 'SET_CLUSTERING_PROGRESS', payload: null })
+      } catch (err: unknown) {
+        const isAbort =
+          (err instanceof DOMException && err.name === 'AbortError') ||
+          (err instanceof Error && err.name === 'AbortError') ||
+          (isWorkspaceError(err) && err.code === WorkspaceErrorCode.WORKSPACE_CLUSTER_ABORTED) ||
+          abortController.signal.aborted
+
+        if (!isAbort) {
+          console.error('[Leiden] Clustering execution failed:', err)
+          dispatch({
+            type: 'SET_CLUSTERING_PROGRESS',
+            payload: {
+              running: false,
+              stage: 'error',
+              error: err instanceof Error ? err.message : String(err)
+            }
+          })
+          return
+        }
+        dispatch({ type: 'SET_CLUSTERING_PROGRESS', payload: null })
+      } finally {
+        if (leidenAbortRef.current === abortController) {
+          leidenAbortRef.current = null
+        }
+      }
+    },
+    [dispatch, dispatchTransaction]
+  )
+
+  const clearClusters = useCallback(() => {
+    cancelClustering()
+    dispatch({ type: 'SET_CLUSTER_DISPLAY_LEVEL', payload: undefined })
+    const currentState = stateRef.current
+    const commands: CanvasCommand[] = []
+
+    for (const [nodeId, node] of Object.entries(currentState.domain.graph.nodesById)) {
+      const attrs = node.attrs as Record<string, unknown> | undefined
+      if (
+        attrs &&
+        (attrs.clusterId !== undefined ||
+          attrs.clusterPath !== undefined ||
+          attrs.clusterRunId !== undefined ||
+          attrs.clusterParams !== undefined ||
+          attrs.group !== undefined)
+      ) {
+        const nextAttrs = { ...attrs }
+        delete nextAttrs.clusterId
+        delete nextAttrs.clusterPath
+        delete nextAttrs.clusterRunId
+        delete nextAttrs.clusterParams
+        delete nextAttrs.group
+
+        commands.push({
+          type: 'UpdateNode',
+          payload: {
+            nodeId: asNodeId(nodeId),
+            patch: { attrs: nextAttrs }
+          }
+        })
+      }
+    }
+
+    if (commands.length > 0) {
+      dispatchTransaction(commands)
+    }
+  }, [cancelClustering, dispatch, dispatchTransaction])
+
+  useEffect(() => {
+    return () => {
+      if (leidenAbortRef.current && !leidenAbortRef.current.signal.aborted) {
+        leidenAbortRef.current.abort()
+        leidenAbortRef.current = null
+      }
+    }
+  }, [])
+
   return (
     <CanvasContext.Provider
       value={{
@@ -573,7 +768,10 @@ export const CanvasProvider = ({ children }: { children: ReactNode }) => {
         dispatchCommand,
         dispatchTransaction,
         applyWorkspaceRestore,
-        subscribe
+        subscribe,
+        runClustering,
+        cancelClustering,
+        clearClusters
       }}
     >
       {children}
@@ -588,6 +786,9 @@ export const useCanvas = (): {
   dispatchTransaction: (commands: CanvasCommand[]) => void
   applyWorkspaceRestore: (snapshot: GraphCanvasDTO, commands: SharedCanvasCommand[]) => void
   subscribe: (callback: (command: CanvasCommand) => void) => () => void
+  runClustering: (mode?: ClusteringMode) => Promise<void>
+  cancelClustering: () => void
+  clearClusters: () => void
 } => {
   const context = useContext(CanvasContext)
   if (!context) {

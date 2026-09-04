@@ -37,7 +37,7 @@ flowchart TB
 
     subgraph StorageLayer ["Storage Daemon Layer (Node.js UtilityProcess Dynamic :apiPort)"]
         RESTServer["🌐 Express REST API<br/>[filesystemAPI.ts]<br/>Zod-validated instances & projects CRUD"]:::storage
-        CagentStorage["💾 Sharded V3 Storage Engine<br/>[storageEngine.ts]<br/>manifest.json, instances/*.json, MessagePack snapshots"]:::storage
+        SqliteEngine["💾 Single-File SQLite V4 Engine<br/>[SqliteStorageEngine.ts]<br/>instances, snapshots, chat_sessions, MessagePack BLOBs"]:::storage
     end
 
     %% Wiring Connections
@@ -46,14 +46,14 @@ flowchart TB
     WorkspaceTools --> DiffEngine
     WorkspaceTools -->|"Direct WS Connect"| SyncClientAgent
     SyncClientAgent <-->|"WebSocket Handshake & Commands"| WSServer
-    
+
     CanvasView <-->|"WebSocket /ws/canvas/:id"| SyncClientUI
     EditorView <-->|"WebSocket /ws/editor/:id"| SyncClientUI
     SyncClientUI <-->|"Live Sync"| WSServer
 
     WSServer -->|"Hydrate / Persist HTTP"| RESTServer
     WorkspaceTools -->|"Discovery GET /api/instances"| RESTServer
-    RESTServer --> CagentStorage
+    RESTServer --> SqliteEngine
 ```
 
 ---
@@ -61,23 +61,27 @@ flowchart TB
 ## 2. Core Engine Subsystems & Responsibilities
 
 ### 2.1 Visual Graph Canvas (`src/workspace/canvas`)
+
 - **Interactive State**: Renders nodes and edges on an infinite canvas with CSS transforms (`scale`, `translate`).
 - **Port Generation**: Computes 4-cardinal ports (North, South, East, West) with cubic Bezier curved paths.
 - **Embedded Editor Nodes**: Embeds Lexical `MemoEditor` cards within graph nodes, allowing direct rich-text editing inside canvas cards.
 - **Automated Layouts**: Coordinates Dagre hierarchical layouts, D3 radial tree projections, and off-thread Leiden community clustering via Web Workers (`leiden.worker.ts`).
 
 ### 2.2 Rich-Text Lexical Document Editor (`src/workspace/editor`)
+
 - **Block Identity WeakMap**: Uses `blockIdentityRegistry.ts` to map transient Lexical AST `NodeKey` identifiers to persistent, immutable UUID `blockId` strings.
 - **HTML <-> Block Conversions**: `htmlContentConversion.ts` serializes Lexical state into clean semantic HTML without leaking internal Lexical node attributes, while preserving `data-block-id` markers in patch views.
 - **Plugin Architecture**: KaTeX math formulas, Prism code blocks, GFM tables, and block drag-and-drop handles for dragging paragraphs directly into the graph canvas.
 
 ### 2.3 Agent Tool Calling Engine (`src/collaragent/tools`)
+
 - **Instance Name Resolution**: `resolveResourceId()` dynamically discovers documents and canvases by name or UUID via `listDocumentInstances()`.
 - **Block Patch View Transformation**: Converts structured JSON `Block[]` arrays into line-oriented patch views (`<p data-block-id="uuid">...</p>`) for deterministic agent readability and precise targeted editing.
 - **Strict Block ID Invariant**: Enforces that all blocks emitted to the agent context contain persistent IDs, throwing `WORKSPACE_BLOCK_IDENTITY_MISSING` if data corruption is detected.
 - **Unified Diff Generation**: Automatically calculates and formats standard unified diff blocks (`[diff_block_start]...[diff_block_end]`) on every document mutation.
 
 ### 2.4 Realtime WebSocket Synchronization Engine (`src/workspace/sync`, `src/main/server/ws`)
+
 - **Deterministic Handshake**: Enforces fail-fast connection semantics (`readyPromise` with explicit `readyRejecter` handling), eliminating hanging connections and speculative timeouts.
 - **Staged Proposals & Time-Travel Review**: When an agent modifies a document or canvas, changes enter a `staged` state. The UI displays an interactive review banner allowing users to `Accept` (commit) or `Reject` (apply inverse commands).
 - **Monotonic Sequence ACKs**: Assigns increasing integer versions to ensure linear execution ordering and detect stale client state.
@@ -99,14 +103,14 @@ sequenceDiagram
     participant REST as Storage REST API (Dynamic :apiPort)
     participant SyncClient as SyncClient.ts
     participant WSServer as WebSocket Server (Dynamic :wsPort)
-    participant Storage as Sharded V3 Storage Engine
+    participant Storage as SqliteStorageEngine (SQLite V4)
 
     LLM->>Tools: readDocument({ instanceName: "Architecture Spec" })
-    
+
     Note over Tools,wstools: Step 1: Instance Discovery
     Tools->>wstools: resolveResourceId("Architecture Spec")
     wstools->>REST: GET /api/instances
-    REST->>Storage: Read manifest & instance headers
+    REST->>Storage: Query instances table
     Storage-->>REST: Return { instances: [...] }
     REST-->>wstools: 200 OK with JSON Envelope
     wstools->>wstools: Validate with Zod (InstancesApiResponseSchema)
@@ -115,13 +119,13 @@ sequenceDiagram
     Note over Tools,WSServer: Step 2: Realtime Snapshot Fetch
     Tools->>SyncClient: connect("4a73ec31-...")
     SyncClient->>WSServer: WS Handshake (join + sync-request)
-    
+
     alt Instance in Memory
         WSServer-->>SyncClient: {"type": "sync-snapshot", "blocks": [...], "comments": []}
     else Instance Requires Hydration
         WSServer->>REST: GET /api/instances/4a73ec31-...
-        REST->>Storage: Read instances/4a73ec31-....json
-        Storage-->>REST: Return raw DocumentPayload
+        REST->>Storage: SELECT content_msgpack FROM instances WHERE id = ?
+        Storage-->>REST: Unpack MessagePack DocumentPayload
         REST-->>WSServer: Hydrated Payload
         WSServer-->>SyncClient: {"type": "sync-snapshot", "blocks": [...], "comments": []}
     end
@@ -156,7 +160,7 @@ sequenceDiagram
     actor User as Knowledge Worker
 
     LLM->>Tools: editDocument({ instanceName: "Spec", operation: "update", targetBlockId: "blk-2", newHtml: "<p>New text</p>" })
-    
+
     Tools->>Tools: Fetch current snapshot via SyncClient
     Tools->>DiffEngine: computePatch(currentBlocks, { op: "update", blkId: "blk-2", html: "..." })
     DiffEngine-->>Tools: { patchCommand, inverseCommand, unifiedDiff }
@@ -166,7 +170,7 @@ sequenceDiagram
     SyncAgent->>WSServer: {"type": "sync-command", "command": patchCommand, "clientId": "agent-1"}
     WSServer->>WSServer: Apply patchCommand to memory state (marked staged)
     WSServer-->>SyncAgent: {"type": "sync-ack", "version": 4}
-    
+
     WSServer-)SyncUI: Broadcast {"type": "sync-changes", "commands": [patchCommand]}
     SyncUI->>UI: Apply patch to Lexical editor view
     UI->>UI: Display Staged Proposal Banner (Accept / Reject)

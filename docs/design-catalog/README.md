@@ -45,7 +45,8 @@ docs/design-catalog/
     ├── adr-004-progressive-disclosure-agent-skills.md
     ├── adr-005-deterministic-inverse-command-rollback.md
     ├── adr-006-large-tool-output-eviction-protocol.md
-    └── adr-007-websocket-staged-proposal-protocol.md
+    ├── adr-007-websocket-staged-proposal-protocol.md
+    └── adr-008-hierarchical-leiden-clustering-and-spatial-layout.md
 ```
 
 > [!NOTE]
@@ -82,7 +83,7 @@ flowchart TB
         CollarAgentApp["🏢 CollarAgent<br/>[Software System]<br/>Local-first desktop agent environment providing interactive canvas, rich text editor, multi-agent orchestration, and project time-travel"]:::system
     end
 
-    LocalFS["💾 Local Filesystem<br/>[Host OS]<br/>Stores .cagent archives, .collar live state, skills, and configuration vaults"]:::external
+    LocalFS["💾 Local Filesystem<br/>[Host OS]<br/>Stores .cagent SQLite databases (WAL mode), skills, and configuration vaults"]:::external
     LLMProviders["🧠 LLM Cloud Providers<br/>[External Systems: OpenAI, Anthropic, Google, Ollama]<br/>Executes generative completions, reasoning traces, and function calling"]:::external
     MCPServers["🔌 Model Context Protocol (MCP) Servers<br/>[External Processes / Remote Servers]<br/>Provides external tools, filesystem access, and domain integrations via STDIO/SSE"]:::external
     SearchGateway["🌐 Web Search Gateway<br/>[External API: Tavily]<br/>Performs live internet queries and web intelligence gathering"]:::external
@@ -113,7 +114,7 @@ flowchart LR
     CmdCreateWS[Create Workspace]:::command
     EvtWSCreated[Workspace Created]:::event
     AggWS[Workspace Aggregate]:::aggregate
-    PolInitWS[Whenever Workspace Created -> Initialize Live Directory & DB]:::policy
+    PolInitWS[Whenever Workspace Created -> Initialize SQLite Database]:::policy
     SysUtility[Storage Utility Process]:::system
 
     User --> CmdCreateWS
@@ -211,11 +212,11 @@ flowchart TB
 
         WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server for editor diffs and canvas commands"]:::container
 
-        UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, ZIP archiver, and CagentStorage engine"]:::container
+        UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, SqliteStorageEngine, and SqliteCheckpointStore"]:::container
 
         LocalVault[("🔐 Secure Storage Vault<br/>[Host: OS Keychain / DPAPI / Secret Service]<br/>Stores encrypted LLM and Tavily API keys (~/.collaragent/secrets.json)")]:::database
 
-        ProjectStore[("📦 Sharded Project Storage (.collar / .cagent)<br/>[Container: FileSystem + MessagePack]<br/>Stores manifest.json, state.json, instances/*.json, and snapshots/*.msgpack")]:::database
+        ProjectStore[("📦 Embedded SQLite Database (.cagent in WAL Mode)<br/>[Container: better-sqlite3 + MessagePack]<br/>Stores relational schema, instance BLOBs, indexed checkpoints, and chat history")]:::database
     end
 
     ExternalLLM["🧠 LLM Cloud APIs<br/>[External: OpenAI / Anthropic / Gemini / Ollama]"]:::external
@@ -233,7 +234,7 @@ flowchart TB
     MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
     MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP
 
-    UtilityServer -->|"Reads / writes atomic JSON & MessagePack blobs [POSIX FS]"| ProjectStore
+    UtilityServer -->|"Executes atomic transactions & B-Tree indexed queries [better-sqlite3]"| ProjectStore
 ```
 
 ### 3.2 Desktop Process Deployment Topology
@@ -259,14 +260,14 @@ flowchart TB
             end
 
             subgraph UtilityProc ["UtilityProcess (Forked Node.js Daemon)"]
-                Daemon["process.js<br/>• Express 5 REST API (:fsPort)<br/>• CagentStorage Engine<br/>• ZIP Compression / yauzl"]:::process
+                Daemon["process.js<br/>• Express 5 REST API (:fsPort)<br/>• SqliteStorageEngine<br/>• SqliteCheckpointStore<br/>• WAL Engine & Lock Manager"]:::process
             end
         end
 
         subgraph LocalDisk ["Host Filesystem & OS Vault"]
             ConfigDir["~/.collaragent/<br/>• config.json<br/>• secrets.json (safeStorage 0o600)<br/>• window-state.json"]:::file
             SkillsDir["~/.deepagents/skills/<br/>• SKILL.md bundles"]:::file
-            ProjectDir["Workspace File (*.cagent / .collar/)<br/>• manifest.json<br/>• state.json<br/>• instances/*.json<br/>• snapshots/*.msgpack"]:::file
+            ProjectDir["Single-File SQLite Workspace (*.cagent / *.cagent.lock)<br/>• WAL Journal (*-wal, *-shm)<br/>• Relational Tables & BLOBs<br/>• B-Tree Checkpoint Index"]:::file
         end
     end
 
@@ -284,7 +285,7 @@ flowchart TB
 
     MainProc -->|"Reads/Writes"| ConfigDir
     MainProc -->|"Reads"| SkillsDir
-    Daemon -->|"Reads/Writes Atomic Blobs"| ProjectDir
+    Daemon -->|"Atomic Transactions & WAL Checkpoints"| ProjectDir
 
     MainProc -->|"Streams Prompts/Completions"| OpenAICloud
     MainProc -->|"Streams Prompts/Completions"| AnthropicCloud
@@ -349,36 +350,38 @@ flowchart TB
     classDef boundary fill:none,stroke:#94a3b8,stroke-width:2px,stroke-dasharray: 5 5;
 
     subgraph UtilityProcessDaemon ["Storage Utility Process (Daemon)"]
-        ProcEntry["🚪 process.ts / ParentPort Handler<br/>[Component]<br/>Mounts .cagent archive, acquires lock, manages export lifecycle"]:::component
-        FSApi["🌐 Filesystem API (Express 5)<br/>[Component]<br/>REST controllers for instances, checkpoints, chat history, and projects"]:::component
-        CagentEngine["🗄️ CagentStorage Engine<br/>[Component]<br/>V3 sharded storage manager with atomic JSON writes and locking"]:::component
-        InstanceStore["📑 FolderInstanceContentStore<br/>[Component]<br/>Sharded instance content store (instances/<id>.json)"]:::component
-        FSSaver["💾 FileSystemSaver & FileCheckpointStore<br/>[Component]<br/>LangGraph BaseCheckpointSaver persisting tuples & blobs"]:::component
-        ArchiveMgr["📦 ArchiveManager<br/>[Component]<br/>ZIP compression/extraction (.cagent via yauzl & archiver)"]:::component
-        GC["🧹 BlobGarbageCollector<br/>[Component]<br/>Prunes orphaned checkpoint blobs and temporary files"]:::component
+        ProcEntry["🚪 process.ts / ParentPort Handler<br/>[Component]<br/>Sniffs format, runs migrations, manages <10ms WAL truncate lifecycle"]:::component
+        FSApi["🌐 Filesystem API (Express 5)<br/>[Component]<br/>Zod-validated REST router for instances, checkpoints, chat history & projects"]:::component
+        SqliteEngine["🗄️ SqliteStorageEngine<br/>[Component]<br/>IStorageEngine implementation: lazy MessagePack BLOBs, granular chat, snapshots"]:::component
+        CheckpointStore["⏱️ SqliteCheckpointStore<br/>[Component]<br/>ICheckpointStore: B-Tree point queries (<1.5ms), 3-turn writes pruning, ADR-006"]:::component
+        DbManager["💾 SqliteDatabase<br/>[Component]<br/>better-sqlite3 connection, WAL mode, PRAGMAs, migrations & transactions"]:::component
+        LockManager["🔒 ProjectLockManager<br/>[Component]<br/>Single-writer <path>.cagent.lock with dead PID auto-recovery"]:::component
+        MigrationEngine["📦 StorageMigrationEngine<br/>[Component]<br/>Non-destructive V2/V3 to V4 ETL pipeline with 5 integrity verification gates"]:::component
     end
 
     subgraph ExternalContainers ["Adjacent Containers"]
         MainHost["⚙️ Main Host Process"]:::external
         RendererUI["💻 Renderer Process (Chromium)"]:::external
-        ProjectDisk[("📦 .collar / .cagent Storage Files")]:::database
+        ProjectDb[("📦 Single-File SQLite Database (.cagent in WAL Mode)")]:::database
     end
 
-    MainHost -->|"ParentPort Messages (start, prepare-close, export)"| ProcEntry
+    MainHost -->|"ParentPort Messages (start, prepare-close)"| ProcEntry
     RendererUI -->|"REST HTTP Queries (:fsPort)"| FSApi
 
+    ProcEntry -->|"Acquires / Releases Lock"| LockManager
+    ProcEntry -->|"Executes ETL if V2/V3 detected"| MigrationEngine
     ProcEntry -->|"Initializes & Configures"| FSApi
-    ProcEntry -->|"Invokes ZIP archive pack/unpack"| ArchiveMgr
+    ProcEntry -->|"Flushes WAL & closes (<10ms)"| DbManager
 
-    FSApi -->|"Reads/Writes instances"| InstanceStore
-    FSApi -->|"Reads/Writes manifest, state & logs"| CagentEngine
-    FSApi -->|"Persists LangGraph execution tuples"| FSSaver
+    FSApi -->|"Delegates instance & chat persistence"| SqliteEngine
+    FSApi -->|"Delegates LangGraph checkpoints"| CheckpointStore
 
-    CagentEngine -->|"Atomic JSON/MsgPack I/O"| ProjectDisk
-    InstanceStore -->|"Atomic JSON I/O"| ProjectDisk
-    FSSaver -->|"Persists checkpoint blobs"| ProjectDisk
-    ArchiveMgr -->|"Packs/Unpacks ZIP"| ProjectDisk
-    GC -->|"Scans & Cleans"| ProjectDisk
+    MigrationEngine -->|"Migrates into staging DB"| DbManager
+    SqliteEngine -->|"Executes SQL queries & BLOB packs"| DbManager
+    CheckpointStore -->|"Executes indexed queries & writes"| DbManager
+
+    DbManager -->|"better-sqlite3 WAL read/write transactions"| ProjectDb
+    LockManager -->|"Creates / removes .lock file"| ProjectDb
 ```
 
 ---
@@ -761,7 +764,7 @@ sequenceDiagram
     participant Main as ⚙️ Main Host (CheckpointOrchestrator)
     participant Registry as ⏱️ AgentCheckpointRegistry
     participant Server as 🗄️ Storage Utility Process
-    participant Storage as 📦 CagentStorage Engine
+    participant Storage as 📦 SqliteStorageEngine
 
     User->>UI: Clicks "Restore to this point" on CheckpointMarker
     UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId })
@@ -1000,15 +1003,16 @@ flowchart LR
 
 ## 6. Architecture Decision Records (ADRs)
 
-| ADR                                                                                                                                  | Title                                                              | Decision & Key Rationale                                                                                                                                                    |
-| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)  | **Multi-Process Electron Host with Forked Utility Daemons**        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.          |
-| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)       | **Sharded V3 Project Storage Engine (`.cagent` & `.collar`)**      | Partition monolithic archives into lightweight `manifest.json`, `state.json`, `instances/*.json`, and `snapshots/*.msgpack` for fast incremental writes on every keystroke. |
-| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md) | **Nominal ID Branding for Graph Entities**                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                           |
-| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)    | **Progressive Disclosure Architecture for Agent Skills**           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.        |
-| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md) | **Deterministic Inverse Command Rollback Engine**                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.           |
-| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)    | **Large Tool Output Eviction Protocol**                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.   |
-| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)     | **WebSocket Real-Time Synchronization & Staged Proposal Protocol** | Stream real-time canvas mutations over dedicated WebSocket channels with `staged: true` buffering, monotonic sequence acks, and one-click accept/revert capabilities.       |
+| ADR                                                                                                                                             | Title                                                                                              | Decision & Key Rationale                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)             | **Multi-Process Electron Host with Forked Utility Daemons**                                        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.                                                                                                   |
+| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)                  | **Sharded V3 Storage Engine (Superseded by V4 SQLite Engine)**                                     | Historical V3 sharded layout (`manifest.json`, `instances/*.json`, `snapshots/*.msgpack`). Superseded by V4 single-file SQLite database with WAL journaling and B-Tree indexing.                                                                                     |
+| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md)            | **Nominal ID Branding for Graph Entities**                                                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                                                                                                                    |
+| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)               | **Progressive Disclosure Architecture for Agent Skills**                                           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.                                                                                                 |
+| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)            | **Deterministic Inverse Command Rollback Engine**                                                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.                                                                                                    |
+| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)               | **Large Tool Output Eviction Protocol**                                                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.                                                                                            |
+| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)                | **WebSocket Real-Time Synchronization & Staged Proposal Protocol**                                 | Stream real-time canvas mutations over dedicated WebSocket channels with `staged: true` buffering, monotonic sequence acks, and one-click accept/revert capabilities.                                                                                                |
+| [ADR-008](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-008-hierarchical-leiden-clustering-and-spatial-layout.md) | **Hierarchical Leiden Community Detection, Derived Group Enclosures, and Two-Tier Spatial Layout** | Adopt Option A (derived cluster layer in `node.attrs`) with a two-tier spatial layout engine (intra-cluster Dagre/grid + inter-cluster shelf-packing), off-thread WebWorker delta patching for concurrency safety, and granular transactional WebSocket persistence. |
 
 ---
 

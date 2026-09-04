@@ -14,7 +14,7 @@ flowchart LR
     CmdCreateWS[Create Workspace]:::command
     EvtWSCreated[Workspace Created]:::event
     AggWS[Workspace Aggregate]:::aggregate
-    PolInitWS[Whenever Workspace Created -> Initialize Live Directory & DB]:::policy
+    PolInitWS[Whenever Workspace Created -> Initialize SQLite Database]:::policy
     SysUtility[Storage Utility Process]:::system
 
     User --> CmdCreateWS
