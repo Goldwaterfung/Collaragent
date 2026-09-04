@@ -435,4 +435,29 @@ describe('SqliteCheckpointStore Unit Suite (Core Queries, Blobs & Restore Heads)
       expect(await store!.getBlob('t-keep:ch:1')).toBeDefined()
     })
   })
+
+  describe('ADR-006 Large Tool Outputs', () => {
+    it('persists and retrieves large tool output buffers even when session is not pre-created', async () => {
+      const outputId = 'large-out-1'
+      const sessionId = 'uncreated-session-id'
+      const payload = Buffer.from('large output payload '.repeat(100))
+
+      await store!.putLargeToolOutput(outputId, sessionId, payload)
+
+      const retrieved = await store!.getLargeToolOutput(outputId)
+      expect(retrieved).toBeDefined()
+      expect(retrieved).toEqual(payload)
+    })
+
+    it('persists and retrieves large tool output with null/empty sessionId', async () => {
+      const outputId = 'large-out-2'
+      const payload = Buffer.from('another payload')
+
+      await store!.putLargeToolOutput(outputId, '', payload)
+
+      const retrieved = await store!.getLargeToolOutput(outputId)
+      expect(retrieved).toBeDefined()
+      expect(retrieved).toEqual(payload)
+    })
+  })
 })

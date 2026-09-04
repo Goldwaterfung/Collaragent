@@ -111,23 +111,19 @@ describe('SqliteStorageEngine - Chat, Cascades & Shutdown Lifecycle', () => {
       expect(messages[2].content).toBe('Follow-up question')
     })
 
-    it('throws STORAGE_SESSION_NOT_FOUND when appending to missing session', () => {
-      expect(() => {
-        engine.appendChatMessage('missing-session-id', {
-          role: 'user',
-          content: 'Hello'
-        })
-      }).toThrowError(StorageError)
+    it('auto-creates session when appending to missing session', () => {
+      const sessionId = 'auto-created-session-id'
+      engine.appendChatMessage(sessionId, {
+        role: 'user',
+        content: 'Hello in auto-created session'
+      })
 
-      try {
-        engine.appendChatMessage('missing-session-id', {
-          role: 'user',
-          content: 'Hello'
-        })
-      } catch (err: unknown) {
-        const storageErr = err as StorageError
-        expect(storageErr.code).toBe(StorageErrorCode.STORAGE_SESSION_NOT_FOUND)
-      }
+      const session = engine.getChatSession(sessionId)
+      expect(session).not.toBeNull()
+      expect(session?.id).toBe(sessionId)
+      expect(session?.title).toBe(`Chat ${sessionId.slice(0, 8)}`)
+      expect(session?.messages).toHaveLength(1)
+      expect(session?.messages[0].content).toBe('Hello in auto-created session')
     })
 
     it('returns null for non-existent session', () => {

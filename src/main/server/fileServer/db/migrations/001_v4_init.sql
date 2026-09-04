@@ -101,9 +101,9 @@ CREATE TABLE IF NOT EXISTS langgraph_restore_heads (
 
 CREATE TABLE IF NOT EXISTS workspace_snapshots (
     id TEXT PRIMARY KEY NOT NULL,
-    instance_id TEXT NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    instance_type TEXT NOT NULL,
+    instance_id TEXT REFERENCES instances(id) ON DELETE CASCADE,
+    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    instance_type TEXT,
     snapshot_ref TEXT NOT NULL UNIQUE,  -- sha256.msgpack identifier
     snapshot_hash TEXT NOT NULL,
     snapshot_cursor_json TEXT NOT NULL DEFAULT '{}',

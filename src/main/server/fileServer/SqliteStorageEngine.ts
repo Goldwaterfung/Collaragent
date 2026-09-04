@@ -232,6 +232,27 @@ function toBuffer(val: unknown): Buffer {
   return Buffer.isBuffer(packed) ? packed : Buffer.from(packed)
 }
 
+function createDefaultCanvasPayload(): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    type: 'graph-canvas',
+    graph: { nodes: {}, relationships: {} },
+    layout: { layoutByNodeId: {} }
+  }
+}
+
+function createDefaultDocumentPayload(): Record<string, unknown> {
+  return {
+    blocks: [
+      {
+        id: crypto.randomUUID(),
+        type: 'paragraph',
+        children: [{ text: '' }]
+      }
+    ]
+  }
+}
+
 export class SqliteStorageEngine extends EventEmitter implements IStorageEngine {
   private db: SqliteDatabase | null = null
   private readonly dbPath: string | null
@@ -254,6 +275,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
   private stmtGetInstanceContent!: Statement
   private stmtCreateInstance!: Statement
   private stmtUpdateInstance!: Statement
+  private stmtUpdateInstanceContent!: Statement
   private stmtDeleteInstance!: Statement
 
   // Prepared Statements: Snapshots
@@ -397,6 +419,13 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
           project_id = COALESCE(?, project_id),
           content_msgpack = COALESCE(?, content_msgpack),
           metadata_json = COALESCE(?, metadata_json),
+          updated_at = ?
+      WHERE id = ?
+    `)
+
+    this.stmtUpdateInstanceContent = this.db.prepare(`
+      UPDATE instances
+      SET content_msgpack = ?,
           updated_at = ?
       WHERE id = ?
     `)
@@ -806,6 +835,17 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       return null
     }
     if (raw.content_msgpack === null) {
+      const meta = this.stmtGetInstanceById.get(instanceId)
+      if (meta && isRecord(meta) && typeof meta.type === 'string') {
+        const defaultPayload =
+          meta.type === 'canvas' || meta.type === 'graph-canvas'
+            ? createDefaultCanvasPayload()
+            : createDefaultDocumentPayload()
+        const buffer = toBuffer(defaultPayload)
+        const nowIso = new Date().toISOString()
+        this.stmtUpdateInstanceContent.run(buffer, nowIso, instanceId)
+        return buffer
+      }
       return null
     }
     return toBuffer(raw.content_msgpack)
@@ -819,8 +859,14 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     const metadataJson = JSON.stringify(meta)
 
     const rawPayload = data.payload !== undefined ? data.payload : data.content
-    const contentBuffer =
-      rawPayload !== undefined && rawPayload !== null ? toBuffer(rawPayload) : null
+    const finalPayload =
+      rawPayload !== undefined && rawPayload !== null
+        ? rawPayload
+        : type === 'canvas'
+          ? createDefaultCanvasPayload()
+          : createDefaultDocumentPayload()
+
+    const contentBuffer = toBuffer(finalPayload)
 
     this.stmtCreateInstance.run(
       id,
@@ -1270,13 +1316,14 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
 
   public appendChatMessage(sessionId: string, message: ChatMessageInput): void {
     const db = this.getDb()
-    const sessionRaw = this.stmtGetChatSessionById.get(sessionId)
+    let sessionRaw = this.stmtGetChatSessionById.get(sessionId)
     if (!sessionRaw || !isChatSessionRow(sessionRaw)) {
-      throw new StorageError(
-        StorageErrorCode.STORAGE_SESSION_NOT_FOUND,
-        `Chat session with id '${sessionId}' not found`,
-        { sessionId }
-      )
+      const projects = this.getProjects()
+      const targetProject = projects[0] ?? this.createProject('Default Project')
+      const now = Date.now()
+      const title = `Chat ${sessionId.slice(0, 8)}`
+      this.stmtCreateChatSession.run(sessionId, targetProject.id, title, now, now)
+      sessionRaw = this.stmtGetChatSessionById.get(sessionId)
     }
 
     const messageId = message.id ?? crypto.randomUUID()
@@ -1380,29 +1427,23 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     const snapshotBuffer = toBuffer(snapshotPayload)
     const snapshotHash = crypto.createHash('sha256').update(snapshotBuffer).digest('hex')
 
-    let targetProject = projects[0]
-    if (!targetProject) {
-      targetProject = this.createProject('Default Project')
-    }
-    let targetInstance = instances[0]
-    if (!targetInstance) {
-      targetInstance = this.createInstance('document', {
-        projectId: targetProject.id,
-        name: 'Root Document'
-      })
-    }
+    const targetProject = projects[0]
+    const targetInstance = instances[0]
 
-    this.createSnapshot({
-      id: crypto.randomUUID(),
-      instanceId: targetInstance.id,
-      projectId: targetProject.id,
-      instanceType: targetInstance.type === 'canvas' ? 'graph-canvas' : 'document',
+    const snapshotId = crypto.randomUUID()
+    const cursorJson = JSON.stringify({ seq: 0, at: createdAt })
+
+    this.stmtCreateSnapshot.run(
+      snapshotId,
+      targetInstance ? targetInstance.id : null,
+      targetProject ? targetProject.id : null,
+      targetInstance ? (targetInstance.type === 'canvas' ? 'graph-canvas' : 'document') : null,
       snapshotRef,
       snapshotHash,
-      snapshotCursor: { seq: 0, at: createdAt },
-      snapshotPayload: snapshotBuffer,
+      cursorJson,
+      snapshotBuffer,
       createdAt
-    })
+    )
 
     this.stmtInsertFileRevision.run(
       id,

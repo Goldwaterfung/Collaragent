@@ -95,24 +95,75 @@ export class SqliteDatabase {
     }
   }
 
+  private ensureWorkspaceSnapshotsNullable(): void {
+    const tableExists = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='workspace_snapshots'")
+      .get()
+    if (!tableExists) return
+
+    const tableInfo = this.db.prepare("PRAGMA table_info('workspace_snapshots')").all()
+    let isNotNull = false
+    for (const col of tableInfo) {
+      if (
+        typeof col === 'object' &&
+        col !== null &&
+        'name' in col &&
+        col.name === 'instance_id' &&
+        'notnull' in col &&
+        typeof col.notnull === 'number' &&
+        col.notnull === 1
+      ) {
+        isNotNull = true
+        break
+      }
+    }
+
+    if (!isNotNull) return
+
+    this.immediateTransaction(() => {
+      this.db.pragma('foreign_keys = OFF')
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS workspace_snapshots_new (
+            id TEXT PRIMARY KEY NOT NULL,
+            instance_id TEXT REFERENCES instances(id) ON DELETE CASCADE,
+            project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+            instance_type TEXT,
+            snapshot_ref TEXT NOT NULL UNIQUE,
+            snapshot_hash TEXT NOT NULL,
+            snapshot_cursor_json TEXT NOT NULL DEFAULT '{}',
+            snapshot_msgpack BLOB NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        INSERT INTO workspace_snapshots_new
+        SELECT id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, snapshot_cursor_json, snapshot_msgpack, created_at
+        FROM workspace_snapshots;
+
+        DROP TABLE workspace_snapshots;
+        ALTER TABLE workspace_snapshots_new RENAME TO workspace_snapshots;
+      `)
+      this.db.pragma('foreign_keys = ON')
+    })
+  }
+
   public migrate(): void {
     try {
       const currentVersion = this.getUserVersion()
-      if (currentVersion >= 4) {
-        return
+      if (currentVersion < 4) {
+        let ddl: string
+        const migrationFile = path.join(this.migrationsDir, '001_v4_init.sql')
+        if (fs.existsSync(migrationFile)) {
+          ddl = fs.readFileSync(migrationFile, 'utf8')
+        } else {
+          ddl = V4_INIT_SQL
+        }
+
+        this.immediateTransaction(() => {
+          this.db.exec(ddl)
+        })
       }
 
-      let ddl: string
-      const migrationFile = path.join(this.migrationsDir, '001_v4_init.sql')
-      if (fs.existsSync(migrationFile)) {
-        ddl = fs.readFileSync(migrationFile, 'utf8')
-      } else {
-        ddl = V4_INIT_SQL
-      }
-
-      this.immediateTransaction(() => {
-        this.db.exec(ddl)
-      })
+      this.ensureWorkspaceSnapshotsNullable()
 
       if (!this.foreignKeyCheck()) {
         throw new StorageError(

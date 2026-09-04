@@ -254,5 +254,77 @@ describe('SqliteStorageEngine - Projects, Instances & Snapshots', () => {
       expect(limitedLogs).toHaveLength(2)
       expect(limitedLogs.map((l) => l.command)).toEqual([{ delta: 1 }, { delta: 2 }])
     })
+
+    it('auto-provisions canonical default payload when omitted on creation', () => {
+      const project = engine.createProject('Defaults Project')
+
+      const canvas = engine.createInstance('canvas', {
+        projectId: project.id,
+        name: 'Default Canvas'
+      })
+
+      const doc = engine.createInstance('document', {
+        projectId: project.id,
+        name: 'Default Document'
+      })
+
+      const canvasContentBuf = engine.getInstanceContent(canvas.id)
+      expect(canvasContentBuf).not.toBeNull()
+      const canvasPayload = unpack(canvasContentBuf as Buffer) as Record<string, unknown>
+      expect(canvasPayload.schemaVersion).toBe(1)
+      expect(canvasPayload.type).toBe('graph-canvas')
+      expect(canvasPayload.graph).toEqual({ nodes: {}, relationships: {} })
+
+      const docContentBuf = engine.getInstanceContent(doc.id)
+      expect(docContentBuf).not.toBeNull()
+      const docPayload = unpack(docContentBuf as Buffer) as {
+        blocks: Array<{ id: string; type: string; children: unknown[] }>
+      }
+      expect(Array.isArray(docPayload.blocks)).toBe(true)
+      expect(docPayload.blocks).toHaveLength(1)
+      expect(docPayload.blocks[0].type).toBe('paragraph')
+      expect(typeof docPayload.blocks[0].id).toBe('string')
+    })
+
+    it('self-heals instances with null content on read', () => {
+      const project = engine.createProject('Healing Project')
+
+      const doc = engine.createInstance('document', {
+        projectId: project.id,
+        name: 'Corrupted Doc'
+      })
+
+      // Manually simulate a legacy row with NULL content_msgpack
+      engine.database
+        ?.prepare('UPDATE instances SET content_msgpack = NULL WHERE id = ?')
+        .run(doc.id)
+
+      // Verify self-healing on getInstanceContent
+      const healedBuf = engine.getInstanceContent(doc.id)
+      expect(healedBuf).not.toBeNull()
+      const unpacked = unpack(healedBuf as Buffer) as { blocks: unknown[] }
+      expect(unpacked.blocks).toHaveLength(1)
+
+      // Verify that database row was updated and is no longer NULL
+      const rawRow = engine.database
+        ?.prepare('SELECT content_msgpack FROM instances WHERE id = ?')
+        .get(doc.id) as { content_msgpack: Buffer | null }
+      expect(rawRow.content_msgpack).not.toBeNull()
+    })
+
+    it('createFileRevision on empty workspace does not create dummy Root Document', async () => {
+      // Empty workspace revision
+      const revision = await engine.createFileRevision('checkpoint')
+      expect(revision.id).toBeTruthy()
+      expect(revision.snapshotRef).toBeTruthy()
+
+      // Ensure no instances were created
+      const instances = engine.getInstancesMeta()
+      expect(instances).toHaveLength(0)
+
+      // Ensure no dummy 'Root Document' exists
+      const rootDoc = instances.find((i) => i.name === 'Root Document')
+      expect(rootDoc).toBeUndefined()
+    })
   })
 })

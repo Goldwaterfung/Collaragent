@@ -4,6 +4,7 @@
  * and .agents/rules/coding-rules.md (Zero any, no hardcoded constants, cause preservation).
  */
 
+import crypto from 'node:crypto'
 import type { Statement } from 'better-sqlite3'
 import { SQLITE_ENGINE_CONFIG } from './config/sqliteConfig'
 import { SqliteDatabase } from './db/SqliteDatabase'
@@ -123,6 +124,10 @@ function isLargeToolOutputRow(value: unknown): value is LargeToolOutputRow {
   return Buffer.isBuffer(row.content_blob) || row.content_blob instanceof Uint8Array
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function parseJsonRecord(jsonStr: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(jsonStr) as unknown
@@ -217,6 +222,10 @@ export class SqliteCheckpointStore implements ICheckpointStore, CheckpointStore 
   // Prepared Statements for ADR-006 Large Tool Outputs
   private readonly stmtPutLargeToolOutput: Statement
   private readonly stmtGetLargeToolOutput: Statement
+  private readonly stmtCheckChatSessionExists: Statement
+  private readonly stmtGetFirstProjectId: Statement
+  private readonly stmtCreateDefaultProject: Statement
+  private readonly stmtCreateSkeletonChatSession: Statement
 
   // Prepared Statements for Thread Deletion
   private readonly stmtDeleteThreadWrites: Statement
@@ -371,6 +380,24 @@ export class SqliteCheckpointStore implements ICheckpointStore, CheckpointStore 
       FROM large_tool_outputs
       WHERE id = ?
       LIMIT 1
+    `)
+
+    this.stmtCheckChatSessionExists = this.db.prepare(`
+      SELECT 1 FROM chat_sessions WHERE id = ? LIMIT 1
+    `)
+
+    this.stmtGetFirstProjectId = this.db.prepare(`
+      SELECT id FROM projects ORDER BY created_at ASC LIMIT 1
+    `)
+
+    this.stmtCreateDefaultProject = this.db.prepare(`
+      INSERT INTO projects (id, name, metadata_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+
+    this.stmtCreateSkeletonChatSession = this.db.prepare(`
+      INSERT OR IGNORE INTO chat_sessions (id, project_id, title, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
     `)
 
     // Thread Deletion
@@ -740,6 +767,29 @@ export class SqliteCheckpointStore implements ICheckpointStore, CheckpointStore 
     }
 
     const resolvedSessionId = sessionId && sessionId.length > 0 ? sessionId : null
+
+    if (resolvedSessionId) {
+      const exists = this.stmtCheckChatSessionExists.get(resolvedSessionId)
+      if (!exists) {
+        const projectRow = this.stmtGetFirstProjectId.get()
+        let projectId: string
+        if (projectRow && isRecord(projectRow) && typeof projectRow.id === 'string') {
+          projectId = projectRow.id
+        } else {
+          projectId = crypto.randomUUID()
+          const nowIso = new Date().toISOString()
+          this.stmtCreateDefaultProject.run(projectId, 'Default Project', '{}', nowIso, nowIso)
+        }
+        const now = Date.now()
+        this.stmtCreateSkeletonChatSession.run(
+          resolvedSessionId,
+          projectId,
+          `Chat ${resolvedSessionId.slice(0, 8)}`,
+          now,
+          now
+        )
+      }
+    }
 
     this.stmtPutLargeToolOutput.run(id, resolvedSessionId, buffer, buffer.length, Date.now())
   }
