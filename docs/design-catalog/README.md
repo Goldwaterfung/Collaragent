@@ -136,18 +136,23 @@ flowchart LR
     AggGraph --> SysWSServer
     EvtCanvasMutated --> PolBroadcast
 
-    %% 3. Agent Invocation & Auto-Checkpoint
+    %% 3. Agent Invocation & Turn Execution
     CmdSendPrompt[Submit Agent Prompt]:::command
     EvtPromptSent[Prompt Submitted]:::event
-    PolAutoCheck[Whenever Prompt Submitted -> Capture Auto Checkpoint]:::policy
-    EvtCheckSaved[Checkpoint Bundle Captured]:::event
-    AggCheck[Checkpoint Aggregate]:::aggregate
     SysLLM[LLM Cloud Provider]:::system
 
     User --> CmdSendPrompt
     CmdSendPrompt --> EvtPromptSent
-    EvtPromptSent --> PolAutoCheck
-    PolAutoCheck --> EvtCheckSaved
+    EvtPromptSent --> SysLLM
+
+    %% 4. Post-Turn Checkpoint & Bundle Capture
+    EvtTurnFinished[Assistant Turn Finished]:::event
+    PolPostTurnCheck[Whenever Turn Finished -> Capture Post-Turn Checkpoint]:::policy
+    EvtCheckSaved[Checkpoint Bundle Captured]:::event
+    AggCheck[Checkpoint Aggregate]:::aggregate
+
+    EvtTurnFinished --> PolPostTurnCheck
+    PolPostTurnCheck --> EvtCheckSaved
     EvtCheckSaved --> AggCheck
 
     %% 4. Agent Tool Execution & Staged Proposals
@@ -604,9 +609,12 @@ erDiagram
         string id PK
         string sessionId FK
         string threadId FK
+        string projectId FK
+        string chatMessageId FK
         string agentCheckpointId FK
         string createdAt
         string reason "auto | restore"
+        string label
     }
 
     INSTANCE_RESTORE_POINT {
@@ -636,9 +644,7 @@ stateDiagram-v2
     [*] --> Idle : Application Ready
     Idle --> TurnInitializing : User submits message (@mentions attached)
 
-    TurnInitializing --> AutoCheckpointing : Capture pre-turn CheckpointBundle
-    AutoCheckpointing --> PromptAssembling : Quiesce WS sync & bundle state
-
+    TurnInitializing --> PromptAssembling : Prepare prompt & active tool definitions
     PromptAssembling --> ModelStreaming : Inject Date, Skills catalog, Memory, Tools
 
     state ModelStreaming {
@@ -667,7 +673,8 @@ stateDiagram-v2
 
     ToolExecuting --> ModelStreaming : Tool result fed back to Model node
     ModelStreaming --> TurnCompleted : Stop token / No more tool calls
-    TurnCompleted --> Idle : Resume WS sync & update ChatStore
+    TurnCompleted --> PostTurnCheckpointing : Commit assistant message to ChatStore & SQLite
+    PostTurnCheckpointing --> Idle : window.checkpointIPC.create() & refresh CheckpointMarkers
 ```
 
 #### B. Checkpoint & Time-Travel State Machine
@@ -682,8 +689,8 @@ stateDiagram-v2
     state SnapshotCapturing {
         [*] --> FlushWSBuffers : wsServer.flush()
         FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
-        CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & MsgPack snapshot
-        CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record
+        CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & Idempotent MsgPack snapshot
+        CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record with projectId & chat.messageId
     }
 
     SnapshotCapturing --> ActiveEditing : Release SyncPause & resume editing
@@ -692,7 +699,7 @@ stateDiagram-v2
     RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing
 
     state QuiescingRestore {
-        [*] --> RollbackChat : Truncate messages to target blockIndex
+        [*] --> RollbackChat : Clear session (__start__) OR truncate to messageId
         RollbackChat --> ResetBranchRegistry : agentCheckpointRegistry.setPendingBranch()
         ResetBranchRegistry --> RestoreSnapshots : Reconstitute instances from MsgPack
         RestoreSnapshots --> InvertCommandLogs : Apply InverseCommandEngine deltas
@@ -720,11 +727,6 @@ sequenceDiagram
 
     User->>UI: Types "@Canvas add auth node" & clicks Send
     UI->>UI: Append optimistic user message to useChatStore
-    UI->>Preload: window.checkpointIPC.create(req)
-    Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
-    Main-->>Preload: CheckpointBundleSummary { id: "chk-101" }
-    Preload-->>UI: Checkpoint stored
-
     UI->>Preload: window.agentIPC.stream({ message, streamId, threadId })
     Preload->>Main: IPC send(AGENT_STREAM, req)
     Main->>Agent: Invoke createDeepAgent ReAct loop
@@ -744,9 +746,17 @@ sequenceDiagram
     UI->>UI: Render Proposal Banner ("Agent modified canvas: 1 node added")
 
     ExtLLM-->>Agent: Final synthesis text
-    Agent-->>Main: Turn finished
+    Agent-->>Main: Turn finished & persist assistant message
     Main-->>Preload: IPC send(agent:stream:streamId:end)
-    Preload-->>UI: Finalize message in useChatStore
+    Preload-->>UI: Finalize assistant message in useChatStore
+
+    %% Post-Turn Checkpoint Creation
+    UI->>Preload: window.checkpointIPC.create({ threadId, projectId, reason: 'auto' })
+    Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
+    Main-->>Preload: CheckpointBundleSummary { id: "chk-turn-101", projectId }
+    Preload-->>UI: Checkpoint stored
+    UI->>Preload: window.checkpointIPC.list({ threadId, projectId })
+    Preload-->>UI: CheckpointBundles -> Render CheckpointMarker under completed turn
 
     User->>UI: Clicks "Accept Changes"
     UI->>WSS: WebSocket send: { type: 'accept-changes', instanceId }
@@ -771,20 +781,28 @@ sequenceDiagram
     Preload->>Main: IPC invoke(CHECKPOINT_RESTORE)
 
     Main->>UI: IPC send(checkpoint:quiesce) -> Activate SyncPause mutex
-    Main->>Server: POST /api/checkpoints/restore { bundleId }
+    Main->>Main: abortAgentStream(threadId)
+    Main->>Registry: setPendingBranch(threadId, agentCheckpointId)
+    Main->>Registry: setEffective(threadId, agentCheckpointId)
+    Main->>Server: POST /api/checkpoints/restore { bundleId, threadId, projectId }
 
     Server->>Storage: Read CheckpointBundle & target snapshot MsgPack
     Storage-->>Server: Hydrated Snapshot + Log Cursors
 
-    Server->>Registry: setPendingBranch(threadId, agentCheckpointId)
-    Server->>Storage: Truncate chat messages to bundle.chat.messageId
-    Server-->>Main: Restore completed { restored: true }
+    alt bundle.chat.messageId === '__start__'
+        Server->>Storage: Clear full chat session (clearChatSession)
+    else Regular Message ID
+        Server->>Storage: Truncate chat messages to bundle.chat.messageId (truncateChatSession)
+    end
+    Server->>Storage: Set restore head in SqliteCheckpointStore
+    Server-->>UI: WebSocket broadcast: update instance & chat:restored
+    Server-->>Main: Restore completed { status: "restored", bundleId }
 
     Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
     Main-->>Preload: Restore response
     Preload-->>UI: Success
 
-    UI->>Server: GET /api/instances/:id -> Reload restored snapshot
+    UI->>UI: Reload messages via ChatService.getMessages & refreshBundles()
     UI->>UI: Re-render Canvas and Lexical Editor at exact historical state
 ```
 

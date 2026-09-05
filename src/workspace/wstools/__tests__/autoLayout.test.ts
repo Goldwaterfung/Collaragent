@@ -393,7 +393,7 @@ describe('Content-Aware Auto-Layout', () => {
       expect(edges.length).toBe(5)
     })
 
-    it('throws WorkspaceError with WORKSPACE_INVALID_CLUSTER_SPEC on duplicate entity aliases', () => {
+    it('throws WorkspaceError with WORKSPACE_GRAPH_DUPLICATE_NODE_ALIAS on duplicate entity aliases', () => {
       const spec = {
         instanceId: 'test-instance',
         mode: 'replace' as const,
@@ -414,13 +414,13 @@ describe('Content-Aware Auto-Layout', () => {
       } catch (err: unknown) {
         expect(err).toBeInstanceOf(WorkspaceError)
         if (err instanceof WorkspaceError) {
-          expect(err.code).toBe(WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC)
+          expect(err.code).toBe(WorkspaceErrorCode.WORKSPACE_GRAPH_DUPLICATE_NODE_ALIAS)
           expect(err.message).toContain('Duplicate node entity aliases are not allowed')
         }
       }
     })
 
-    it('throws WorkspaceError with WORKSPACE_INVALID_CLUSTER_SPEC on unknown edge endpoints', () => {
+    it('throws WorkspaceError with WORKSPACE_GRAPH_EDGE_ENDPOINT_UNRESOLVED on unknown edge endpoints', () => {
       const spec = {
         instanceId: 'test-instance',
         mode: 'replace' as const,
@@ -438,7 +438,7 @@ describe('Content-Aware Auto-Layout', () => {
       } catch (err: unknown) {
         expect(err).toBeInstanceOf(WorkspaceError)
         if (err instanceof WorkspaceError) {
-          expect(err.code).toBe(WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC)
+          expect(err.code).toBe(WorkspaceErrorCode.WORKSPACE_GRAPH_EDGE_ENDPOINT_UNRESOLVED)
           expect(err.message).toContain('Edge references unknown node alias')
         }
       }

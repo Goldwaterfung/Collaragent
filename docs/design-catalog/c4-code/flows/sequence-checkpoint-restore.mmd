@@ -13,18 +13,26 @@ sequenceDiagram
     Preload->>Main: IPC invoke(CHECKPOINT_RESTORE)
     
     Main->>UI: IPC send(checkpoint:quiesce) -> Activate SyncPause mutex
-    Main->>Server: POST /api/checkpoints/restore { bundleId }
+    Main->>Main: abortAgentStream(threadId)
+    Main->>Registry: setPendingBranch(threadId, agentCheckpointId)
+    Main->>Registry: setEffective(threadId, agentCheckpointId)
+    Main->>Server: POST /api/checkpoints/restore { bundleId, threadId, projectId }
     
     Server->>Storage: Read CheckpointBundle & target snapshot MsgPack
     Storage-->>Server: Hydrated Snapshot + Log Cursors
     
-    Server->>Registry: setPendingBranch(threadId, agentCheckpointId)
-    Server->>Storage: Truncate chat messages to bundle.chat.messageId
-    Server-->>Main: Restore completed { restored: true }
+    alt bundle.chat.messageId === '__start__'
+        Server->>Storage: Clear full chat session (clearChatSession)
+    else Regular Message ID
+        Server->>Storage: Truncate chat messages to bundle.chat.messageId (truncateChatSession)
+    end
+    Server->>Storage: Set restore head in SqliteCheckpointStore
+    Server-->>UI: WebSocket broadcast: update instance & chat:restored
+    Server-->>Main: Restore completed { status: "restored", bundleId }
     
     Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
     Main-->>Preload: Restore response
     Preload-->>UI: Success
     
-    UI->>Server: GET /api/instances/:id -> Reload restored snapshot
+    UI->>UI: Reload messages via ChatService.getMessages & refreshBundles()
     UI->>UI: Re-render Canvas and Lexical Editor at exact historical state

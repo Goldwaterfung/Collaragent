@@ -170,9 +170,15 @@ export interface IStorageEngine {
   getFileRevision?(id: string): FileRevision | undefined
   createFileRevision?(reason?: 'checkpoint' | 'autosave'): Promise<FileRevision>
   restoreFileRevision?(id: string): Promise<FileRevision | null>
-  listCheckpointBundles?(filter?: { sessionId?: string; threadId?: string }): CheckpointBundle[]
+  listCheckpointBundles?(filter?: {
+    sessionId?: string
+    threadId?: string
+    projectId?: string
+  }): CheckpointBundle[]
   getCheckpointBundle?(id: string): CheckpointBundle | undefined
   createCheckpointBundle?(bundle: CheckpointBundle): CheckpointBundle
+  getProjectBundles?(projectId: string): CheckpointBundle[]
+  getAllProjectBundles?(): CheckpointBundle[]
 
   // Process & Export State
   flushPendingSaves(): Promise<void>

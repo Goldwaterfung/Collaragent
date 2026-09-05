@@ -89,4 +89,69 @@ describe('createModelResponseNormalizerMiddleware', () => {
     )
     expect(result).toBe(command)
   })
+
+  it('normalizes arbitrary plain response objects lacking content property into an AIMessage', async () => {
+    const middleware = createModelResponseNormalizerMiddleware()
+    const wrapModelCall = middleware.wrapModelCall
+
+    const mockHandler = async () => {
+      return { text: 'Plain object with text property' }
+    }
+
+    const mockRequest = {
+      messages: [],
+      tools: [],
+      systemMessage: new HumanMessage({ content: '' }),
+      state: {},
+      runtime: {} as unknown as Parameters<NonNullable<typeof wrapModelCall>>[0]['runtime']
+    }
+
+    const result = await wrapModelCall!(
+      mockRequest,
+      mockHandler as unknown as Parameters<NonNullable<typeof wrapModelCall>>[1]
+    )
+
+    expect(AIMessage.isInstance(result)).toBe(true)
+    expect((result as AIMessage).content).toBe('Plain object with text property')
+  })
+
+  it('successfully normalizes model response when SkillsMiddleware is in customMiddleware without throwing in SkillsMiddleware', async () => {
+    const { createDeepAgent } = await import('../runtime/agent.js')
+    const { createSkillsMiddleware, FilesystemBackend } = await import('deepagents')
+    const { FakeListChatModel } = await import('@langchain/core/utils/testing')
+    const typeRef = await import('@langchain/core/language_models/base')
+
+    class MockChatModel extends FakeListChatModel {
+      async invoke() {
+        return new ChatMessage({
+          role: 'assistant',
+          content: 'Response from model through skills middleware'
+        })
+      }
+      bindTools() {
+        return this
+      }
+    }
+
+    const skillsMiddleware = createSkillsMiddleware({
+      backend: new FilesystemBackend({ rootDir: '/' }),
+      sources: ['/tmp']
+    })
+
+    const agent = createDeepAgent({
+      model: new MockChatModel({ responses: [] }) as unknown as InstanceType<
+        typeof typeRef.BaseLanguageModel
+      >,
+      middleware: [skillsMiddleware]
+    })
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage({ content: 'test request' })]
+    })
+
+    expect(result).toBeDefined()
+    const lastMsg = result.messages[result.messages.length - 1]
+    expect(AIMessage.isInstance(lastMsg)).toBe(true)
+    expect((lastMsg as AIMessage).content).toBe('Response from model through skills middleware')
+  })
 })

@@ -48,7 +48,9 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 
 ### 2.4 Time-Travel Checkpointing & State Synchronization (`src/shared/checkpoints`, `src/workspace/sync`)
 
-- Pre-turn automatic checkpoint capture and point-in-time restoration markers in the chat timeline.
+- Post-turn automatic checkpoint capture and session baseline checkpointing with point-in-time restoration markers in the chat timeline.
+- Idempotent content-addressed workspace snapshots (`workspace_snapshots`) and multi-project scoped checkpoint bundles (`CHECKPOINT_BUNDLE`).
+- Dual-path state restoration supporting baseline session clearance (`__start__`) and point-in-time chat message truncation paired with LangGraph checkpoint head rewinding.
 - Bi-directional WebSocket synchronization (`/ws/canvas/:id`, `/ws/editor/:id`) with monotonic sequence acknowledgments.
 - Deterministic diff and inverse command engines (`CanvasDiffEngine`, `DocumentDiffEngine`, `InverseCommandEngine`) providing mathematical command inversion for granular undo/redo.
 

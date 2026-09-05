@@ -10,11 +10,6 @@ sequenceDiagram
 
     User->>UI: Types "@Canvas add auth node" & clicks Send
     UI->>UI: Append optimistic user message to useChatStore
-    UI->>Preload: window.checkpointIPC.create(req)
-    Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
-    Main-->>Preload: CheckpointBundleSummary { id: "chk-101" }
-    Preload-->>UI: Checkpoint stored
-
     UI->>Preload: window.agentIPC.stream({ message, streamId, threadId })
     Preload->>Main: IPC send(AGENT_STREAM, req)
     Main->>Agent: Invoke createDeepAgent ReAct loop
@@ -34,9 +29,17 @@ sequenceDiagram
     UI->>UI: Render Proposal Banner ("Agent modified canvas: 1 node added")
 
     ExtLLM-->>Agent: Final synthesis text
-    Agent-->>Main: Turn finished
+    Agent-->>Main: Turn finished & persist assistant message
     Main-->>Preload: IPC send(agent:stream:streamId:end)
-    Preload-->>UI: Finalize message in useChatStore
+    Preload-->>UI: Finalize assistant message in useChatStore
+
+    %% Post-Turn Checkpoint Creation
+    UI->>Preload: window.checkpointIPC.create({ threadId, projectId, reason: 'auto' })
+    Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
+    Main-->>Preload: CheckpointBundleSummary { id: "chk-turn-101", projectId }
+    Preload-->>UI: Checkpoint stored
+    UI->>Preload: window.checkpointIPC.list({ threadId, projectId })
+    Preload-->>UI: CheckpointBundles -> Render CheckpointMarker under completed turn
 
     User->>UI: Clicks "Accept Changes"
     UI->>WSS: WebSocket send: { type: 'accept-changes', instanceId }

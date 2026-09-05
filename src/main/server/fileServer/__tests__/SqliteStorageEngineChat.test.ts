@@ -8,6 +8,7 @@ import { SqliteStorageEngine } from '../SqliteStorageEngine'
 import { ProjectLockManager } from '../locks/ProjectLockManager'
 import { SQLITE_ENGINE_CONFIG, WAL_CHECKPOINT_MODES } from '../config/sqliteConfig'
 import { StorageError, StorageErrorCode } from '../errors/StorageErrors'
+import type { CheckpointBundle } from '@shared/checkpoints/types'
 
 describe('SqliteStorageEngine - Chat, Cascades & Shutdown Lifecycle', () => {
   let testDir: string
@@ -279,6 +280,204 @@ describe('SqliteStorageEngine - Chat, Cascades & Shutdown Lifecycle', () => {
 
       // Verify database is closed
       expect(standaloneEngine.database?.isOpen).toBe(false)
+    })
+  })
+
+  describe('Workspace Snapshot Idempotency', () => {
+    it('calling createWorkspaceSnapshot twice with identical content returns the existing snapshot without SQLITE_CONSTRAINT_UNIQUE error', async () => {
+      const project = engine.createProject('Snapshot Project')
+      const instance = engine.createInstance('canvas', {
+        projectId: project.id,
+        name: 'Main Canvas'
+      })
+
+      const snapshotPayload = {
+        nodes: {
+          n1: { id: 'n1', label: 'Node 1' }
+        },
+        relationships: {}
+      }
+
+      // First snapshot creation
+      const snapshot1 = await engine.createWorkspaceSnapshot({
+        instanceId: instance.id,
+        instanceType: 'graph-canvas',
+        projectId: project.id,
+        snapshot: snapshotPayload
+      })
+
+      expect(snapshot1.id).toBeDefined()
+      expect(snapshot1.snapshotRef).toBeDefined()
+      expect(snapshot1.snapshotHash).toBeDefined()
+
+      // Second snapshot creation with identical content
+      const snapshot2 = await engine.createWorkspaceSnapshot({
+        instanceId: instance.id,
+        instanceType: 'graph-canvas',
+        projectId: project.id,
+        snapshot: snapshotPayload
+      })
+
+      // Must not throw SQLITE_CONSTRAINT_UNIQUE and must return existing snapshot record
+      expect(snapshot2.id).toBe(snapshot1.id)
+      expect(snapshot2.snapshotRef).toBe(snapshot1.snapshotRef)
+      expect(snapshot2.snapshotHash).toBe(snapshot1.snapshotHash)
+      expect(snapshot2.createdAt).toBe(snapshot1.createdAt)
+
+      // Verify in database that only 1 record exists with this snapshot_ref
+      const countRow = db
+        .prepare('SELECT COUNT(*) as count FROM workspace_snapshots WHERE snapshot_ref = ?')
+        .get(snapshot1.snapshotRef) as { count: number }
+      expect(countRow.count).toBe(1)
+    })
+  })
+
+  describe('Chronological Message Ordering (Unpaginated vs Paginated)', () => {
+    it('getChatMessages(sessionId) without options returns messages in ASC (chronological) order', () => {
+      const project = engine.createProject('Message Project')
+      const session = engine.createChatSession(project.id, 'Unpaginated Session')
+
+      engine.appendChatMessage(session.id, {
+        role: 'user',
+        content: 'First turn',
+        timestamp: 1000
+      })
+      engine.appendChatMessage(session.id, {
+        role: 'assistant',
+        content: 'Second turn',
+        timestamp: 2000
+      })
+      engine.appendChatMessage(session.id, {
+        role: 'user',
+        content: 'Third turn',
+        timestamp: 3000
+      })
+
+      const messages = engine.getChatMessages(session.id)
+      expect(messages).toHaveLength(3)
+      expect(messages[0].timestamp).toBe(1000)
+      expect(messages[0].content).toBe('First turn')
+      expect(messages[1].timestamp).toBe(2000)
+      expect(messages[1].content).toBe('Second turn')
+      expect(messages[2].timestamp).toBe(3000)
+      expect(messages[2].content).toBe('Third turn')
+    })
+
+    it('getChatMessages(sessionId, { limit: 10 }) returns messages in ASC order', () => {
+      const project = engine.createProject('Message Project')
+      const session = engine.createChatSession(project.id, 'Paginated Session')
+
+      for (let i = 1; i <= 5; i++) {
+        engine.appendChatMessage(session.id, {
+          role: i % 2 === 1 ? 'user' : 'assistant',
+          content: `Message ${i}`,
+          timestamp: 1000 * i
+        })
+      }
+
+      const messages = engine.getChatMessages(session.id, { limit: 10 })
+      expect(messages).toHaveLength(5)
+      expect(messages[0].timestamp).toBe(1000)
+      expect(messages[0].content).toBe('Message 1')
+      expect(messages[1].timestamp).toBe(2000)
+      expect(messages[1].content).toBe('Message 2')
+      expect(messages[2].timestamp).toBe(3000)
+      expect(messages[2].content).toBe('Message 3')
+      expect(messages[3].timestamp).toBe(4000)
+      expect(messages[3].content).toBe('Message 4')
+      expect(messages[4].timestamp).toBe(5000)
+      expect(messages[4].content).toBe('Message 5')
+
+      // Also verify limit preserves ASC chronological order for the selected tail slice
+      const limitedMessages = engine.getChatMessages(session.id, { limit: 3 })
+      expect(limitedMessages).toHaveLength(3)
+      expect(limitedMessages[0].timestamp).toBe(3000)
+      expect(limitedMessages[0].content).toBe('Message 3')
+      expect(limitedMessages[1].timestamp).toBe(4000)
+      expect(limitedMessages[1].content).toBe('Message 4')
+      expect(limitedMessages[2].timestamp).toBe(5000)
+      expect(limitedMessages[2].content).toBe('Message 5')
+    })
+  })
+
+  describe('Project Scoping & Checkpoint Bundle Isolation', () => {
+    it('bundles saved to Project A do not bleed into Project B, and listCheckpointBundles filters correctly by projectId and threadId', () => {
+      const projA = engine.createProject('Project A')
+      const projB = engine.createProject('Project B')
+
+      const bundleA1: CheckpointBundle = {
+        id: 'bundle-a1',
+        createdAt: '2026-09-01T00:00:00.000Z',
+        sessionId: 'session-a',
+        threadId: 'thread-a',
+        projectId: projA.id,
+        chat: {},
+        instances: []
+      }
+      const bundleA2: CheckpointBundle = {
+        id: 'bundle-a2',
+        createdAt: '2026-09-02T00:00:00.000Z',
+        sessionId: 'session-a',
+        threadId: 'thread-shared',
+        projectId: projA.id,
+        chat: {},
+        instances: []
+      }
+      const bundleB1: CheckpointBundle = {
+        id: 'bundle-b1',
+        createdAt: '2026-09-03T00:00:00.000Z',
+        sessionId: 'session-b',
+        threadId: 'thread-b',
+        projectId: projB.id,
+        chat: {},
+        instances: []
+      }
+
+      engine.createCheckpointBundle(bundleA1)
+      engine.createCheckpointBundle(bundleA2)
+      engine.createCheckpointBundle(bundleB1)
+
+      // Project A bundles
+      const bundlesA = engine.getProjectBundles(projA.id)
+      expect(bundlesA).toHaveLength(2)
+      expect(bundlesA.map((b) => b.id)).toEqual(['bundle-a1', 'bundle-a2'])
+
+      // Project B bundles
+      const bundlesB = engine.getProjectBundles(projB.id)
+      expect(bundlesB).toHaveLength(1)
+      expect(bundlesB.map((b) => b.id)).toEqual(['bundle-b1'])
+
+      // Isolation verification: bundles in A do not bleed into B
+      expect(bundlesA.some((b) => b.id === 'bundle-b1')).toBe(false)
+      expect(bundlesB.some((b) => b.id === 'bundle-a1')).toBe(false)
+      expect(bundlesB.some((b) => b.id === 'bundle-a2')).toBe(false)
+
+      // listCheckpointBundles by projectId
+      const listA = engine.listCheckpointBundles({ projectId: projA.id })
+      expect(listA).toHaveLength(2)
+      expect(listA.map((b) => b.id)).toEqual(['bundle-a1', 'bundle-a2'])
+
+      const listB = engine.listCheckpointBundles({ projectId: projB.id })
+      expect(listB).toHaveLength(1)
+      expect(listB.map((b) => b.id)).toEqual(['bundle-b1'])
+
+      // listCheckpointBundles by threadId
+      const listThreadA = engine.listCheckpointBundles({ threadId: 'thread-a' })
+      expect(listThreadA).toHaveLength(1)
+      expect(listThreadA[0].id).toBe('bundle-a1')
+
+      const listThreadB = engine.listCheckpointBundles({ threadId: 'thread-b' })
+      expect(listThreadB).toHaveLength(1)
+      expect(listThreadB[0].id).toBe('bundle-b1')
+
+      // listCheckpointBundles across all projects
+      const listAll = engine.listCheckpointBundles()
+      expect(listAll).toHaveLength(3)
+
+      // getCheckpointBundle retrieves bundles from any project by ID
+      expect(engine.getCheckpointBundle('bundle-a1')?.id).toBe('bundle-a1')
+      expect(engine.getCheckpointBundle('bundle-b1')?.id).toBe('bundle-b1')
+      expect(engine.getCheckpointBundle('non-existent')).toBeUndefined()
     })
   })
 })

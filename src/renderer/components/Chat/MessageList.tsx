@@ -32,47 +32,49 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     />
   )
 
-  const bundleByBoundary = new Map<string, CheckpointBundleSummary>()
+  const bundleByMessageId = new Map<string, CheckpointBundleSummary>()
+  let startBundle: CheckpointBundleSummary | undefined = undefined
+
   const sortedBundles = [...checkpointBundles].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt)
+    a.createdAt.localeCompare(b.createdAt)
   )
   for (const bundle of sortedBundles) {
-    const boundaryKey = bundle.chatMessageId || '__start__'
-    if (!bundleByBoundary.has(boundaryKey)) {
-      bundleByBoundary.set(boundaryKey, bundle)
+    const messageId = bundle.chatMessageId
+    if (!messageId || messageId === '__start__') {
+      if (!startBundle) {
+        startBundle = bundle
+      }
+    } else {
+      bundleByMessageId.set(messageId, bundle)
     }
   }
 
-  const items: React.ReactNode[] = []
-
-  const findBoundaryMessageId = (startIndex: number) => {
-    for (let i = startIndex; i >= 0; i -= 1) {
-      if (messages[i].role !== 'system') {
-        return messages[i].id
+  const findNextUserMessage = (fromIndex: number): ChatMessage | undefined => {
+    for (let i = fromIndex; i < messages.length; i++) {
+      if (messages[i].role === 'user') {
+        return messages[i]
       }
     }
     return undefined
   }
 
+  const items: React.ReactNode[] = []
+
+  if (startBundle) {
+    items.push(
+      <CheckpointMarker
+        key={`checkpoint-${startBundle.id}`}
+        bundleId={startBundle.id}
+        label={startBundle.label}
+        createdAt={startBundle.createdAt}
+        restoreContent={findNextUserMessage(0)?.content}
+        disabled={checkpointBusy}
+        onRestore={onRestoreCheckpoint}
+      />
+    )
+  }
+
   messages.forEach((msg, index) => {
-    if (msg.role === 'user') {
-      const boundaryMessageId = index === 0 ? undefined : findBoundaryMessageId(index - 1)
-      const boundaryKey = boundaryMessageId || '__start__'
-      const bundle = bundleByBoundary.get(boundaryKey)
-
-      if (bundle) {
-        items.push(
-          <CheckpointMarker
-            key={`checkpoint-${bundle.id}`}
-            bundleId={bundle.id}
-            restoreContent={msg.content}
-            disabled={checkpointBusy}
-            onRestore={onRestoreCheckpoint}
-          />
-        )
-      }
-    }
-
     const groupedBlocks =
       msg.role === 'assistant' ? groupBlocksByTodos(msg.blocks, msg.toolCalls) : []
 
@@ -115,7 +117,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 <button
                   key={action.id}
                   type="button"
-                  className="px-3 py-1 text-xs font-semibold rounded bg-white text-black hover:bg-surface-100"
+                  className="px-3 py-1 text-xs font-semibold rounded bg-surface-100 text-[var(--ev-c-text-1)] border border-surface-200 hover:bg-surface-200 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
                   onClick={() => onSystemAction?.(action.input)}
                 >
                   {action.label}
@@ -129,6 +131,21 @@ const MessageListComponent: React.FC<MessageListProps> = ({
         </div>
       </div>
     )
+
+    const bundle = bundleByMessageId.get(msg.id)
+    if (bundle) {
+      items.push(
+        <CheckpointMarker
+          key={`checkpoint-${bundle.id}`}
+          bundleId={bundle.id}
+          label={bundle.label}
+          createdAt={bundle.createdAt}
+          restoreContent={findNextUserMessage(index + 1)?.content}
+          disabled={checkpointBusy}
+          onRestore={onRestoreCheckpoint}
+        />
+      )
+    }
   })
 
   return <div className="space-y-6">{items}</div>

@@ -11,6 +11,7 @@ import {
 } from './graphSchemaConverter'
 import { isCanonicalNodeId } from '@workspace/persistence/graphCanvasDto'
 import type { CanvasSnapshot } from '@workspace/canvas/domain/types'
+import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. readGraph
@@ -300,7 +301,10 @@ function resolveGraphSpecIdentity(
 
     const existingAlias = aliasByResolvedNodeId.get(resolvedNodeId)
     if (existingAlias && existingAlias !== alias) {
-      throw new Error(`Multiple node aliases resolved to the same node: ${existingAlias}, ${alias}`)
+      throw new WorkspaceError(
+        WorkspaceErrorCode.WORKSPACE_GRAPH_NODE_ALIAS_COLLISION,
+        `Multiple node aliases resolved to the same node: "${existingAlias}", "${alias}"`
+      )
     }
 
     aliasToNodeId.set(alias, resolvedNodeId)
@@ -316,6 +320,13 @@ function resolveGraphSpecIdentity(
     aliasToNodeId.get(ref) || byName.get(normalizeNodeRef(ref)) || (byId.has(ref) ? ref : undefined)
 
   const resolvedStartFrom = spec.startFrom ? resolveRef(spec.startFrom) : undefined
+  if (spec.startFrom && !resolvedStartFrom) {
+    throw new WorkspaceError(
+      WorkspaceErrorCode.WORKSPACE_GRAPH_START_NODE_NOT_FOUND,
+      `Cannot find 'startFrom' anchor entity: "${spec.startFrom}". Run readGraph to see existing entities.`
+    )
+  }
+
   const resolvedDeleteNodes = (spec.deleteNodes || [])
     .map(resolveRef)
     .filter((v): v is string => !!v)
@@ -325,7 +336,16 @@ function resolveGraphSpecIdentity(
     const from = resolveRef(edge.from)
     const to = resolveRef(edge.to)
     if (!from || !to) {
-      throw new Error(`Unable to resolve edge endpoint(s): ${edge.from} -> ${edge.to}`)
+      const missing =
+        !from && !to
+          ? `both "${edge.from}" and "${edge.to}"`
+          : !from
+            ? `source "${edge.from}"`
+            : `target "${edge.to}"`
+      throw new WorkspaceError(
+        WorkspaceErrorCode.WORKSPACE_GRAPH_EDGE_ENDPOINT_UNRESOLVED,
+        `Unable to resolve edge endpoint(s) (${missing}): ${edge.from} -> ${edge.to}`
+      )
     }
     resolvedEdges.push({ ...edge, from, to })
   }
@@ -373,7 +393,10 @@ export async function executeWriteGraph(options: WriteGraphOptions) {
 
   if (!currentGraph) {
     client.disconnect()
-    throw new Error('Failed to retrieve graph snapshot')
+    throw new WorkspaceError(
+      WorkspaceErrorCode.WORKSPACE_GRAPH_SNAPSHOT_FAILED,
+      `Failed to retrieve graph snapshot for instance "${targetId}".`
+    )
   }
 
   // Removed auto document provisioning for canvas nodes.

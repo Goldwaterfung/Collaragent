@@ -23,6 +23,8 @@ export const DYNAMIC_SUBAGENT_DEFAULT_RECURSION_LIMIT = 200
 export const DYNAMIC_SUBAGENT_MAX_RETRIES = 2
 export const DYNAMIC_TASK_TOOL_NAME = 'dynamic_task'
 
+import { createModelResponseNormalizerMiddleware } from '../middleware/model_response_normalizer.js'
+
 const EXCLUDED_STATE_KEYS = ['messages', 'todos', 'structuredResponse', 'files'] as const
 type ExcludedStateKey = (typeof EXCLUDED_STATE_KEYS)[number]
 
@@ -262,9 +264,13 @@ export function createDynamicTaskTool(
         : []
       const selectedTools = availableTools.filter((t) => requestedTools.includes(t.name))
 
+      const baseMw = (defaultMiddleware || []).filter(
+        (m) => m.name !== 'modelResponseNormalizerMiddleware'
+      )
       const dynamicMiddleware: AgentMiddleware[] = [
-        ...(defaultMiddleware || []),
-        toolRetryMiddleware({ maxRetries: DYNAMIC_SUBAGENT_MAX_RETRIES, onFailure: 'continue' })
+        ...baseMw,
+        toolRetryMiddleware({ maxRetries: DYNAMIC_SUBAGENT_MAX_RETRIES, onFailure: 'continue' }),
+        createModelResponseNormalizerMiddleware()
       ]
 
       const subagent = createAgent({

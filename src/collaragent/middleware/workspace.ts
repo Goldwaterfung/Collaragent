@@ -35,6 +35,7 @@ Workspace System tools are available to you and all subagents at all times.
 1. **Information Discovery**: When starting a task, use \`listWorkspaceItems\` to discover relevant context already stored in the workspace.
 2. **Contextual Awareness**: Before editing a document, ensure you have read its current state with \`readDocument\`.
 3. **Knowledge Organization**: Use graphs and mind maps to represent complex relationships that are better served by a non-linear format.
+4. **Document Presentation**: Present multi-attribute data (comparisons, metrics, timelines) in structured \`<table>\` blocks with \`<thead>\` and bold row keys. Use \`<ul>\`/\`<li>\` with bold lead-ins for parallel points, and \`<p>\` for cohesive narrative analysis.
 `
 
 const WORKSPACE_WRITING_SECTION = `

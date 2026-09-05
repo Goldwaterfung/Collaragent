@@ -194,18 +194,78 @@ Lists all workspaces/projects registered in the storage engine.
   }
   ```
 
-#### 5. `POST /api/checkpoints/workspace/restore`
+#### 5. `POST /api/checkpoints/restore`
 
-Restores the complete project state to a designated checkpoint sequence.
+Restores the complete project state, instance snapshots, and chat history to a designated checkpoint bundle.
 
 - **Request Body**:
   ```json
   {
-    "checkpointId": "chk-turn-14-uuid",
+    "bundleId": "chk-turn-14-uuid",
+    "threadId": "chat-thread-uuid",
+    "sessionId": "chat-session-uuid",
     "projectId": "default"
   }
   ```
-- **Success Response (`200 OK`)**: `{ "status": "success", "restoredCheckpointId": "..." }`
+- **Validation Schema (Zod)**:
+  ```typescript
+  export const CheckpointRestoreBodySchema = z.object({
+    bundleId: z.string().min(1),
+    sessionId: z.string().optional(),
+    threadId: z.string().optional(),
+    projectId: z.string().optional()
+  })
+  ```
+- **Success Response (`200 OK`)**:
+  ```json
+  {
+    "status": "restored",
+    "bundleId": "chk-turn-14-uuid",
+    "bundle": {
+      "id": "chk-turn-14-uuid",
+      "sessionId": "chat-session-uuid",
+      "threadId": "chat-thread-uuid",
+      "projectId": "default",
+      "chat": { "messageId": "msg-14", "blockIndex": 0 },
+      "instances": []
+    }
+  }
+  ```
+- **Behavioral Guarantees**:
+  1. **Dual-Path Chat Restore**: If `bundle.chat.messageId === '__start__'` or matches `INITIAL_CHECKPOINT_LABEL`, the entire thread history is wiped via `clearChatSession(threadId)`. For conversational turns, messages after `messageId` are truncated via `truncateChatSession(threadId, messageId, blockIndex)`.
+  2. **Snapshot Hydration & Command Inversion**: Instance snapshots are loaded from content-addressed storage; uncommitted agent command log deltas beyond `targetCursor` are rolled back using `InverseCommandEngine.invert()`.
+  3. **LangGraph Head Synchronization**: Updates `LANGGRAPH_RESTORE_HEADS` so subsequent agent turns branch from the restored checkpoint tuple.
+  4. **WebSocket Broadcasts**: Emits `chat:restored`, `chat:sessionsUpdated`, and instance `update` payloads to synchronize all connected UI components.
+
+#### 6. `POST /api/checkpoints/workspace/snapshots`
+
+Captures an idempotent, content-addressed binary MessagePack instance snapshot.
+
+- **Request Body**: Raw binary buffer (`application/octet-stream` containing MessagePack-encoded instance payload).
+- **Query Parameters**:
+  - `instanceId` _(required, string)_: Instance UUID.
+  - `instanceType` _(required, string)_: `'graph-canvas' | 'document'`.
+  - `projectId` _(optional, string)_: Scoped project UUID.
+  - `parentSnapshotRef` _(optional, string)_: Previous snapshot reference sha256.
+- **Success Response (`200 OK` / `201 Created`)**:
+  ```json
+  {
+    "snapshotId": "snap-uuid-101",
+    "snapshotRef": "3a7b9c...sha256.msgpack",
+    "size": 4096
+  }
+  ```
+- **Idempotency Guarantee**: If an identical MessagePack payload exists (`snapshot_ref` unique constraint), the endpoint immediately returns the existing record rather than failing with `SQLITE_CONSTRAINT_UNIQUE`.
+
+#### 7. `GET /api/checkpoints/bundles` & `PUT /api/checkpoints/bundles`
+
+Lists and stores checkpoint bundles scoped by session, thread, and project.
+
+- **`GET /api/checkpoints/bundles` Query Parameters**:
+  - `threadId` _(optional, string)_
+  - `sessionId` _(optional, string)_
+  - `projectId` _(optional, string)_: Filters bundles to the active project, preventing cross-project metadata pollution.
+- **`PUT /api/checkpoints/bundles` Request Body**: Validated `CheckpointBundleSchema` payload.
 
 ---
 

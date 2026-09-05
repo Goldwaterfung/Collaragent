@@ -161,10 +161,26 @@ export type WriteGraphSpec = z.infer<typeof WriteGraphSpecSchema>
  * Flattens a hierarchical mind map into a flat list of nodes and edges.
  */
 export function flattenMindMap(root: MindMapNode): { nodes: NodeSpec[]; edges: EdgeSpec[] } {
+  if (!root || typeof root.entity !== 'string' || root.entity.trim().length === 0) {
+    throw new WorkspaceError(
+      WorkspaceErrorCode.WORKSPACE_GRAPH_MINDMAP_ROOT_EMPTY,
+      'The root node of a mind map must have a non-empty entity name.'
+    )
+  }
+
   const nodes: NodeSpec[] = []
   const edges: EdgeSpec[] = []
+  const visited = new Set<MindMapNode>()
 
   function traverse(node: MindMapNode, currentGroup?: string) {
+    if (visited.has(node)) {
+      throw new WorkspaceError(
+        WorkspaceErrorCode.WORKSPACE_GRAPH_MINDMAP_CYCLE_DETECTED,
+        `Circular reference detected in mind map hierarchy at node "${node.entity}".`
+      )
+    }
+    visited.add(node)
+
     nodes.push({
       entity: node.entity,
       name: node.entity,
@@ -204,7 +220,7 @@ export function assertUniqueNodeEntities(nodes: NodeSpec[]): void {
 
   if (duplicates.size > 0) {
     throw new WorkspaceError(
-      WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC,
+      WorkspaceErrorCode.WORKSPACE_GRAPH_DUPLICATE_NODE_ALIAS,
       `Duplicate node entity aliases are not allowed: ${Array.from(duplicates).join(', ')}`
     )
   }
@@ -213,9 +229,15 @@ export function assertUniqueNodeEntities(nodes: NodeSpec[]): void {
 function assertEdgeEndpointsExist(edges: EdgeSpec[], nodeIds: ReadonlySet<string>): void {
   for (const edge of edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+      const missing =
+        !nodeIds.has(edge.from) && !nodeIds.has(edge.to)
+          ? `both "${edge.from}" and "${edge.to}"`
+          : !nodeIds.has(edge.from)
+            ? `source "${edge.from}"`
+            : `target "${edge.to}"`
       throw new WorkspaceError(
-        WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC,
-        `Edge references unknown node alias: ${edge.from} -> ${edge.to}`
+        WorkspaceErrorCode.WORKSPACE_GRAPH_EDGE_ENDPOINT_UNRESOLVED,
+        `Edge references unknown node alias (${missing}): ${edge.from} -> ${edge.to}`
       )
     }
   }
@@ -885,7 +907,7 @@ function buildRelationshipRecord(
   for (const edge of edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
       throw new WorkspaceError(
-        WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC,
+        WorkspaceErrorCode.WORKSPACE_GRAPH_EDGE_ENDPOINT_UNRESOLVED,
         `Edge references unknown node alias: ${edge.from} -> ${edge.to}`
       )
     }

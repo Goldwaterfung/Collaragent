@@ -24,6 +24,7 @@ import type {
   SubagentSessionData
 } from '@shared/agents/types'
 import { createDynamicTaskTool } from '../tools/DynamicTaskTool.js'
+import { createModelResponseNormalizerMiddleware } from './model_response_normalizer.js'
 
 export type { AgentMiddleware }
 
@@ -433,10 +434,13 @@ function getSubagents(options: {
 
   // Create general-purpose agent if enabled
   if (generalPurposeAgent) {
-    const generalPurposeMiddleware = [...defaultSubagentMiddleware]
-    if (defaultInterruptOn) {
-      generalPurposeMiddleware.push(humanInTheLoopMiddleware({ interruptOn: defaultInterruptOn }))
-    }
+    const generalPurposeMiddleware = [
+      ...defaultSubagentMiddleware.filter((m) => m.name !== 'modelResponseNormalizerMiddleware'),
+      ...(defaultInterruptOn
+        ? [humanInTheLoopMiddleware({ interruptOn: defaultInterruptOn })]
+        : []),
+      createModelResponseNormalizerMiddleware()
+    ]
 
     const generalPurposeSubagent = createAgent({
       model: defaultModel,
@@ -456,12 +460,17 @@ function getSubagents(options: {
     if ('runnable' in agentParams) {
       agents[agentParams.name] = agentParams.runnable
     } else {
-      const middleware = agentParams.middleware
-        ? [...defaultSubagentMiddleware, ...agentParams.middleware]
-        : [...defaultSubagentMiddleware]
-
+      const customMw = agentParams.middleware ?? []
+      const combined = [...defaultSubagentMiddleware, ...customMw]
+      const withoutNormalizer = combined.filter(
+        (m) => m.name !== 'modelResponseNormalizerMiddleware'
+      )
       const interruptOn = agentParams.interruptOn || defaultInterruptOn
-      if (interruptOn) middleware.push(humanInTheLoopMiddleware({ interruptOn }))
+      const middleware = [
+        ...withoutNormalizer,
+        ...(interruptOn ? [humanInTheLoopMiddleware({ interruptOn })] : []),
+        createModelResponseNormalizerMiddleware()
+      ]
 
       agents[agentParams.name] = createAgent({
         model: agentParams.model ?? defaultModel,

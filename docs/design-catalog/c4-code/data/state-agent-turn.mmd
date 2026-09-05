@@ -2,9 +2,7 @@ stateDiagram-v2
     [*] --> Idle : Application Ready
     Idle --> TurnInitializing : User submits message (@mentions attached)
     
-    TurnInitializing --> AutoCheckpointing : Capture pre-turn CheckpointBundle
-    AutoCheckpointing --> PromptAssembling : Quiesce WS sync & bundle state
-    
+    TurnInitializing --> PromptAssembling : Prepare prompt & active tool definitions
     PromptAssembling --> ModelStreaming : Inject Date, Skills catalog, Memory, Tools
     
     state ModelStreaming {
@@ -33,4 +31,5 @@ stateDiagram-v2
     
     ToolExecuting --> ModelStreaming : Tool result fed back to Model node
     ModelStreaming --> TurnCompleted : Stop token / No more tool calls
-    TurnCompleted --> Idle : Resume WS sync & update ChatStore
+    TurnCompleted --> PostTurnCheckpointing : Commit assistant message to ChatStore & SQLite
+    PostTurnCheckpointing --> Idle : window.checkpointIPC.create() & refresh CheckpointMarkers

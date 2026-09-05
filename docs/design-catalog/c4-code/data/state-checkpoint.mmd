@@ -7,8 +7,8 @@ stateDiagram-v2
     state SnapshotCapturing {
         [*] --> FlushWSBuffers : wsServer.flush()
         FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
-        CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & MsgPack snapshot
-        CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record
+        CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & Idempotent MsgPack snapshot
+        CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record with projectId & chat.messageId
     }
     
     SnapshotCapturing --> ActiveEditing : Release SyncPause & resume editing
@@ -17,7 +17,7 @@ stateDiagram-v2
     RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing
     
     state QuiescingRestore {
-        [*] --> RollbackChat : Truncate messages to target blockIndex
+        [*] --> RollbackChat : Clear session (__start__) OR truncate to messageId
         RollbackChat --> ResetBranchRegistry : agentCheckpointRegistry.setPendingBranch()
         ResetBranchRegistry --> RestoreSnapshots : Reconstitute instances from MsgPack
         RestoreSnapshots --> InvertCommandLogs : Apply InverseCommandEngine deltas

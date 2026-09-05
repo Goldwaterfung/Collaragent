@@ -407,5 +407,142 @@ describe('filesystemAPI Express REST Integration (Task 5.1 / Boundary A)', () =>
       expect(bundleData.id).toBe(bundleId)
       expect(bundleData.threadId).toBe('thread-1')
     })
+
+    it('POST /api/checkpoints/restore clears chat session when messageId is __start__', async () => {
+      const project = storage.createProject('Restore Start Project')
+      const session = storage.createChatSession(project.id, 'Start Test Session')
+      storage.appendChatMessage(session.id, {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Question 1',
+        timestamp: 1000
+      })
+      storage.appendChatMessage(session.id, {
+        id: 'msg-2',
+        role: 'assistant',
+        content: 'Answer 1',
+        timestamp: 2000
+      })
+
+      const bundleId = 'bundle-start-sentinel'
+      const putRes = await fetch(`${baseUrl}/api/checkpoints/bundles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: bundleId,
+          createdAt: new Date().toISOString(),
+          sessionId: session.id,
+          threadId: session.id,
+          chat: { messageId: '__start__' },
+          instances: []
+        })
+      })
+      expect(putRes.status).toBe(201)
+
+      const restoreRes = await fetch(`${baseUrl}/api/checkpoints/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bundleId,
+          sessionId: session.id,
+          threadId: session.id
+        })
+      })
+      expect(restoreRes.status).toBe(200)
+
+      const sessionRes = await fetch(`${baseUrl}/api/chat/sessions/${session.id}`)
+      const sessionData = (await sessionRes.json()) as { messages: Array<{ id: string }> }
+      expect(sessionData.messages).toHaveLength(0)
+    })
+
+    it('POST /api/checkpoints/restore truncates chat session when messageId is a regular message', async () => {
+      const project = storage.createProject('Restore Truncate Project')
+      const session = storage.createChatSession(project.id, 'Truncate Test Session')
+      storage.appendChatMessage(session.id, {
+        id: 'msg-t1',
+        role: 'user',
+        content: 'Question 1',
+        timestamp: 1000
+      })
+      storage.appendChatMessage(session.id, {
+        id: 'msg-t2',
+        role: 'assistant',
+        content: 'Answer 1',
+        timestamp: 2000
+      })
+
+      const bundleId = 'bundle-truncate'
+      const putRes = await fetch(`${baseUrl}/api/checkpoints/bundles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: bundleId,
+          createdAt: new Date().toISOString(),
+          sessionId: session.id,
+          threadId: session.id,
+          chat: { messageId: 'msg-t1' },
+          instances: []
+        })
+      })
+      expect(putRes.status).toBe(201)
+
+      const restoreRes = await fetch(`${baseUrl}/api/checkpoints/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bundleId,
+          sessionId: session.id,
+          threadId: session.id
+        })
+      })
+      expect(restoreRes.status).toBe(200)
+
+      const sessionRes = await fetch(`${baseUrl}/api/chat/sessions/${session.id}`)
+      const sessionData = (await sessionRes.json()) as { messages: Array<{ id: string }> }
+      expect(sessionData.messages).toHaveLength(1)
+      expect(sessionData.messages[0].id).toBe('msg-t1')
+    })
+
+    it('filters checkpoint bundles by projectId query parameter', async () => {
+      const projectA = storage.createProject('Project A')
+      const projectB = storage.createProject('Project B')
+
+      const bundleA = 'bundle-proj-a'
+      const bundleB = 'bundle-proj-b'
+
+      await fetch(`${baseUrl}/api/checkpoints/bundles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: bundleA,
+          createdAt: new Date().toISOString(),
+          sessionId: 's-a',
+          threadId: 't-a',
+          projectId: projectA.id,
+          chat: { messageId: '__start__' },
+          instances: []
+        })
+      })
+
+      await fetch(`${baseUrl}/api/checkpoints/bundles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: bundleB,
+          createdAt: new Date().toISOString(),
+          sessionId: 's-b',
+          threadId: 't-b',
+          projectId: projectB.id,
+          chat: { messageId: '__start__' },
+          instances: []
+        })
+      })
+
+      const resA = await fetch(`${baseUrl}/api/checkpoints/bundles?projectId=${projectA.id}`)
+      expect(resA.status).toBe(200)
+      const dataA = (await resA.json()) as { bundles: Array<{ id: string; projectId?: string }> }
+      expect(dataA.bundles.some((b) => b.id === bundleA)).toBe(true)
+      expect(dataA.bundles.some((b) => b.id === bundleB)).toBe(false)
+    })
   })
 })

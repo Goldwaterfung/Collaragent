@@ -2,6 +2,8 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { DocumentSchema, type Block, type Comment } from '@workspace/persistence/editorContent'
+import { CollarError } from '@shared/errors/CollarError'
+import { WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 import {
   convertBlocksToPatchView,
   convertHtmlToBlocks
@@ -36,10 +38,10 @@ const EMPTY_PARAGRAPH_BLOCK: Block = {
 // Error Types
 // ============================================================================
 
-class WorkspaceToolError extends Error {
+export class WorkspaceToolError extends Error {
   constructor(
     message: string,
-    public readonly code: string
+    public readonly code: WorkspaceErrorCode | string
   ) {
     super(message)
     this.name = 'WorkspaceToolError'
@@ -51,7 +53,7 @@ class InstanceNotFoundError extends WorkspaceToolError {
     const suffix = projectName ? ` in project "${projectName}"` : ''
     super(
       `Instance "${instanceName}" not found${suffix}. Use listWorkspaceItems to see available files.`,
-      'INSTANCE_NOT_FOUND'
+      WorkspaceErrorCode.WORKSPACE_INSTANCE_NOT_FOUND
     )
   }
 }
@@ -60,7 +62,7 @@ class MultipleInstancesError extends WorkspaceToolError {
   constructor(instanceName: string, projectNames: string[]) {
     super(
       `Multiple instances named "${instanceName}" found in projects: ${projectNames.join(', ')}. Please specify a projectName.`,
-      'MULTIPLE_INSTANCES'
+      WorkspaceErrorCode.WORKSPACE_MULTIPLE_INSTANCES
     )
   }
 }
@@ -69,7 +71,7 @@ class ProjectNotFoundError extends WorkspaceToolError {
   constructor(projectName: string, availableProjects: string[]) {
     super(
       `Project "${projectName}" not found. Available projects: ${availableProjects.join(', ')}`,
-      'PROJECT_NOT_FOUND'
+      WorkspaceErrorCode.WORKSPACE_PROJECT_NOT_FOUND
     )
   }
 }
@@ -95,7 +97,9 @@ const createDocumentHtmlSchema = z.object({
   html_content: z
     .string()
     .min(1)
-    .describe('The full document content as HTML blocks (e.g. <h1>Title</h1><p>Content...</p>).'),
+    .describe(
+      'The full document content as HTML blocks (e.g. <h1>Title</h1><p>Content...</p><table>...</table>). Tabularize 2D data (comparisons, metrics) and use bold lead-ins for list items.'
+    ),
   instanceName: z.string().min(1).describe('The name for the new document.'),
   projectName: z
     .string()
@@ -339,11 +343,11 @@ function stripBlockId(line: string): string {
   return line.replace(/\sdata-block-id="[^"]*"/, '')
 }
 
-function buildEditableBlocks(blocks: Block[]): Array<{ id: string; html: string }> {
+export function buildEditableBlocks(blocks: Block[]): Array<{ id: string; html: string }> {
   if (!Array.isArray(blocks)) {
     throw new WorkspaceToolError(
       'Document payload blocks must be an array.',
-      'WORKSPACE_PAYLOAD_INVALID'
+      WorkspaceErrorCode.WORKSPACE_PAYLOAD_INVALID
     )
   }
 
@@ -352,7 +356,7 @@ function buildEditableBlocks(blocks: Block[]): Array<{ id: string; html: string 
     if (!blockId) {
       throw new WorkspaceToolError(
         `Block at index ${index} (type: ${block.type}) is missing a required block ID.`,
-        'WORKSPACE_BLOCK_IDENTITY_MISSING'
+        WorkspaceErrorCode.WORKSPACE_BLOCK_IDENTITY_MISSING
       )
     }
 
@@ -361,7 +365,7 @@ function buildEditableBlocks(blocks: Block[]): Array<{ id: string; html: string 
     if (!extractedId) {
       throw new WorkspaceToolError(
         `Failed to encode block identity for block "${blockId}".`,
-        'WORKSPACE_BLOCK_ENCODING_FAILED'
+        WorkspaceErrorCode.WORKSPACE_BLOCK_ENCODING_FAILED
       )
     }
 
@@ -426,21 +430,62 @@ function getRecommendFix(message: string): string | undefined {
   return undefined
 }
 
-function getCodeRecommendFix(code: string): string | undefined {
+export function getCodeRecommendFix(code: string): string | undefined {
   switch (code) {
     case 'INSTANCE_NOT_FOUND':
-    case 'WORKSPACE_INSTANCE_NOT_FOUND':
+    case WorkspaceErrorCode.WORKSPACE_INSTANCE_NOT_FOUND:
       return 'Use listWorkspaceItems to see available documents and verify the exact name.'
     case 'PROJECT_NOT_FOUND':
+    case WorkspaceErrorCode.WORKSPACE_PROJECT_NOT_FOUND:
       return 'Use listWorkspaceItems to verify available project names.'
     case 'MULTIPLE_INSTANCES':
+    case WorkspaceErrorCode.WORKSPACE_MULTIPLE_INSTANCES:
       return 'Provide a more specific projectName to disambiguate the document.'
     case 'CONNECTION_ERROR':
+    case WorkspaceErrorCode.WORKSPACE_SYNC_DISCONNECTED:
       return 'The workspace server may be unreachable. Retry the operation.'
-    case 'WORKSPACE_BLOCK_IDENTITY_MISSING':
+    case WorkspaceErrorCode.WORKSPACE_BLOCK_IDENTITY_MISSING:
       return 'Document blocks are missing persistent IDs. The document must be saved or normalized.'
-    case 'WORKSPACE_PAYLOAD_INVALID':
+    case WorkspaceErrorCode.WORKSPACE_BLOCK_ENCODING_FAILED:
+      return 'Failed to encode block identity in patch view. Check block HTML syntax.'
+    case WorkspaceErrorCode.WORKSPACE_PAYLOAD_INVALID:
       return 'The document payload structure is invalid. Verify the document format.'
+    case WorkspaceErrorCode.WORKSPACE_HTML_EMPTY:
+      return 'The provided html_content is empty. Provide standard HTML tags like <h1>, <p>, or <table>.'
+    case WorkspaceErrorCode.WORKSPACE_HTML_NO_VALID_BLOCKS:
+      return 'The HTML string did not produce any valid blocks. Ensure content is wrapped in standard HTML tags such as <p>...</p> or <table>...</table>.'
+    case WorkspaceErrorCode.WORKSPACE_HTML_TABLE_MALFORMED:
+      return 'The table markup contains no rows or cells. Ensure <table> contains at least one <tr> with <th> or <td> elements.'
+
+    // Graph Canvas & Diagram Subsystem Recommendations
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_NOT_FOUND:
+      return 'The requested graph canvas instance does not exist. Use listWorkspaceItems to verify available canvas names.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_SNAPSHOT_FAILED:
+      return 'Failed to retrieve the graph canvas snapshot from the server. Ensure the canvas server is reachable and initialized.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_CORRUPTED:
+      return 'The graph canvas snapshot contains an invalid or unreadable schema. Re-create or re-initialize the canvas instance.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_SPEC_INVALID:
+      return 'The graph specification is invalid. Verify direction (LR/TD/RADIAL), mode (replace/merge), and nodes/edges schemas.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_DUPLICATE_NODE_ALIAS:
+      return 'Each node in the "nodes" array must have a unique "entity" alias. Consolidate or rename duplicate entries.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_NODE_ALIAS_COLLISION:
+      return 'Multiple entity aliases resolved to the same underlying node ID. Use unique entity names for distinct nodes.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_EDGE_ENDPOINT_UNRESOLVED:
+      return 'Edge endpoints must refer to an entity in the "nodes" array or an existing canvas node. Call readGraph first to confirm available entities.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_START_NODE_NOT_FOUND:
+      return 'The "startFrom" anchor entity was not found on the canvas. Run readGraph to see existing node entity aliases.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_MINDMAP_ROOT_EMPTY:
+      return 'The root node of a mind map must have a non-empty "entity" name.'
+    case WorkspaceErrorCode.WORKSPACE_GRAPH_MINDMAP_CYCLE_DETECTED:
+      return 'Mind maps must be strictly hierarchical trees. Remove circular parent-child references.'
+    case WorkspaceErrorCode.WORKSPACE_LAYOUT_COMPUTATION_FAILED:
+      return 'Automated graph layout computation failed. Check for cyclic or disconnected node structures.'
+    case WorkspaceErrorCode.WORKSPACE_INVALID_CLUSTER_SPEC:
+      return 'The clustering specification is invalid. Ensure cluster names and node group assignments are valid strings.'
+    case WorkspaceErrorCode.WORKSPACE_CLUSTER_EXECUTION_FAILED:
+      return 'Graph clustering algorithm execution failed. Verify graph connectivity and node relationships.'
+    case WorkspaceErrorCode.WORKSPACE_CLUSTER_ABORTED:
+      return 'Graph clustering operation was aborted or timed out.'
     default:
       return undefined
   }
@@ -448,15 +493,38 @@ function getCodeRecommendFix(code: string): string | undefined {
 
 /**
  * Extracts a structured { code, message, recommendFix } from any thrown error.
- * WorkspaceToolError subclasses carry a semantic code; protocol error codes
- * prefixed with brackets [CODE] are extracted directly.
+ * Handles WorkspaceToolError, CollarError (including WorkspaceError), ZodError,
+ * and bracketed [CODE] protocol messages.
  */
-function extractErrorInfo(err: unknown): { code: string; message: string; recommendFix?: string } {
+export function extractErrorInfo(err: unknown): {
+  code: string
+  message: string
+  recommendFix?: string
+} {
   if (err instanceof WorkspaceToolError) {
     return {
       code: err.code,
       message: err.message,
       recommendFix: getCodeRecommendFix(err.code)
+    }
+  }
+  if (err instanceof CollarError) {
+    return {
+      code: err.code,
+      message: err.message,
+      recommendFix: getCodeRecommendFix(err.code)
+    }
+  }
+  if (err instanceof z.ZodError) {
+    const firstIssue = err.issues[0]
+    const pathStr = firstIssue?.path?.length ? ` at "${firstIssue.path.join('.')}"` : ''
+    const msg = firstIssue
+      ? `Schema validation failed${pathStr}: ${firstIssue.message}`
+      : err.message
+    return {
+      code: WorkspaceErrorCode.WORKSPACE_GRAPH_SPEC_INVALID,
+      message: msg,
+      recommendFix: getCodeRecommendFix(WorkspaceErrorCode.WORKSPACE_GRAPH_SPEC_INVALID)
     }
   }
   const message = err instanceof Error ? err.message : String(err)
@@ -520,6 +588,22 @@ async function createDocumentHandler(
   config: ToolConfig
 ): Promise<CreateDocumentResult | CreateDocumentErrorResult> {
   try {
+    const trimmedHtml = input.html_content.trim()
+    if (trimmedHtml.length === 0) {
+      throw new WorkspaceToolError(
+        'html_content must not be empty.',
+        WorkspaceErrorCode.WORKSPACE_HTML_EMPTY
+      )
+    }
+
+    const parsedBlocks = convertHtmlToBlocks(input.html_content)
+    if (parsedBlocks.length === 0) {
+      throw new WorkspaceToolError(
+        'The provided html_content contained no valid HTML blocks.',
+        WorkspaceErrorCode.WORKSPACE_HTML_NO_VALID_BLOCKS
+      )
+    }
+
     const context = config.configurable
     const uuid = await resolveOrCreateResourceId(
       input.instanceName,
@@ -528,7 +612,7 @@ async function createDocumentHandler(
       context
     )
 
-    const safeBlocks = normalizeWritableBlocks(convertHtmlToBlocks(input.html_content))
+    const safeBlocks = normalizeWritableBlocks(parsedBlocks)
     const payload = DocumentSchema.parse({ blocks: safeBlocks })
 
     await executeWriteDocument({
@@ -800,14 +884,21 @@ export const createDocument = tool(createDocumentHandler, {
   name: 'createDocument',
   description: `Create a new document (or completely replace an existing one) using standard HTML tags.
 
-Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>.
-Supported styles: <b>, <i>, <u>; style="text-align: center|right".
+Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>, <table>, <thead>, <tbody>, <tfoot>, <tr>, <th>, <td>.
+Supported styles: <b>, <i>, <u>; style="text-align: center|right"; colspan, rowspan, background-color.
 
-Each top-level HTML tag (like <p> or <h2>) becomes a separate block in the document.
+Each top-level HTML tag (like <p> or <h2> or <table>) becomes a separate block in the document.
+
+DOCUMENT STRUCTURE GUIDELINES:
+• Extract 2D Data to Tables: Comparisons, timelines, options, and metrics belong in <table> with <thead> and <th>. Bold row keys in <td><b>Key</b></td>.
+• High-Density Lists: Use <ul>/<li> with a 2-4 word bold lead-in phrase (<li><b>Label:</b> description</li>) for parallel points.
+• Narrative Cohesion: Use <p> for continuous conceptual reasoning and synthesis. Preserve thematic unity (one core idea per paragraph); do not bury tabular data in prose.
+For comprehensive layouts, refer to the 'workspace-document-presentation' skill.
 
 Example Input:
 {
-  "html_content": "<h1>Title</h1><p style=\\"text-align: center\\">Centered Text</p><p>This has <b>bold</b>, <i>italic</i>, <u>underlined</u> text,<br>and a line break.</p><ul><li>Item 1</li><li>Item 2</li></ul>"
+  "instanceName": "Storage-Engine-Evaluation",
+  "html_content": "<h2>Storage Engine Evaluation</h2><p>This evaluation benchmarks relational and sharded key-value engines for local document persistence, focusing on retrieval latency and cross-process concurrency guarantees.</p><table><thead><tr><th>Engine</th><th>Read Latency</th><th>Concurrency</th><th>Assessment</th></tr></thead><tbody><tr><td><b>SQLite (WAL)</b></td><td>&lt;2ms</td><td>Multi-reader, single-writer</td><td>Recommended for metadata</td></tr><tr><td><b>Sharded MsgPack</b></td><td>&lt;1ms</td><td>Process-isolated shards</td><td>Optimal for binary snapshots</td></tr></tbody></table><h3>Selection Criteria</h3><ul><li><b>Throughput Resilience:</b> Must handle rapid micro-edits without UI thread blocking.</li><li><b>Crash Consistency:</b> Atomic file swaps prevent corruption during unexpected shutdowns.</li></ul>"
 }`,
   schema: createDocumentHtmlSchema
 })
@@ -832,31 +923,32 @@ BEST PRACTICES:
 • Batching: Combine multiple updates, inserts, and deletes into a single tool call for maximum efficiency.
 • Targeted Edits: Always call readDocument first to retrieve the current state and valid blockIds.
 • Multi-Block Support: Use a single 'update' or 'insert' to add multiple tags at once rather than making separate calls.
-• Valid HTML: Ensure 'newHtml' contains valid, semantic HTML tags (e.g., <p>, <ul>, <h2>).
+• Valid HTML: Ensure 'newHtml' contains valid, semantic HTML tags (e.g., <p>, <ul>, <h2>, <table>). Keep comparisons in <table> with <thead> and bold keys, and use bold lead-ins for <li>.
 
-Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>.
-Supported styles: <b>, <i>, <u>; style="text-align: center|right".
+Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>, <table>, <thead>, <tbody>, <tfoot>, <tr>, <th>, <td>.
+Supported styles: <b>, <i>, <u>; style="text-align: center|right"; colspan, rowspan, background-color.
 
-Example Input:
+Example Input (Batch Refinement):
 {
-  "instanceName": "Roadmap",
+  "instanceName": "Storage-Engine-Evaluation",
   "operations": [
     {
       "action": "update",
-      "blockId": "abc123",
-      "newHtml": "<h2>New Section Title</h2><p style=\\"text-align: center\\">Refined content.</p>"
+      "blockId": "summary-p1",
+      "newHtml": "<p>Updated analysis incorporating recent stress-test benchmarks under concurrent worker loads.</p>"
     },
     {
       "action": "insert",
-      "blockId": "abc123",
+      "blockId": "criteria-heading",
       "anchor": "after",
-      "newHtml": "<p>A <b>supplementary</b> paragraph.</p>"
+      "newHtml": "<table><thead><tr><th>Metric</th><th>Target</th><th>Observed</th><th>Status</th></tr></thead><tbody><tr><td><b>Sync P99</b></td><td>&lt;15ms</td><td>8.2ms</td><td>Pass</td></tr><tr><td><b>Memory Peak</b></td><td>&lt;120MB</td><td>94MB</td><td>Pass</td></tr></tbody></table>"
     },
     {
       "action": "delete",
-      "blockId": "xyz789"
+      "blockId": "deprecated-draft-note"
     }
-  ]
+  ],
+  "explanation": "Incorporate latest benchmark findings, insert metrics table, and remove obsolete draft notes."
 }`,
   schema: editDocumentSchema
 })

@@ -19,7 +19,11 @@ import {
   WorkspaceCommandLogEntrySchema,
   WorkspaceSnapshotSchema
 } from '@shared/checkpoints/validators'
-import { WorkspaceCommandLogEntry } from '@shared/checkpoints/types'
+import {
+  CHECKPOINT_START_SENTINEL,
+  INITIAL_CHECKPOINT_LABEL,
+  WorkspaceCommandLogEntry
+} from '@shared/checkpoints/types'
 import { applyWorkspaceCommands } from '@workspace/persistence/checkpointRestoreHelpers'
 import { InverseCommandEngine } from '@collaragent/runtime/InverseCommandEngine'
 
@@ -140,7 +144,8 @@ const FileRevisionCreateBodySchema = z.object({
 
 const BundlesQuerySchema = z.object({
   sessionId: z.string().optional(),
-  threadId: z.string().optional()
+  threadId: z.string().optional(),
+  projectId: z.string().optional()
 })
 
 const CheckpointRestoreBodySchema = z.object({
@@ -948,7 +953,7 @@ export async function startFilesystemApi(
         )
       }
 
-      storage.appendWorkspaceLogEntry(parsed)
+      storage.appendWorkspaceLogEntry(parsed as WorkspaceCommandLogEntry)
       res.status(201).json({ status: 'ok' })
     } catch (err: unknown) {
       handleApiError(res, err)
@@ -987,7 +992,11 @@ export async function startFilesystemApi(
     try {
       const query = BundlesQuerySchema.parse(req.query)
       const bundles = storage.listCheckpointBundles
-        ? storage.listCheckpointBundles({ sessionId: query.sessionId, threadId: query.threadId })
+        ? storage.listCheckpointBundles({
+            sessionId: query.sessionId,
+            threadId: query.threadId,
+            projectId: query.projectId
+          })
         : []
       res.json({ bundles })
     } catch (err: unknown) {
@@ -1044,21 +1053,21 @@ export async function startFilesystemApi(
         )
       }
 
-      if (sessionId && bundle.sessionId !== sessionId) {
-        return res.status(409).json({
-          error: {
-            code: StorageErrorCode.STORAGE_VALIDATION_FAILED,
-            message: 'Checkpoint bundle session mismatch',
-            subsystem: 'STORAGE'
-          }
-        })
-      }
-
       if (threadId && bundle.threadId !== threadId) {
         return res.status(409).json({
           error: {
             code: StorageErrorCode.STORAGE_VALIDATION_FAILED,
             message: 'Checkpoint bundle thread mismatch',
+            subsystem: 'STORAGE'
+          }
+        })
+      }
+
+      if (sessionId && !threadId && bundle.sessionId !== sessionId) {
+        return res.status(409).json({
+          error: {
+            code: StorageErrorCode.STORAGE_VALIDATION_FAILED,
+            message: 'Checkpoint bundle session mismatch',
             subsystem: 'STORAGE'
           }
         })
@@ -1171,27 +1180,38 @@ export async function startFilesystemApi(
       }
 
       // 4. Truncate or clear chat session
-      if (bundle.chat?.messageId && storage.truncateChatSession) {
+      if (
+        bundle.chat?.messageId &&
+        bundle.chat.messageId !== CHECKPOINT_START_SENTINEL &&
+        bundle.chat.messageId !== '__start__' &&
+        storage.truncateChatSession
+      ) {
         const ok = storage.truncateChatSession(
           bundle.threadId,
           bundle.chat.messageId,
           bundle.chat.blockIndex
         )
         if (!ok) {
-          throw new StorageError(
-            StorageErrorCode.STORAGE_SESSION_NOT_FOUND,
-            'Chat session or message not found',
-            { threadId: bundle.threadId, messageId: bundle.chat.messageId }
+          console.warn(
+            `[filesystemAPI] Target chat message '${bundle.chat.messageId}' not found for truncation in thread '${bundle.threadId}'. Skipping message truncation.`
           )
+        } else {
+          notifyWsServer({ type: 'chat:sessionsUpdated' })
+          notifyWsServer({
+            type: 'chat:restored',
+            sessionId: bundle.threadId,
+            messageId: bundle.chat.messageId,
+            blockIndex: bundle.chat.blockIndex
+          })
         }
-        notifyWsServer({ type: 'chat:sessionsUpdated' })
-        notifyWsServer({
-          type: 'chat:restored',
-          sessionId: bundle.threadId,
-          messageId: bundle.chat.messageId,
-          blockIndex: bundle.chat.blockIndex
-        })
-      } else if (bundle.chat && storage.clearChatSession) {
+      } else if (
+        storage.clearChatSession &&
+        (!bundle.chat?.messageId ||
+          bundle.chat.messageId === CHECKPOINT_START_SENTINEL ||
+          bundle.chat.messageId === '__start__' ||
+          bundle.label === INITIAL_CHECKPOINT_LABEL ||
+          bundle.label === 'Initial checkpoint')
+      ) {
         storage.clearChatSession(bundle.threadId)
         notifyWsServer({ type: 'chat:sessionsUpdated' })
         notifyWsServer({

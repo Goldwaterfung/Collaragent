@@ -36,18 +36,23 @@ flowchart LR
     AggGraph --> SysWSServer
     EvtCanvasMutated --> PolBroadcast
 
-    %% 3. Agent Invocation & Auto-Checkpoint
+    %% 3. Agent Invocation & Turn Execution
     CmdSendPrompt[Submit Agent Prompt]:::command
     EvtPromptSent[Prompt Submitted]:::event
-    PolAutoCheck[Whenever Prompt Submitted -> Capture Auto Checkpoint]:::policy
-    EvtCheckSaved[Checkpoint Bundle Captured]:::event
-    AggCheck[Checkpoint Aggregate]:::aggregate
     SysLLM[LLM Cloud Provider]:::system
 
     User --> CmdSendPrompt
     CmdSendPrompt --> EvtPromptSent
-    EvtPromptSent --> PolAutoCheck
-    PolAutoCheck --> EvtCheckSaved
+    EvtPromptSent --> SysLLM
+
+    %% 4. Post-Turn Checkpoint & Bundle Capture
+    EvtTurnFinished[Assistant Turn Finished]:::event
+    PolPostTurnCheck[Whenever Turn Finished -> Capture Post-Turn Checkpoint]:::policy
+    EvtCheckSaved[Checkpoint Bundle Captured]:::event
+    AggCheck[Checkpoint Aggregate]:::aggregate
+
+    EvtTurnFinished --> PolPostTurnCheck
+    PolPostTurnCheck --> EvtCheckSaved
     EvtCheckSaved --> AggCheck
 
     %% 4. Agent Tool Execution & Staged Proposals

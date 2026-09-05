@@ -437,7 +437,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
 
     // Snapshots
     this.stmtCreateSnapshot = this.db.prepare(`
-      INSERT INTO workspace_snapshots
+      INSERT OR IGNORE INTO workspace_snapshots
       (id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, snapshot_cursor_json, snapshot_msgpack, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
@@ -929,15 +929,49 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
   // WORKSPACE SNAPSHOTS
   // ============================================================================
 
+  private mapRowToWorkspaceSnapshot(raw: Record<string, unknown>): WorkspaceSnapshot {
+    const cursor = parseJsonObject(
+      typeof raw.snapshot_cursor_json === 'string' ? raw.snapshot_cursor_json : '{}'
+    )
+    const normalizedCursor: InstanceLogPosition =
+      'seq' in cursor && typeof cursor.seq === 'number'
+        ? (cursor as unknown as InstanceLogPosition)
+        : { seq: 0, at: String(raw.created_at) }
+
+    return {
+      id: String(raw.id),
+      createdAt: String(raw.created_at),
+      instanceId: String(raw.instance_id),
+      instanceType:
+        raw.instance_type === 'canvas' || raw.instance_type === 'graph-canvas'
+          ? 'graph-canvas'
+          : 'document',
+      projectId: String(raw.project_id),
+      snapshotRef: String(raw.snapshot_ref),
+      snapshotHash: typeof raw.snapshot_hash === 'string' ? raw.snapshot_hash : undefined,
+      snapshotCursor: normalizedCursor
+    }
+  }
+
   public createSnapshot(snapshot: CreateSnapshotInput): WorkspaceSnapshot {
     this.getDb()
+
+    // 1. Check if snapshot with snapshotRef already exists (content-addressed idempotency)
+    const existingRaw = this.stmtGetWorkspaceSnapshotById.get(
+      snapshot.snapshotRef,
+      snapshot.snapshotRef
+    )
+    if (existingRaw && isRecord(existingRaw)) {
+      return this.mapRowToWorkspaceSnapshot(existingRaw)
+    }
+
     const id = snapshot.id ?? crypto.randomUUID()
     const createdAt = snapshot.createdAt ?? new Date().toISOString()
     const snapshotBuffer = toBuffer(snapshot.snapshotPayload)
     const cursor = snapshot.snapshotCursor ?? { seq: 0, at: createdAt }
     const cursorJson = JSON.stringify(cursor)
 
-    this.stmtCreateSnapshot.run(
+    const result = this.stmtCreateSnapshot.run(
       id,
       snapshot.instanceId,
       snapshot.projectId,
@@ -949,6 +983,17 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       createdAt
     )
     this.setupIdleTimer()
+
+    // Defense-in-depth under concurrent race conditions
+    if (result.changes === 0) {
+      const racedRaw = this.stmtGetWorkspaceSnapshotById.get(
+        snapshot.snapshotRef,
+        snapshot.snapshotRef
+      )
+      if (racedRaw && isRecord(racedRaw)) {
+        return this.mapRowToWorkspaceSnapshot(racedRaw)
+      }
+    }
 
     const normalizedCursor: InstanceLogPosition =
       typeof cursor === 'object' && cursor !== null && 'seq' in cursor
@@ -983,27 +1028,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     this.getDb()
     const raw = this.stmtGetWorkspaceSnapshotById.get(id, id)
     if (!raw || !isRecord(raw)) return undefined
-    const cursor = parseJsonObject(
-      typeof raw.snapshot_cursor_json === 'string' ? raw.snapshot_cursor_json : '{}'
-    )
-    const normalizedCursor: InstanceLogPosition =
-      'seq' in cursor && typeof cursor.seq === 'number'
-        ? (cursor as unknown as InstanceLogPosition)
-        : { seq: 0, at: String(raw.created_at) }
-
-    return {
-      id: String(raw.id),
-      createdAt: String(raw.created_at),
-      instanceId: String(raw.instance_id),
-      instanceType:
-        raw.instance_type === 'canvas' || raw.instance_type === 'graph-canvas'
-          ? 'graph-canvas'
-          : 'document',
-      projectId: String(raw.project_id),
-      snapshotRef: String(raw.snapshot_ref),
-      snapshotHash: typeof raw.snapshot_hash === 'string' ? raw.snapshot_hash : undefined,
-      snapshotCursor: normalizedCursor
-    }
+    return this.mapRowToWorkspaceSnapshot(raw)
   }
 
   public async loadWorkspaceSnapshot(id: string): Promise<unknown | null> {
@@ -1192,10 +1217,10 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       }
     }
 
-    const messageRows =
-      options?.limit !== undefined || options?.before !== undefined
-        ? this.stmtGetChatMessagesWithLimit.all(sessionId, beforeTimestamp, limit)
-        : this.stmtGetChatMessages.all(sessionId)
+    const isPaginated = options?.limit !== undefined || options?.before !== undefined
+    const messageRows = isPaginated
+      ? this.stmtGetChatMessagesWithLimit.all(sessionId, beforeTimestamp, limit)
+      : this.stmtGetChatMessages.all(sessionId)
     const messages: ChatMessageRecord[] = []
 
     for (const raw of messageRows) {
@@ -1217,7 +1242,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     }
 
     // Return in chronological order
-    return messages.reverse()
+    return isPaginated ? messages.reverse() : messages
   }
 
   public getChatSession(sessionId: string): ChatSessionDetail | null {
@@ -1489,24 +1514,39 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
   // CHECKPOINT BUNDLES
   // ============================================================================
 
-  private getProjectBundles(projectId?: string): CheckpointBundle[] {
-    const projects = this.getProjects()
-    const targetProject = projectId ? projects.find((p) => p.id === projectId) : projects[0]
-    if (!targetProject) return []
-    const bundlesRaw = targetProject.metadata.checkpointBundles
+  public getProjectBundles(projectId: string): CheckpointBundle[] {
+    const project = this.getProjectById(projectId)
+    if (!project) return []
+    const bundlesRaw = project.metadata.checkpointBundles
     if (Array.isArray(bundlesRaw)) {
       return bundlesRaw as CheckpointBundle[]
     }
     return []
   }
 
-  private saveProjectBundles(bundles: CheckpointBundle[], projectId?: string): void {
+  public getAllProjectBundles(): CheckpointBundle[] {
+    const projects = this.getProjects()
+    const bundleMap = new Map<string, CheckpointBundle>()
+    for (const project of projects) {
+      const bundles = this.getProjectBundles(project.id)
+      for (const bundle of bundles) {
+        if (!bundleMap.has(bundle.id)) {
+          bundleMap.set(bundle.id, bundle)
+        }
+      }
+    }
+    return Array.from(bundleMap.values())
+  }
+
+  public saveProjectBundles(bundles: CheckpointBundle[], projectId?: string): void {
     let targetProject: ProjectRecord | undefined
     const projects = this.getProjects()
     if (projects.length === 0) {
       targetProject = this.createProject('Default Project')
+    } else if (projectId) {
+      targetProject = projects.find((p) => p.id === projectId)
     } else {
-      targetProject = projectId ? projects.find((p) => p.id === projectId) : projects[0]
+      targetProject = projects[0]
     }
     if (!targetProject) return
     const nextMeta = {
@@ -1519,30 +1559,35 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
   public listCheckpointBundles(filter?: {
     sessionId?: string
     threadId?: string
+    projectId?: string
   }): CheckpointBundle[] {
-    let bundles = this.getProjectBundles()
-    if (filter?.sessionId) {
-      bundles = bundles.filter((b) => b.sessionId === filter.sessionId)
-    }
+    let bundles = filter?.projectId
+      ? this.getProjectBundles(filter.projectId)
+      : this.getAllProjectBundles()
+
     if (filter?.threadId) {
       bundles = bundles.filter((b) => b.threadId === filter.threadId)
+    } else if (filter?.sessionId) {
+      bundles = bundles.filter((b) => b.sessionId === filter.sessionId)
     }
     return bundles
   }
 
   public getCheckpointBundle(id: string): CheckpointBundle | undefined {
-    return this.getProjectBundles().find((b) => b.id === id)
+    return this.getAllProjectBundles().find((b) => b.id === id)
   }
 
   public createCheckpointBundle(bundle: CheckpointBundle): CheckpointBundle {
-    const bundles = this.getProjectBundles()
+    const targetProjectId =
+      bundle.projectId || bundle.instances[0]?.projectId || this.getProjects()[0]?.id
+    const bundles = targetProjectId ? this.getProjectBundles(targetProjectId) : []
     const existingIdx = bundles.findIndex((b) => b.id === bundle.id)
     if (existingIdx >= 0) {
       bundles[existingIdx] = bundle
     } else {
       bundles.push(bundle)
     }
-    this.saveProjectBundles(bundles)
+    this.saveProjectBundles(bundles, targetProjectId)
     return bundle
   }
 

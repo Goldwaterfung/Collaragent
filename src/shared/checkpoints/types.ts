@@ -1,75 +1,80 @@
-export type InstanceType = "graph-canvas" | "document";
+export const CHECKPOINT_START_SENTINEL = '__start__'
+export const INITIAL_CHECKPOINT_LABEL = 'Initial checkpoint'
+export const TURN_CHECKPOINT_LABEL = 'Turn checkpoint'
+
+export type InstanceType = 'graph-canvas' | 'document'
 
 export type InstanceLogPosition = {
-  seq: number;
-  at?: string;
-};
+  seq: number
+  at?: string
+}
 
 export type InstanceRestorePoint = {
-  instanceId: string;
-  instanceType: InstanceType;
-  projectId: string;
-  snapshotId: string;
-  targetCursor: InstanceLogPosition;
-  agentSeqs?: number[];
-};
+  instanceId: string
+  instanceType: InstanceType
+  projectId: string
+  snapshotId: string
+  targetCursor: InstanceLogPosition
+  agentSeqs?: number[]
+}
 
 export type CheckpointBundle = {
-  id: string;
-  createdAt: string;
-  sessionId: string;
-  threadId: string;
-  agentCheckpointId?: string;
+  id: string
+  createdAt: string
+  sessionId: string
+  threadId: string
+  agentCheckpointId?: string
   chat: {
-    messageId?: string;
-    blockIndex?: number;
-  };
-  instances: InstanceRestorePoint[];
-  fileRevisionId?: string;
-  label?: string;
-  reason?: "auto" | "restore";
-};
+    messageId?: string
+    blockIndex?: number
+  }
+  instances: InstanceRestorePoint[]
+  fileRevisionId?: string
+  label?: string
+  reason?: 'auto' | 'restore'
+  projectId?: string
+}
 
 export type FileRevision = {
-  id: string;
-  createdAt: string;
-  reason: "checkpoint" | "autosave";
-  baseId?: string;
-  snapshotRef?: string;
-  deltaRef?: string;
-};
+  id: string
+  createdAt: string
+  reason: 'checkpoint' | 'autosave'
+  baseId?: string
+  snapshotRef?: string
+  deltaRef?: string
+}
 
 export type WorkspaceSnapshot = {
-  id: string;
-  createdAt: string;
-  instanceId: string;
-  instanceType: InstanceType;
-  projectId: string;
-  snapshotRef: string;
-  snapshotHash?: string;
-  snapshotCursor: InstanceLogPosition;
-};
+  id: string
+  createdAt: string
+  instanceId: string
+  instanceType: InstanceType
+  projectId: string
+  snapshotRef: string
+  snapshotHash?: string
+  snapshotCursor: InstanceLogPosition
+}
 
 export type CommandPreviousState = {
-  node?: Record<string, any>; // For graph:update_node
-  layout?: { x: number; y: number; width: number; height: number }; // For graph moves
-  removedEntity?: any; // For reconstruct on undo
-  removedRelationships?: any[];
-  block?: any; // For editor:update_block or editor:remove_block
-  index?: number;
-  documentPayload?: any; // Fallback for full replacements
-};
+  node?: Record<string, unknown>
+  layout?: { x: number; y: number; width: number; height: number }
+  removedEntity?: unknown
+  removedRelationships?: unknown[]
+  block?: unknown
+  index?: number
+  documentPayload?: unknown
+}
 
 export type WorkspaceCommandLogEntry = {
-  instanceId: string;
-  instanceType: InstanceType;
-  projectId: string;
-  cursor: InstanceLogPosition;
-  command?: unknown;
-  source?: "ui" | "agent" | "sync";
-  previousState?: CommandPreviousState;
-};
+  instanceId: string
+  instanceType: InstanceType
+  projectId: string
+  cursor: InstanceLogPosition
+  command?: unknown
+  source?: 'ui' | 'agent' | 'sync'
+  previousState?: CommandPreviousState
+}
 
 export type WorkspaceCommandLog = {
-  byInstanceId: Record<string, WorkspaceCommandLogEntry[]>;
-};
+  byInstanceId: Record<string, WorkspaceCommandLogEntry[]>
+}

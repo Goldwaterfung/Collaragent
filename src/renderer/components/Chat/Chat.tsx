@@ -30,7 +30,19 @@ export const Chat: React.FC = () => {
     upsertSubagentTask
   } = useChatStore()
 
-  const { activeProjectId, instanceId, openInstanceIds } = useInstanceContext()
+  const { activeProjectId, instanceId, openInstanceIds, projects } = useInstanceContext()
+
+  const activeProjectIdRef = useRef(activeProjectId)
+  const instanceIdRef = useRef(instanceId)
+  const openInstanceIdsRef = useRef(openInstanceIds)
+  const projectsRef = useRef(projects)
+
+  useEffect(() => {
+    activeProjectIdRef.current = activeProjectId
+    instanceIdRef.current = instanceId
+    openInstanceIdsRef.current = openInstanceIds
+    projectsRef.current = projects
+  }, [activeProjectId, instanceId, openInstanceIds, projects])
 
   // Derive active streaming state for current view
   const activeStreaming =
@@ -49,7 +61,7 @@ export const Chat: React.FC = () => {
   const streamMessageIdsRef = useRef<Map<string, { assistantId: string }>>(new Map())
   const [checkpointBundles, setCheckpointBundles] = useState<CheckpointBundleSummary[]>([])
   const [checkpointBusy, setCheckpointBusy] = useState(false)
-  const [, setCheckpointError] = useState<string | null>(null)
+  const [checkpointError, setCheckpointError] = useState<string | null>(null)
 
   // ── Subagent pane navigation ──
   // Stores the toolCallId that the user last clicked "View Task" on.
@@ -97,17 +109,26 @@ export const Chat: React.FC = () => {
       if (!activeThreadId || !window.checkpointIPC) return
       setCheckpointError(null)
       try {
-        const res = await window.checkpointIPC.list({ threadId: activeThreadId })
+        const res = await window.checkpointIPC.list({
+          threadId: activeThreadId,
+          projectId: activeProjectIdRef.current
+        })
         const sorted = [...(res.bundles || [])].sort((a, b) =>
           b.createdAt.localeCompare(a.createdAt)
         )
         setCheckpointBundles(sorted)
-      } catch (err: any) {
-        setCheckpointError(err?.message || 'Failed to load checkpoints')
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to load checkpoints'
+        setCheckpointError(message)
       }
     },
     [threadId]
   )
+
+  const refreshBundlesRef = useRef(refreshBundles)
+  useEffect(() => {
+    refreshBundlesRef.current = refreshBundles
+  }, [refreshBundles])
 
   useEffect(() => {
     void refreshBundles()
@@ -121,7 +142,7 @@ export const Chat: React.FC = () => {
       request.streamId = streamId
       if (!request.clientSentAt) request.clientSentAt = Date.now()
 
-      const onStreamChunk = (_event: any, data: Types.AgentStreamChunk) => {
+      const onStreamChunk = (_event: unknown, data: Types.AgentStreamChunk) => {
         const state = useChatStore.getState()
 
         if (data.subagentToolCallId) {
@@ -155,7 +176,7 @@ export const Chat: React.FC = () => {
           const currentToolCalls = currentParam.toolCalls || []
 
           if (data.toolCalls && data.toolCalls.length > 0) {
-            const existingIds = new Set(currentToolCalls.map((tc: any) => tc.id))
+            const existingIds = new Set(currentToolCalls.map((tc: ToolCall) => tc.id))
             for (const tc of data.toolCalls) {
               if (!existingIds.has(tc.id)) {
                 nextBlocks.push({ type: 'tool', toolId: tc.id })
@@ -198,7 +219,7 @@ export const Chat: React.FC = () => {
         removeErrorListener()
       }
 
-      const onStreamEnd = (_event: any, data: { threadId: string; streamId: string }) => {
+      const onStreamEnd = async (_event: unknown, data: { threadId: string; streamId: string }) => {
         const state = useChatStore.getState()
         const threadStream = state.streamingParams[data.threadId]
 
@@ -229,10 +250,31 @@ export const Chat: React.FC = () => {
 
         streamMessageIdsRef.current.delete(data.streamId)
         cleanup()
+
+        const targetProjectId = activeProjectIdRef.current || projectsRef.current[0]?.id
+        if (targetProjectId && window.checkpointIPC && data.threadId) {
+          try {
+            await window.checkpointIPC.create({
+              threadId: data.threadId,
+              projectId: targetProjectId,
+              includeInstances: 'all',
+              activeInstanceId: instanceIdRef.current,
+              openInstanceIds: openInstanceIdsRef.current,
+              reason: 'auto',
+              label: 'Turn checkpoint'
+            })
+            await refreshBundlesRef.current(data.threadId)
+          } catch (err: unknown) {
+            const message =
+              err instanceof Error ? err.message : 'Failed to create post-turn checkpoint'
+            console.error('Failed to create post-turn checkpoint:', err)
+            setCheckpointError(message)
+          }
+        }
       }
 
       const onStreamError = (
-        _event: any,
+        _event: unknown,
         data: { error: string; threadId?: string; streamId?: string }
       ) => {
         console.error('Stream error:', data.error)
@@ -337,7 +379,6 @@ export const Chat: React.FC = () => {
     async (content: string) => {
       if (!content.trim() || activeStreaming.isStreaming) return
 
-      const isFirstMessage = messages.length === 0
       const userMessageId = crypto.randomUUID()
       const assistantMessageId = crypto.randomUUID()
       const userMessage: ChatMessage = {
@@ -354,40 +395,6 @@ export const Chat: React.FC = () => {
       if (!sid) {
         sid = crypto.randomUUID()
         setThreadId(sid)
-      }
-
-      if (isFirstMessage && activeProjectId && window.checkpointIPC) {
-        try {
-          await window.checkpointIPC.create({
-            threadId: sid,
-            projectId: activeProjectId,
-            includeInstances: 'all',
-            activeInstanceId: instanceId,
-            openInstanceIds,
-            reason: 'auto',
-            label: 'Initial checkpoint'
-          })
-          await refreshBundles(sid)
-        } catch (err) {
-          console.error('Failed to create initial checkpoint:', err)
-        }
-      }
-
-      if (!isFirstMessage && activeProjectId && window.checkpointIPC) {
-        try {
-          await window.checkpointIPC.create({
-            threadId: sid,
-            projectId: activeProjectId,
-            includeInstances: 'all',
-            activeInstanceId: instanceId,
-            openInstanceIds,
-            reason: 'auto',
-            label: 'Auto-save before turn'
-          })
-          await refreshBundles(sid)
-        } catch (err) {
-          console.error('Failed to auto-create checkpoint:', err)
-        }
       }
 
       // Note: We used to explicitly persist the user message here via ChatService.postMessage.
@@ -410,19 +417,14 @@ export const Chat: React.FC = () => {
       startStream(request)
     },
     [
-      messages.length,
-      activeProjectId,
-      instanceId,
-      openInstanceIds,
-      threadId,
-      window.checkpointIPC,
-      wsPort,
+      activeStreaming.isStreaming,
+      addMessage,
       apiPort,
-      setThreadId,
-      refreshBundles,
       setStreaming,
+      setThreadId,
       startStream,
-      activeStreaming.isStreaming
+      threadId,
+      wsPort
     ]
   )
 
@@ -449,7 +451,7 @@ export const Chat: React.FC = () => {
   }, [threadId, setStreaming, resetStreaming])
 
   const handleResume = useCallback(
-    async (decision: any) => {
+    async (decision: unknown) => {
       console.log('Resuming with decision:', decision)
       const message = `[Resumed with decision: ${JSON.stringify(decision)}]`
       const userMessageId = crypto.randomUUID()
@@ -469,23 +471,6 @@ export const Chat: React.FC = () => {
         setThreadId(sid)
       }
 
-      if (activeProjectId && window.checkpointIPC) {
-        try {
-          await window.checkpointIPC.create({
-            threadId: sid,
-            projectId: activeProjectId,
-            includeInstances: 'all',
-            activeInstanceId: instanceId,
-            openInstanceIds,
-            reason: 'auto',
-            label: 'Auto-save before turn'
-          })
-          await refreshBundles(sid)
-        } catch (err) {
-          console.error('Failed to auto-create checkpoint:', err)
-        }
-      }
-
       // Note: Persistence is handled by backend Agent
 
       setStreaming(sid, true)
@@ -501,7 +486,7 @@ export const Chat: React.FC = () => {
         clientAssistantMessageId: assistantMessageId
       })
     },
-    [threadId, activeProjectId, instanceId, openInstanceIds, wsPort, apiPort, startStream]
+    [addMessage, apiPort, setStreaming, setThreadId, startStream, threadId, wsPort]
   )
 
   const handleRestoreCheckpoint = useCallback(
@@ -525,9 +510,9 @@ export const Chat: React.FC = () => {
           setDraftInput(restoreContent)
         }
 
-        await refreshBundles()
-      } catch (err: any) {
-        const message = err?.message || 'Failed to restore checkpoint'
+        await refreshBundles(threadId)
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to restore checkpoint'
         setCheckpointError(message)
         addMessage({
           id: crypto.randomUUID(),
@@ -599,6 +584,23 @@ export const Chat: React.FC = () => {
           {/* Messages Area - responsive padding */}
           <div className="flex-1 overflow-y-auto min-w-0">
             <div className="max-w-4xl mx-auto w-full p-3 sm:p-4 md:p-6">
+              {checkpointError && (
+                <div
+                  role="alert"
+                  className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 flex items-center justify-between"
+                >
+                  <span>{checkpointError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCheckpointError(null)}
+                    className="p-1 hover:opacity-80 focus:outline-none focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
+                    aria-label="Dismiss checkpoint error"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               <MessageList
                 messages={messages}
                 checkpointBundles={checkpointBundles}

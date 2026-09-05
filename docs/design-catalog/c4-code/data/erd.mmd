@@ -93,9 +93,12 @@ erDiagram
         string id PK
         string sessionId FK
         string threadId FK
+        string projectId FK
         string agentCheckpointId FK
+        string chatMessageId FK
         string createdAt
         string reason "auto | restore"
+        string label
     }
 
     INSTANCE_RESTORE_POINT {

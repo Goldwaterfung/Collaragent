@@ -1,4 +1,11 @@
-import { Block, BlockType, InlineRun } from "@workspace/persistence/editorContent";
+import {
+  Block,
+  BlockType,
+  InlineRun,
+  TableRow,
+  TableCell,
+  Align
+} from '@workspace/persistence/editorContent'
 
 // --- HTML -> BlockSchema Conversion ---
 
@@ -7,14 +14,14 @@ import { Block, BlockType, InlineRun } from "@workspace/persistence/editorConten
  * into an object provided as key-value pairs.
  */
 function parseStyleString(style: string): Record<string, string> {
-  const styles: Record<string, string> = {};
-  style.split(";").forEach((part) => {
-    const [key, value] = part.split(":").map((s) => s.trim());
+  const styles: Record<string, string> = {}
+  style.split(';').forEach((part) => {
+    const [key, value] = part.split(':').map((s) => s.trim())
     if (key && value) {
-      styles[key.toLowerCase()] = value;
+      styles[key.toLowerCase()] = value
     }
-  });
-  return styles;
+  })
+  return styles
 }
 
 /**
@@ -32,199 +39,231 @@ function parseStyleString(style: string): Record<string, string> {
  */
 
 type TagToken = {
-  type: "tag";
-  tagName: string;
-  isClosing: boolean;
-  attributes: Record<string, string>;
-  fullMatch: string;
-};
+  type: 'tag'
+  tagName: string
+  isClosing: boolean
+  attributes: Record<string, string>
+  fullMatch: string
+}
 
 type TextToken = {
-  type: "text";
-  content: string;
-};
+  type: 'text'
+  content: string
+}
 
-type Token = TagToken | TextToken;
+type Token = TagToken | TextToken
 
 function tokenizeHtml(html: string): Token[] {
-  const tokens: Token[] = [];
+  const tokens: Token[] = []
   // Regex to match tags: <(/)?(\w+)([^>]*)>
-  const tagRegex = /<(\/?)([a-z0-9]+)((?:\s+[a-z0-9\-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^>\s]+))?)*)\s*\/?>/gi;
-  
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  const tagRegex =
+    /<(\/?)([a-z0-9]+)((?:\s+[a-z0-9\-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^>\s]+))?)*)\s*\/?>/gi
+
+  let lastIndex = 0
+  let match: RegExpExecArray | null
 
   while ((match = tagRegex.exec(html)) !== null) {
-    const [fullMatch, slash, tagName, attrsString] = match;
-    const index = match.index;
+    const [fullMatch, slash, tagName, attrsString] = match
+    const index = match.index
 
     // Push preceding text if any
     if (index > lastIndex) {
-      const text = html.slice(lastIndex, index);
-      // We decode entities roughly or leave them? 
+      const text = html.slice(lastIndex, index)
+      // We decode entities roughly or leave them?
       // For now, let's just unescape basic ones if needed, or leave raw if the system handles it.
       // Usually better to decode basic entities like &lt; &gt; &amp;
-      tokens.push({ type: "text", content: decodeHtmlEntities(text) });
+      tokens.push({ type: 'text', content: decodeHtmlEntities(text) })
     }
 
-    const isClosing = slash === "/";
-    const attributes = parseAttributes(attrsString);
+    const isClosing = slash === '/'
+    const attributes = parseAttributes(attrsString)
 
     tokens.push({
-      type: "tag",
+      type: 'tag',
       tagName: tagName.toLowerCase(),
       isClosing,
       attributes,
-      fullMatch,
-    });
+      fullMatch
+    })
 
-    lastIndex = tagRegex.lastIndex;
+    lastIndex = tagRegex.lastIndex
   }
 
   // Push remaining text
   if (lastIndex < html.length) {
-    tokens.push({ type: "text", content: decodeHtmlEntities(html.slice(lastIndex)) });
+    tokens.push({ type: 'text', content: decodeHtmlEntities(html.slice(lastIndex)) })
   }
 
-  return tokens;
+  return tokens
 }
 
 function parseAttributes(attrString: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
+  const attrs: Record<string, string> = {}
   // Regex for attributes: key="value" | key='value' | key=value | key
-  const attrRegex = /([a-z0-9\-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^>\s]+)))?/gi;
-  let match: RegExpExecArray | null;
+  const attrRegex = /([a-z0-9\-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^>\s]+)))?/gi
+  let match: RegExpExecArray | null
   while ((match = attrRegex.exec(attrString)) !== null) {
-    const key = match[1];
-    const value = match[2] ?? match[3] ?? match[4] ?? "";
-    attrs[key] = value;
+    const key = match[1]
+    const value = match[2] ?? match[3] ?? match[4] ?? ''
+    attrs[key] = value
   }
-  return attrs;
+  return attrs
 }
 
 function decodeHtmlEntities(text: string): string {
   return text
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
 }
 
 function mapTagToBlockType(tagName: string): BlockType {
   switch (tagName) {
-    case "h1": return "h1";
-    case "h2": return "h2";
-    case "h3": return "h3";
-    case "h4": return "h4";
-    case "li": return "list-item";
-    case "code": 
-    case "pre": return "code";
-    case "blockquote": return "quote";
-    case "p": 
-    case "div":
-    default: return "paragraph";
+    case 'h1':
+      return 'h1'
+    case 'h2':
+      return 'h2'
+    case 'h3':
+      return 'h3'
+    case 'h4':
+      return 'h4'
+    case 'li':
+      return 'list-item'
+    case 'code':
+    case 'pre':
+      return 'code'
+    case 'blockquote':
+      return 'quote'
+    case 'p':
+    case 'div':
+    default:
+      return 'paragraph'
   }
 }
 
 function getBlockIdFromAttributes(attributes: Record<string, string>): string | undefined {
-  return attributes["data-block-id"] || attributes.id;
+  return attributes['data-block-id'] || attributes.id
 }
 
 function getInlineRunsHtml(children: InlineRun[]): string {
-  return children.map((run) => {
-    if (run.equation) {
-      const wrap = run.inline === false ? "$$" : "$";
-      return `${wrap}${escapeHtml(run.equation)}${wrap}`;
-    }
+  return children
+    .map((run) => {
+      if (run.equation) {
+        const wrap = run.inline === false ? '$$' : '$'
+        return `${wrap}${escapeHtml(run.equation)}${wrap}`
+      }
 
-    let text = escapeHtml(run.text).replace(/\n/g, "<br>");
-    if (run.bold) text = `<b>${text}</b>`;
-    if (run.italic) text = `<i>${text}</i>`;
-    if (run.underline) text = `<u>${text}</u>`;
+      let text = escapeHtml(run.text).replace(/\n/g, '<br>')
+      if (run.bold) text = `<b>${text}</b>`
+      if (run.italic) text = `<i>${text}</i>`
+      if (run.underline) text = `<u>${text}</u>`
 
-    if (run.commentIds && run.commentIds.length > 0) {
-      const ids = run.commentIds.join(",");
-      text = `<span data-comment-ids="${ids}">${text}</span>`;
-    }
+      if (run.commentIds && run.commentIds.length > 0) {
+        const ids = run.commentIds.join(',')
+        text = `<span data-comment-ids="${ids}">${text}</span>`
+      }
 
-    return text;
-  }).join("");
+      return text
+    })
+    .join('')
 }
 
 function getBlockInnerHtml(block: Block): string {
-  if (block.type === "page-break") {
-    return "";
+  if (block.type === 'page-break') {
+    return ''
   }
 
-  if (block.type === "table" && block.tableRows) {
-    return block.tableRows.map((row) => {
-      const rowHtml = row.cells.map((cell) => {
-        const cellHtml = cell.children ? getInlineRunsHtml(cell.children) : "";
-        return `<td>${cellHtml}</td>`;
-      }).join("");
-      return `<tr>${rowHtml}</tr>`;
-    }).join("");
+  if (block.type === 'table' && block.tableRows) {
+    return block.tableRows
+      .map((row) => {
+        const rowHtml = row.cells
+          .map((cell) => {
+            const isHeader = (cell.headerState ?? 0) > 0
+            const tag = isHeader ? 'th' : 'td'
+            const attrs: string[] = []
+            if (cell.colSpan && cell.colSpan > 1) {
+              attrs.push(`colspan="${cell.colSpan}"`)
+            }
+            if (cell.rowSpan && cell.rowSpan > 1) {
+              attrs.push(`rowspan="${cell.rowSpan}"`)
+            }
+            if (cell.headerState === 2) {
+              attrs.push(`scope="row"`)
+            }
+            if (cell.width !== undefined) {
+              attrs.push(`width="${cell.width}"`)
+            }
+            if (cell.backgroundColor) {
+              attrs.push(`style="background-color: ${escapeHtml(cell.backgroundColor)}"`)
+            }
+            const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : ''
+            const cellHtml = cell.children ? getInlineRunsHtml(cell.children) : ''
+            return `<${tag}${attrStr}>${cellHtml}</${tag}>`
+          })
+          .join('')
+        return `<tr>${rowHtml}</tr>`
+      })
+      .join('')
   }
 
-  if (typeof block.content === "string") {
-    return escapeHtml(block.content).replace(/\n/g, "<br>");
+  if (typeof block.content === 'string') {
+    return escapeHtml(block.content).replace(/\n/g, '<br>')
   }
 
   if (block.children) {
-    return getInlineRunsHtml(block.children);
+    return getInlineRunsHtml(block.children)
   }
 
-  return "";
+  return ''
 }
 
 function getPatchViewTagName(block: Block): string {
-  if (block.type && block.type.startsWith("h")) {
-    return block.type;
+  if (block.type && block.type.startsWith('h')) {
+    return block.type
   }
 
-  if (block.type === "code") {
-    return "pre";
+  if (block.type === 'code') {
+    return 'pre'
   }
 
-  if (block.type === "quote") {
-    return "blockquote";
+  if (block.type === 'quote') {
+    return 'blockquote'
   }
 
-  if (block.type === "list-item") {
-    return "li";
+  if (block.type === 'list-item') {
+    return 'li'
   }
 
-  if (block.type === "table") {
-    return "table";
+  if (block.type === 'table') {
+    return 'table'
   }
 
-  if (block.type === "page-break") {
-    return "hr";
+  if (block.type === 'page-break') {
+    return 'hr'
   }
 
-  return "p";
+  return 'p'
 }
 
 function getPatchViewAttributes(block: Block): string[] {
-  const attributes = [
-    `data-block-id="${escapeHtml(block.id || "")}"`
-  ];
+  const attributes = [`data-block-id="${escapeHtml(block.id || '')}"`]
 
-  if (block.type === "list-item" && block.listType) {
-    attributes.push(`data-list-type="${block.listType}"`);
+  if (block.type === 'list-item' && block.listType) {
+    attributes.push(`data-list-type="${block.listType}"`)
   }
 
-  if (block.type === "code" && block.language) {
-    attributes.push(`data-language="${escapeHtml(block.language)}"`);
+  if (block.type === 'code' && block.language) {
+    attributes.push(`data-language="${escapeHtml(block.language)}"`)
   }
 
-  if (block.align && block.align !== "left") {
-    attributes.push(`style="text-align: ${block.align}"`);
+  if (block.align && block.align !== 'left') {
+    attributes.push(`style="text-align: ${block.align}"`)
   }
 
-  return attributes;
+  return attributes
 }
 
 /**
@@ -234,145 +273,396 @@ function getPatchViewAttributes(block: Block): string[] {
  * via data-block-id and avoids transient positional IDs.
  */
 export function convertBlocksToPatchView(blocks: Block[]): string {
-  if (!blocks || blocks.length === 0) return "";
+  if (!blocks || blocks.length === 0) return ''
 
-  return blocks.map((block) => {
-    const tagName = getPatchViewTagName(block);
-    const attrs = getPatchViewAttributes(block).join(" ");
-    if (tagName === "hr") {
-      return `<hr ${attrs} />`;
+  return blocks
+    .map((block) => {
+      const tagName = getPatchViewTagName(block)
+      const attrs = getPatchViewAttributes(block).join(' ')
+      if (tagName === 'hr') {
+        return `<hr ${attrs} />`
+      }
+      return `<${tagName} ${attrs}>${getBlockInnerHtml(block)}</${tagName}>`
+    })
+    .join('\n')
+}
+
+function parseTableSubtree(
+  tokens: Token[],
+  startIndex: number
+): { block: Block; nextIndex: number } {
+  const startToken = tokens[startIndex]
+  const tableAttributes = startToken && startToken.type === 'tag' ? startToken.attributes : {}
+  const blockId = getBlockIdFromAttributes(tableAttributes)
+
+  const tableBlock: Block = {
+    id: blockId,
+    type: 'table',
+    tableRows: []
+  }
+
+  if (tableAttributes.style) {
+    const styles = parseStyleString(tableAttributes.style)
+    if (styles['text-align']) {
+      const align = styles['text-align']
+      if (align === 'left' || align === 'center' || align === 'right' || align === 'justify') {
+        tableBlock.align = align
+      }
     }
-    return `<${tagName} ${attrs}>${getBlockInnerHtml(block)}</${tagName}>`;
-  }).join("\n");
+  }
+
+  const rows: TableRow[] = []
+  let currentRow: TableRow | null = null
+  let currentCell: TableCell | null = null
+  let currentCellRuns: InlineRun[] = []
+  let inThead = false
+
+  let boldDepth = 0
+  let italicDepth = 0
+  let underlineDepth = 0
+
+  const finalizeCell = () => {
+    if (!currentCell || !currentRow) return
+    const validRuns = currentCellRuns.filter((r) => r.equation || r.text.length > 0)
+    currentCell.children = validRuns.length > 0 ? validRuns : [{ text: '' }]
+    currentRow.cells.push(currentCell)
+    currentCell = null
+    currentCellRuns = []
+    boldDepth = 0
+    italicDepth = 0
+    underlineDepth = 0
+  }
+
+  const finalizeRow = () => {
+    finalizeCell()
+    if (currentRow) {
+      if (currentRow.cells.length === 0) {
+        currentRow.cells.push({ children: [{ text: '' }], headerState: inThead ? 1 : 0 })
+      }
+      rows.push(currentRow)
+      currentRow = null
+    }
+  }
+
+  let i = startIndex + 1
+  while (i < tokens.length) {
+    const token = tokens[i]
+
+    if (token.type === 'tag') {
+      const { tagName, isClosing, attributes } = token
+
+      if (tagName === 'table' && isClosing) {
+        finalizeRow()
+        i++
+        break
+      }
+
+      if (tagName === 'thead') {
+        inThead = !isClosing
+        i++
+        continue
+      }
+
+      if (tagName === 'tbody' || tagName === 'tfoot') {
+        if (isClosing) inThead = false
+        i++
+        continue
+      }
+
+      if (tagName === 'tr') {
+        if (!isClosing) {
+          finalizeRow()
+          const row: TableRow = { cells: [] }
+          if (attributes.height) {
+            const h = Number.parseInt(attributes.height, 10)
+            if (!Number.isNaN(h)) row.height = h
+          } else if (attributes.style) {
+            const styles = parseStyleString(attributes.style)
+            if (styles.height) {
+              const h = Number.parseInt(styles.height, 10)
+              if (!Number.isNaN(h)) row.height = h
+            }
+          }
+          currentRow = row
+        } else {
+          finalizeRow()
+        }
+        i++
+        continue
+      }
+
+      if (tagName === 'th' || tagName === 'td') {
+        if (!isClosing) {
+          finalizeCell()
+          if (!currentRow) {
+            currentRow = { cells: [] }
+          }
+
+          const isHeader = tagName === 'th' || inThead || attributes.scope === 'col'
+          let headerState = isHeader ? 1 : 0
+          if (attributes.scope === 'row') {
+            headerState = 2
+          }
+
+          const cell: TableCell = {
+            children: [],
+            headerState
+          }
+
+          if (attributes.colspan) {
+            const cs = Number.parseInt(attributes.colspan, 10)
+            if (!Number.isNaN(cs) && cs > 1) cell.colSpan = cs
+          }
+          if (attributes.rowspan) {
+            const rs = Number.parseInt(attributes.rowspan, 10)
+            if (!Number.isNaN(rs) && rs > 1) cell.rowSpan = rs
+          }
+          if (attributes.width) {
+            const w = Number.parseInt(attributes.width, 10)
+            if (!Number.isNaN(w)) cell.width = w
+          }
+          if (attributes.bgcolor) {
+            cell.backgroundColor = attributes.bgcolor
+          }
+          if (attributes.style) {
+            const styles = parseStyleString(attributes.style)
+            if (styles['background-color']) {
+              cell.backgroundColor = styles['background-color']
+            }
+            if (styles.width && cell.width === undefined) {
+              const w = Number.parseInt(styles.width, 10)
+              if (!Number.isNaN(w)) cell.width = w
+            }
+          }
+
+          currentCell = cell
+          currentCellRuns = []
+        } else {
+          finalizeCell()
+        }
+        i++
+        continue
+      }
+
+      // Inline tags inside cell
+      if (tagName === 'b' || tagName === 'strong') {
+        boldDepth += isClosing ? -1 : 1
+        if (boldDepth < 0) boldDepth = 0
+      } else if (tagName === 'i' || tagName === 'em') {
+        italicDepth += isClosing ? -1 : 1
+        if (italicDepth < 0) italicDepth = 0
+      } else if (tagName === 'u') {
+        underlineDepth += isClosing ? -1 : 1
+        if (underlineDepth < 0) underlineDepth = 0
+      } else if (tagName === 'br') {
+        if (!currentRow) currentRow = { cells: [] }
+        if (!currentCell) currentCell = { children: [], headerState: inThead ? 1 : 0 }
+        currentCellRuns.push({
+          text: '\n',
+          bold: boldDepth > 0 || undefined,
+          italic: italicDepth > 0 || undefined,
+          underline: underlineDepth > 0 || undefined
+        })
+      }
+
+      i++
+      continue
+    }
+
+    if (token.type === 'text') {
+      if (!currentCell && token.content.trim() === '') {
+        i++
+        continue
+      }
+
+      if (!currentRow) currentRow = { cells: [] }
+      if (!currentCell) currentCell = { children: [], headerState: inThead ? 1 : 0 }
+
+      const runs = splitTextIntoRuns(
+        token.content,
+        boldDepth > 0 || undefined,
+        italicDepth > 0 || undefined,
+        underlineDepth > 0 || undefined
+      )
+      if (runs.length > 0) {
+        currentCellRuns.push(...runs)
+      }
+      i++
+      continue
+    }
+
+    i++
+  }
+
+  finalizeRow()
+
+  if (rows.length === 0) {
+    rows.push({
+      cells: [{ children: [{ text: '' }], headerState: 0 }]
+    })
+  }
+
+  tableBlock.tableRows = rows
+  return { block: tableBlock, nextIndex: i }
 }
 
 /**
  * Stateful parser that consumes tokens and builds Block objects.
  */
 export function convertHtmlToBlocks(html: string): Block[] {
-  const tokens = tokenizeHtml(html);
-  const blocks: Block[] = [];
-  
-  let currentBlock: Block | null = null;
-  let currentRuns: InlineRun[] = [];
-  
+  const tokens = tokenizeHtml(html)
+  const blocks: Block[] = []
+
+  let currentBlock: Block | null = null
+  let currentRuns: InlineRun[] = []
+
   // Stacks for inline styles
-  let boldDepth = 0;
-  let italicDepth = 0;
-  let underlineDepth = 0;
+  let boldDepth = 0
+  let italicDepth = 0
+  let underlineDepth = 0
 
   // Track list context
-  let currentListType: "bullet" | "number" | null = null;
+  let currentListType: 'bullet' | 'number' | null = null
 
   // Iterate through tokens, starting and finalizing blocks as block-level tags appear.
-  
-  for (const token of tokens) {
-    if (token.type === "tag") {
-      const { tagName, isClosing, attributes } = token;
 
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    if (token.type === 'tag') {
+      const { tagName, isClosing, attributes } = token
 
+      if (tagName === 'table') {
+        if (!isClosing) {
+          if (currentBlock) {
+            finalizeBlock(currentBlock, currentRuns, blocks)
+            currentBlock = null
+            currentRuns = []
+          }
+          const { block, nextIndex } = parseTableSubtree(tokens, i)
+          blocks.push(block)
+          i = nextIndex - 1
+          continue
+        } else {
+          continue
+        }
+      }
 
       // Handle block-level tags.
-      if (["h1", "h2", "h3", "h4", "p", "div", "li", "ul", "ol", "code", "pre", "blockquote"].includes(tagName)) {
+      if (
+        [
+          'h1',
+          'h2',
+          'h3',
+          'h4',
+          'p',
+          'div',
+          'li',
+          'ul',
+          'ol',
+          'code',
+          'pre',
+          'blockquote'
+        ].includes(tagName)
+      ) {
         if (!isClosing) {
           // Starting a new block-level tag always finalizes any open block first.
           if (currentBlock) {
-             finalizeBlock(currentBlock, currentRuns, blocks);
-             currentBlock = null;
-             currentRuns = [];
+            finalizeBlock(currentBlock, currentRuns, blocks)
+            currentBlock = null
+            currentRuns = []
           }
-          
+
           // List containers only set context. Individual <li> tags create blocks.
-          if (tagName === "ul") {
-            currentListType = "bullet";
-            continue;
-          } else if (tagName === "ol") {
-            currentListType = "number";
-            continue;
-          } else if (["code", "pre"].includes(tagName)) {
-            currentBlock = { type: "code", children: [] };
-            if (attributes["data-language"]) {
-              currentBlock.language = attributes["data-language"];
+          if (tagName === 'ul') {
+            currentListType = 'bullet'
+            continue
+          } else if (tagName === 'ol') {
+            currentListType = 'number'
+            continue
+          } else if (['code', 'pre'].includes(tagName)) {
+            currentBlock = { type: 'code', children: [] }
+            if (attributes['data-language']) {
+              currentBlock.language = attributes['data-language']
             }
-          } else if (tagName === "blockquote") {
-            currentBlock = { type: "quote", children: [] };
+          } else if (tagName === 'blockquote') {
+            currentBlock = { type: 'quote', children: [] }
           } else {
-            currentBlock = { type: "paragraph", children: [] };
-            currentBlock.type = mapTagToBlockType(tagName);
-            
-            const blockId = getBlockIdFromAttributes(attributes);
+            currentBlock = { type: 'paragraph', children: [] }
+            currentBlock.type = mapTagToBlockType(tagName)
+
+            const blockId = getBlockIdFromAttributes(attributes)
             if (blockId) {
-              currentBlock.id = blockId;
+              currentBlock.id = blockId
             }
 
-            if (currentBlock.type === "list-item" && currentListType) {
-              currentBlock.listType = currentListType;
+            if (currentBlock.type === 'list-item' && currentListType) {
+              currentBlock.listType = currentListType
             } else if (
-              currentBlock.type === "list-item" &&
-              (attributes["data-list-type"] === "bullet" || attributes["data-list-type"] === "number")
+              currentBlock.type === 'list-item' &&
+              (attributes['data-list-type'] === 'bullet' ||
+                attributes['data-list-type'] === 'number')
             ) {
-              currentBlock.listType = attributes["data-list-type"] as "bullet" | "number";
+              currentBlock.listType = attributes['data-list-type'] as 'bullet' | 'number'
             }
           }
 
           if (currentBlock && !currentBlock.id) {
-            const blockId = getBlockIdFromAttributes(attributes);
+            const blockId = getBlockIdFromAttributes(attributes)
             if (blockId) {
-              currentBlock.id = blockId;
+              currentBlock.id = blockId
             }
           }
-          
+
           if (attributes.style) {
-            const styles = parseStyleString(attributes.style);
-            if (styles["text-align"]) {
-              const align = styles["text-align"];
-              if (["left", "center", "right"].includes(align)) {
-                currentBlock.align = align as any;
+            const styles = parseStyleString(attributes.style)
+            if (styles['text-align']) {
+              const align = styles['text-align']
+              if (['left', 'center', 'right'].includes(align)) {
+                currentBlock.align = align as Align
               }
             }
           }
         } else {
           // Closing a block-level tag ends the current block context.
-          if (tagName === "ul" || tagName === "ol") {
-            currentListType = null;
+          if (tagName === 'ul' || tagName === 'ol') {
+            currentListType = null
           } else if (currentBlock) {
-             finalizeBlock(currentBlock, currentRuns, blocks);
-             currentBlock = null;
-             currentRuns = [];
+            finalizeBlock(currentBlock, currentRuns, blocks)
+            currentBlock = null
+            currentRuns = []
           }
         }
-        continue;
+        continue
       }
 
       // Handle inline formatting tags.
-      if (["b", "strong"].includes(tagName)) {
-        boldDepth += isClosing ? -1 : 1;
-      } else if (["i", "em"].includes(tagName)) {
-        italicDepth += isClosing ? -1 : 1;
-      } else if (["u"].includes(tagName)) {
-        underlineDepth += isClosing ? -1 : 1;
+      if (['b', 'strong'].includes(tagName)) {
+        boldDepth += isClosing ? -1 : 1
+      } else if (['i', 'em'].includes(tagName)) {
+        italicDepth += isClosing ? -1 : 1
+      } else if (['u'].includes(tagName)) {
+        underlineDepth += isClosing ? -1 : 1
       }
-      
+
       // Convert <br> into a newline run inside the current block.
-      if (tagName === "br") {
+      if (tagName === 'br') {
         if (!currentBlock) {
-           currentBlock = { type: "paragraph", children: [] };
+          currentBlock = { type: 'paragraph', children: [] }
         }
         currentRuns.push({
-          text: "\n",
+          text: '\n',
           bold: boldDepth > 0 || undefined,
           italic: italicDepth > 0 || undefined,
           underline: underlineDepth > 0 || undefined
-        });
+        })
       }
-      
-    } else if (token.type === "text") {
+    } else if (token.type === 'text') {
       // When we are between block-level tags (no open block), skip text that is
       // purely whitespace (spaces, newlines, tabs). LLMs often emit newlines
       // between tags (e.g. </h1>\n<p>), and without this guard those inter-block
       // whitespace characters are promoted into spurious <p><br></p> blocks.
-      if (!currentBlock && token.content.trim() === "") {
-        continue;
+      if (!currentBlock && token.content.trim() === '') {
+        continue
       }
 
       // Map text to runs, splitting out equation segments.
@@ -381,26 +671,25 @@ export function convertHtmlToBlocks(html: string): Block[] {
         boldDepth > 0 || undefined,
         italicDepth > 0 || undefined,
         underlineDepth > 0 || undefined
-      );
+      )
 
-      if (runs.length === 0) continue;
+      if (runs.length === 0) continue
 
       if (!currentBlock) {
-        currentBlock = { type: "paragraph", children: [] };
+        currentBlock = { type: 'paragraph', children: [] }
       }
 
-      currentRuns.push(...runs);
+      currentRuns.push(...runs)
     }
   }
 
   // Final flush
   if (currentBlock) {
-    finalizeBlock(currentBlock, currentRuns, blocks);
+    finalizeBlock(currentBlock, currentRuns, blocks)
   }
 
-  return blocks;
+  return blocks
 }
-
 
 function splitTextIntoRuns(
   text: string,
@@ -408,12 +697,12 @@ function splitTextIntoRuns(
   italic: boolean | undefined,
   underline: boolean | undefined
 ): InlineRun[] {
-  const result: InlineRun[] = [];
+  const result: InlineRun[] = []
   // Regex for block equation $$...$$ and inline equation $...$
-  const combinedRegex = /(\$\$.*?\$\$|\$.*?\$)/gs;
+  const combinedRegex = /(\$\$.*?\$\$|\$.*?\$)/gs
 
-  let lastIndex = 0;
-  let match;
+  let lastIndex = 0
+  let match
 
   while ((match = combinedRegex.exec(text)) !== null) {
     // Preceding text
@@ -422,27 +711,27 @@ function splitTextIntoRuns(
         text: text.slice(lastIndex, match.index),
         bold,
         italic,
-        underline,
-      });
+        underline
+      })
     }
 
-    const raw = match[0];
-    if (raw.startsWith("$$")) {
-      const equation = raw.slice(2, -2).trim();
+    const raw = match[0]
+    if (raw.startsWith('$$')) {
+      const equation = raw.slice(2, -2).trim()
       result.push({
-        text: "",
+        text: '',
         equation,
-        inline: false,
-      });
+        inline: false
+      })
     } else {
-      const equation = raw.slice(1, -1);
+      const equation = raw.slice(1, -1)
       result.push({
-        text: "",
+        text: '',
         equation,
-        inline: true,
-      });
+        inline: true
+      })
     }
-    lastIndex = combinedRegex.lastIndex;
+    lastIndex = combinedRegex.lastIndex
   }
 
   if (lastIndex < text.length) {
@@ -450,154 +739,164 @@ function splitTextIntoRuns(
       text: text.slice(lastIndex),
       bold,
       italic,
-      underline,
-    });
+      underline
+    })
   }
 
-  return result;
+  return result
 }
 
 function finalizeBlock(block: Block, runs: InlineRun[], blocks: Block[]) {
   // Filter out empty text runs while preserving equation-only runs.
-  const validRuns = runs.filter(r => r.equation || r.text.length > 0);
-  
+  const validRuns = runs.filter((r) => r.equation || r.text.length > 0)
+
   if (validRuns.length > 0) {
-    block.children = validRuns;
+    block.children = validRuns
   } else {
     if (!block.content && (!block.children || block.children.length === 0)) {
-       block.children = [{ text: "" }];
+      block.children = [{ text: '' }]
     }
   }
-  blocks.push(block);
+  blocks.push(block)
 }
-
 
 // --- BlockSchema -> HTML Conversion ---
 
-export function convertBlocksToHtml(blocks: Block[], comments?: Record<string, { id: string; author: string; content: string }>): string {
-  if (!blocks || blocks.length === 0) return "";
+export function convertBlocksToHtml(
+  blocks: Block[],
+  comments?: Record<string, { id: string; author: string; content: string }>
+): string {
+  if (!blocks || blocks.length === 0) return ''
 
-  const htmlBlocks: string[] = [];
-  let currentListTag: string | null = null;
-  let listItems: string[] = [];
+  const htmlBlocks: string[] = []
+  let currentListTag: string | null = null
+  let listItems: string[] = []
 
   const flushList = () => {
     if (currentListTag && listItems.length > 0) {
-      htmlBlocks.push(`<${currentListTag}>${listItems.join("")}</${currentListTag}>`);
-      listItems = [];
-      currentListTag = null;
+      htmlBlocks.push(`<${currentListTag}>${listItems.join('')}</${currentListTag}>`)
+      listItems = []
+      currentListTag = null
     }
-  };
+  }
 
   blocks.forEach((block, index) => {
     // Handle list items
-    if (block.type === "list-item") {
-      const listTag = block.listType === "number" ? "ol" : "ul";
-      
+    if (block.type === 'list-item') {
+      const listTag = block.listType === 'number' ? 'ol' : 'ul'
+
       // If switching list types or starting a new list
       if (currentListTag && currentListTag !== listTag) {
-        flushList();
+        flushList()
       }
-      
+
       if (!currentListTag) {
-        currentListTag = listTag;
+        currentListTag = listTag
       }
-      
+
       // Build list item content
-      let innerHtml = "";
+      let innerHtml = ''
       if (block.content) {
-        innerHtml = escapeHtml(block.content).replace(/\n/g, "<br>");
+        innerHtml = escapeHtml(block.content).replace(/\n/g, '<br>')
       } else if (block.children) {
-        innerHtml = getInlineRunsHtml(block.children);
+        innerHtml = getInlineRunsHtml(block.children)
       }
-      
-      const blockId = block.id || (index + 1).toString();
-      const listTypeAttr = block.listType ? ` data-list-type="${block.listType}"` : "";
-      listItems.push(`<li id="${escapeHtml(blockId)}" data-block-id="${escapeHtml(blockId)}"${listTypeAttr}>${innerHtml}</li>`);
-      return;
+
+      const blockId = block.id || (index + 1).toString()
+      const listTypeAttr = block.listType ? ` data-list-type="${block.listType}"` : ''
+      listItems.push(
+        `<li id="${escapeHtml(blockId)}" data-block-id="${escapeHtml(blockId)}"${listTypeAttr}>${innerHtml}</li>`
+      )
+      return
     }
-    
+
     // Not a list item, so flush any pending list
-    flushList();
+    flushList()
 
-    if (block.type === "page-break") {
-      const blockId = block.id || (index + 1).toString();
-      htmlBlocks.push(`<hr id="${escapeHtml(blockId)}" data-block-id="${escapeHtml(blockId)}" data-type="page-break" />`);
-      return;
+    if (block.type === 'page-break') {
+      const blockId = block.id || (index + 1).toString()
+      htmlBlocks.push(
+        `<hr id="${escapeHtml(blockId)}" data-block-id="${escapeHtml(blockId)}" data-type="page-break" />`
+      )
+      return
     }
 
-    if (block.type === "table") {
-      const blockId = block.id || (index + 1).toString();
-      const innerHtml = getBlockInnerHtml(block);
-      htmlBlocks.push(`<table id="${escapeHtml(blockId)}" data-block-id="${escapeHtml(blockId)}">${innerHtml}</table>`);
-      return;
+    if (block.type === 'table') {
+      const blockId = block.id || (index + 1).toString()
+      const innerHtml = getBlockInnerHtml(block)
+      htmlBlocks.push(
+        `<table id="${escapeHtml(blockId)}" data-block-id="${escapeHtml(blockId)}">${innerHtml}</table>`
+      )
+      return
     }
-    
+
     // Determine tag name for regular blocks
-    let tagName = "p";
-    if (block.type && block.type.startsWith("h")) {
-      tagName = block.type; // h1, h2, h3, h4
-    } else if (block.type === "code") {
-      tagName = "pre";
-    } else if (block.type === "quote") {
-      tagName = "blockquote";
+    let tagName = 'p'
+    if (block.type && block.type.startsWith('h')) {
+      tagName = block.type // h1, h2, h3, h4
+    } else if (block.type === 'code') {
+      tagName = 'pre'
+    } else if (block.type === 'quote') {
+      tagName = 'blockquote'
     }
-    
-    const blockId = block.id || (index + 1).toString();
+
+    const blockId = block.id || (index + 1).toString()
 
     // Build attributes
-    const parts: string[] = [];
-    parts.push(tagName);
-    parts.push(`id="${escapeHtml(blockId)}"`);
-    parts.push(`data-block-id="${escapeHtml(blockId)}"`);
-    
+    const parts: string[] = []
+    parts.push(tagName)
+    parts.push(`id="${escapeHtml(blockId)}"`)
+    parts.push(`data-block-id="${escapeHtml(blockId)}"`)
+
     // Add language for code blocks
-    if (block.type === "code" && block.language) {
-      parts.push(`data-language="${escapeHtml(block.language)}"`);
-    }
-    
-    // Style for alignment
-    if (block.align && block.align !== "left") {
-      parts.push(`style="text-align: ${escapeHtml(block.align)}"`);
+    if (block.type === 'code' && block.language) {
+      parts.push(`data-language="${escapeHtml(block.language)}"`)
     }
 
-    const openTag = `<${parts.join(" ")}>`;
-    const closeTag = `</${tagName}>`;
-    
-    // Build Content
-    let innerHtml = "";
-    if (block.content) {
-      innerHtml = escapeHtml(block.content).replace(/\n/g, "<br>");
-    } else if (block.children) {
-      innerHtml = getInlineRunsHtml(block.children);
+    // Style for alignment
+    if (block.align && block.align !== 'left') {
+      parts.push(`style="text-align: ${escapeHtml(block.align)}"`)
     }
-    
+
+    const openTag = `<${parts.join(' ')}>`
+    const closeTag = `</${tagName}>`
+
+    // Build Content
+    let innerHtml = ''
+    if (block.content) {
+      innerHtml = escapeHtml(block.content).replace(/\n/g, '<br>')
+    } else if (block.children) {
+      innerHtml = getInlineRunsHtml(block.children)
+    }
+
     // Return HTML tag with embedded ID
-    htmlBlocks.push(`${openTag}${innerHtml}${closeTag}`);
-  });
+    htmlBlocks.push(`${openTag}${innerHtml}${closeTag}`)
+  })
 
   // Flush any remaining list
-  flushList();
+  flushList()
 
-  let htmlComments = "";
+  let htmlComments = ''
   if (comments && Object.keys(comments).length > 0) {
-    const commentItems = Object.values(comments).map(c => {
-      // Escape content and author
-      const content = escapeHtml(c.content);
-      const author = escapeHtml(c.author);
-      return `<comment id="${escapeHtml(c.id)}" author="${author}">${content}</comment>`;
-    }).join("");
-    htmlComments = `<comments>${commentItems}</comments>`;
+    const commentItems = Object.values(comments)
+      .map((c) => {
+        // Escape content and author
+        const content = escapeHtml(c.content)
+        const author = escapeHtml(c.author)
+        return `<comment id="${escapeHtml(c.id)}" author="${author}">${content}</comment>`
+      })
+      .join('')
+    htmlComments = `<comments>${commentItems}</comments>`
   }
 
-  return htmlBlocks.join("") + htmlComments;
+  return htmlBlocks.join('') + htmlComments
 }
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }

@@ -9,6 +9,7 @@ import type {
 
 interface RawMessageLike {
   content?: MessageContent
+  text?: string
   name?: string
   additional_kwargs?: Record<string, unknown>
   response_metadata?: Record<string, unknown>
@@ -18,7 +19,7 @@ interface RawMessageLike {
 }
 
 function isRawMessageLike(val: unknown): val is RawMessageLike {
-  return typeof val === 'object' && val !== null && 'content' in val
+  return typeof val === 'object' && val !== null
 }
 
 /**
@@ -56,8 +57,9 @@ export function createModelResponseNormalizerMiddleware(): AgentMiddleware {
 
       // 3. Coerce ChatMessage or generic message from OpenAI-compatible models into AIMessage
       if (isRawMessageLike(rawResponse)) {
+        const rawContent = rawResponse.content ?? rawResponse.text ?? ''
         return new AIMessage({
-          content: rawResponse.content ?? '',
+          content: rawContent,
           name: rawResponse.name,
           additional_kwargs: rawResponse.additional_kwargs ?? {},
           response_metadata: rawResponse.response_metadata ?? {},
@@ -67,7 +69,8 @@ export function createModelResponseNormalizerMiddleware(): AgentMiddleware {
         })
       }
 
-      return rawResponse as unknown as AIMessage
+      // 4. Primitive or unexpected fallback
+      return new AIMessage({ content: String(rawResponse ?? '') })
     }
   })
 }

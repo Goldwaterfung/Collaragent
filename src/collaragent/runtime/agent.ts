@@ -175,7 +175,6 @@ export function createDeepAgent<
   const builtInMiddleware: AgentMiddleware[] = [
     dateMiddleware(),
     createWorkspaceMiddleware({ readOnly: workspaceReadOnly }),
-    createModelResponseNormalizerMiddleware(),
     createFilesystemMiddleware({ backend: filesystemBackend }),
     createSummarizationMiddleware({ backend: filesystemBackend }),
     createPatchToolCallsMiddleware(),
@@ -186,9 +185,16 @@ export function createDeepAgent<
     builtInMiddleware.push(humanInTheLoopMiddleware({ interruptOn }))
   }
 
+  // Ensure createModelResponseNormalizerMiddleware is always placed at the very end (innermost layer)
+  // so it intercepts and normalizes raw model responses before any other middleware's wrapModelCall sees it.
+  const filteredCustomMiddleware = (customMiddleware as AgentMiddleware[]).filter(
+    (m) => m.name !== 'modelResponseNormalizerMiddleware'
+  )
+
   const allMiddleware: AgentMiddleware[] = [
     ...builtInMiddleware,
-    ...(customMiddleware as AgentMiddleware[])
+    ...filteredCustomMiddleware,
+    createModelResponseNormalizerMiddleware()
   ]
 
   const agent = createAgent({
