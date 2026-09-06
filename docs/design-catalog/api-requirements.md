@@ -311,11 +311,15 @@ sequenceDiagram
         Note over Client: readyPromise rejects immediately
     end
 
-    Note over Client,WSServer: Mutative Command & ACK
-    Client->>WSServer: {"type": "sync-command", "command": {...}, "clientId": "agent-123", "version": 2}
-    WSServer->>WSServer: Validate & apply command to memory
-    WSServer-->>Client: {"type": "sync-ack", "version": 2, "clientVersion": 2}
-    WSServer-)OtherClients: Broadcast {"type": "sync-changes", "commands": [...]}
+    Note over Client,WSServer: Mutative Command & OCC Validation
+    Client->>WSServer: {"type": "sync-command", "command": {...}, "clientId": "agent-123", "version": 2, "threadId": "thread-1", "baseVersion": 1}
+    alt Stale Base Version (baseVersion < currentSeq)
+        WSServer-->>Client: {"type": "error", "code": "WORKSPACE_STALE_BASE_VERSION", "message": "Base version is stale"}
+    else Valid Sequence
+        WSServer->>WSServer: Apply command & buffer under proposals[instanceId][threadId]
+        WSServer-->>Client: {"type": "sync-ack", "version": 2, "clientVersion": 2}
+        WSServer-)OtherClients: Broadcast {"type": "sync-changes", "instanceId": "...", "threadId": "thread-1", "commands": [...]}
+    end
 ```
 
 ### 3.3 Protocol Message Taxonomy
@@ -330,14 +334,17 @@ sequenceDiagram
   ```json
   { "type": "sync-request", "version": 0 }
   ```
-- **`sync-command`**: Dispatches an incremental mutation command.
+- **`sync-command`**: Dispatches an incremental mutation command with optional staging, thread isolation, and OCC base sequence.
   ```json
   {
     "type": "sync-command",
     "clientId": "agent-client-uuid",
     "version": 1,
+    "threadId": "chat-thread-101",
+    "baseVersion": 5,
     "command": {
       "type": "insert-block",
+      "staged": true,
       "block": {
         "id": "block-uuid-5",
         "type": "paragraph",
@@ -347,13 +354,23 @@ sequenceDiagram
     }
   }
   ```
-- **`accept-changes`**: Approves staged changes proposed by an agent.
+- **`accept-changes`**: Approves staged changes proposed by an agent (optionally scoped to a specific thread).
   ```json
-  { "type": "accept-changes", "instanceId": "doc-uuid-1", "clientId": "user-client-uuid" }
+  {
+    "type": "accept-changes",
+    "instanceId": "doc-uuid-1",
+    "clientId": "user-client-uuid",
+    "threadId": "chat-thread-101"
+  }
   ```
-- **`reject-changes`**: Rolls back staged changes via inverse command dispatch.
+- **`reject-changes`**: Rolls back staged changes for the targeted thread via inverse command dispatch.
   ```json
-  { "type": "reject-changes", "instanceId": "doc-uuid-1", "clientId": "user-client-uuid" }
+  {
+    "type": "reject-changes",
+    "instanceId": "doc-uuid-1",
+    "clientId": "user-client-uuid",
+    "threadId": "chat-thread-101"
+  }
   ```
 
 #### 2. Server-to-Client Messages
@@ -371,16 +388,21 @@ sequenceDiagram
   ```json
   { "type": "sync-ack", "version": 2, "clientVersion": 1, "instanceId": "doc-uuid-1" }
   ```
-- **`sync-changes`**: Broadcast of applied commands to all connected peers.
+- **`sync-changes`**: Broadcast of applied or staged commands to connected peers with thread isolation metadata.
   ```json
-  { "type": "sync-changes", "instanceId": "doc-uuid-1", "commands": [ ... ] }
+  {
+    "type": "sync-changes",
+    "instanceId": "doc-uuid-1",
+    "threadId": "chat-thread-101",
+    "commands": [ ... ]
+  }
   ```
-- **`error`**: Deterministic protocol-level error notification.
+- **`error`**: Deterministic protocol-level error notification (e.g. OCC conflict, instance not found).
   ```json
   {
     "type": "error",
-    "code": "WORKSPACE_INSTANCE_NOT_FOUND",
-    "message": "Instance \"doc-uuid-1\" could not be found or hydrated"
+    "code": "WORKSPACE_STALE_BASE_VERSION",
+    "message": "Base version 2 is stale. Current instance sequence is 5."
   }
   ```
 

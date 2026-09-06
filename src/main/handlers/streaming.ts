@@ -11,6 +11,62 @@ function isRecord(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)
 }
 
+export function extractToolMessageContent(content: unknown): unknown {
+  if (content === undefined || content === null) {
+    return content
+  }
+  if (Array.isArray(content)) {
+    const isContentBlockArray =
+      content.length > 0 &&
+      content.every((item) => item && typeof item === 'object' && 'type' in item)
+    if (isContentBlockArray) {
+      const textParts: string[] = []
+      for (const block of content) {
+        if (
+          typeof block === 'object' &&
+          block !== null &&
+          'type' in block &&
+          block.type === 'text' &&
+          'text' in block &&
+          typeof block.text === 'string'
+        ) {
+          textParts.push(block.text)
+        }
+      }
+      if (textParts.length > 0) {
+        return textParts.join('\n')
+      }
+    }
+    return content
+  }
+  if (typeof content === 'object' && content !== null && 'type' in content) {
+    const block = content as Record<string, unknown>
+    if (block.type === 'text' && typeof block.text === 'string') {
+      return block.text
+    }
+  }
+  return content
+}
+
+export function parseToolResult(rawContent: unknown, rawArtifact: unknown): unknown {
+  if (rawArtifact !== undefined) {
+    return rawArtifact
+  }
+  if (rawContent === undefined) {
+    return undefined
+  }
+  const extracted = extractToolMessageContent(rawContent)
+  if (typeof extracted === 'string') {
+    try {
+      const parsed = JSON.parse(extracted)
+      return extractToolMessageContent(parsed)
+    } catch {
+      return extracted
+    }
+  }
+  return extracted
+}
+
 /**
  * Handles the streaming of agent responses to the renderer process.
  * Uses dual 'messages' and 'updates' stream mode to stream tokens and metadata.
@@ -245,16 +301,7 @@ export async function streamAgentResponse(
                     rawMsg.status === 'error' ||
                     (isRecord(rawMsg.kwargs) && rawMsg.kwargs.status === 'error')
 
-                  let parsedResult: unknown = rawContent
-                  if (rawArtifact !== undefined) {
-                    parsedResult = rawArtifact
-                  } else if (typeof rawContent === 'string') {
-                    try {
-                      parsedResult = JSON.parse(rawContent)
-                    } catch {
-                      parsedResult = rawContent
-                    }
-                  }
+                  const parsedResult = parseToolResult(rawContent, rawArtifact)
 
                   const tc = activeToolCalls.find((t) => t.id === toolCallId)
                   if (tc) {
@@ -363,16 +410,7 @@ export async function streamAgentResponse(
         if (tc) {
           tc.status = 'completed'
           const rawArtifact = (chunk as unknown as { artifact?: unknown }).artifact
-          if (rawArtifact !== undefined) {
-            tc.result = rawArtifact
-          } else {
-            try {
-              tc.result =
-                typeof chunk.content === 'string' ? JSON.parse(chunk.content) : chunk.content
-            } catch {
-              tc.result = chunk.content
-            }
-          }
+          tc.result = parseToolResult(chunk.content, rawArtifact)
           flushText(true)
           emitToolUpdate()
         } else if (subagentToolCallId) {
@@ -380,12 +418,8 @@ export async function streamAgentResponse(
           const subTc = subBuf?.toolCalls.find((t) => t.id === toolCallId)
           if (subTc && subBuf) {
             subTc.status = 'completed'
-            try {
-              subTc.result =
-                typeof chunk.content === 'string' ? JSON.parse(chunk.content) : chunk.content
-            } catch {
-              subTc.result = chunk.content
-            }
+            const rawArtifact = (chunk as unknown as { artifact?: unknown }).artifact
+            subTc.result = parseToolResult(chunk.content, rawArtifact)
             flushSubagentText(subagentToolCallId, true)
             emitSubagentToolUpdate(subagentToolCallId)
           }
@@ -542,23 +576,13 @@ export async function streamAgentResponse(
                   : isRecord(rawMsg.kwargs) && 'artifact' in rawMsg.kwargs
                     ? rawMsg.kwargs.artifact
                     : undefined
-              if (rawArtifact !== undefined) {
-                tc.result = rawArtifact
-              } else {
-                const rawContent =
-                  rawMsg.content !== undefined
-                    ? rawMsg.content
-                    : isRecord(rawMsg.kwargs)
-                      ? rawMsg.kwargs.content
-                      : undefined
-                if (rawContent !== undefined) {
-                  try {
-                    tc.result = typeof rawContent === 'string' ? JSON.parse(rawContent) : rawContent
-                  } catch {
-                    tc.result = rawContent
-                  }
-                }
-              }
+              const rawContent =
+                rawMsg.content !== undefined
+                  ? rawMsg.content
+                  : isRecord(rawMsg.kwargs)
+                    ? rawMsg.kwargs.content
+                    : undefined
+              tc.result = parseToolResult(rawContent, rawArtifact)
             }
           }
         }

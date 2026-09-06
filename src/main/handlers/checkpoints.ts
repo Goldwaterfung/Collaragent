@@ -168,36 +168,31 @@ export function registerCheckpointHandlers(persistenceManager: PersistenceManage
           )
         }
 
-        event.sender.send(Channels.CHECKPOINT_QUIESCE)
-        try {
-          await record.wsHandle.flush()
+        await record.wsHandle.flush()
 
-          const apiClient = new CheckpointApiClient(record.fsPort)
-          const bundleStore = new HttpCheckpointBundleStore(record.fsPort)
-          const bundleFactory = buildBundleFactory(apiClient, bundleStore)
-          const orchestrator = new CheckpointOrchestratorImpl({
-            apiPort: record.fsPort,
-            persistenceManager,
-            bundleStore,
-            bundleFactory,
-            apiClient
-          })
+        const apiClient = new CheckpointApiClient(record.fsPort)
+        const bundleStore = new HttpCheckpointBundleStore(record.fsPort)
+        const bundleFactory = buildBundleFactory(apiClient, bundleStore)
+        const orchestrator = new CheckpointOrchestratorImpl({
+          apiPort: record.fsPort,
+          persistenceManager,
+          bundleStore,
+          bundleFactory,
+          apiClient
+        })
 
-          const bundle = await orchestrator.createCheckpointBundle({
-            sessionId: request.threadId,
-            threadId: request.threadId,
-            projectId: request.projectId,
-            includeInstances: request.includeInstances,
-            activeInstanceId: request.activeInstanceId,
-            openInstanceIds: request.openInstanceIds,
-            label: request.label,
-            reason: request.reason
-          })
+        const bundle = await orchestrator.createCheckpointBundle({
+          sessionId: request.threadId,
+          threadId: request.threadId,
+          projectId: request.projectId,
+          includeInstances: request.includeInstances,
+          activeInstanceId: request.activeInstanceId,
+          openInstanceIds: request.openInstanceIds,
+          label: request.label,
+          reason: request.reason
+        })
 
-          return { bundle }
-        } finally {
-          event.sender.send(Channels.CHECKPOINT_RESUME)
-        }
+        return { bundle }
       } catch (err: unknown) {
         const cause = err instanceof Error ? err : new Error(String(err))
         console.error(

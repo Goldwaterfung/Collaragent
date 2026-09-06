@@ -43,12 +43,17 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 - LangGraph ReAct execution loop (`createDeepAgent`) supporting streaming tokens, reasoning traces (extended CoT), and function calling.
 - Multi-provider LLM support: OpenAI (GPT-4o, GPT-5.2), Anthropic (Claude Sonnet 3.5/4.5 with prompt caching), Google (Gemini 2.5), and Ollama.
 - Subagent delegation via `task` and `dynamic_task` tools with state isolation and recursion ceilings (`recursionLimit: 200`).
+- Multi-chat concurrent execution: Supports parallel chat docks within the Dockview layout running concurrent agent streams isolated by unique `streamId` and `threadId`.
 - Progressive disclosure skills system following the Agent Skills specification (`https://agentskills.io/specification`).
 - Native Model Context Protocol (MCP) integration over STDIO and SSE transports.
 
 ### 2.4 Time-Travel Checkpointing & State Synchronization (`src/shared/checkpoints`, `src/workspace/sync`)
 
 - Post-turn automatic checkpoint capture and session baseline checkpointing with point-in-time restoration markers in the chat timeline.
+- Decoupled turn auto-checkpointing: Transactional `wsHandle.flush()` flushes dirty state directly without emitting window-wide `CHECKPOINT_QUIESCE`, allowing concurrent chat agents to stream without dropped frames or paused sockets (ADR-009).
+- Thread-partitioned staging proposals: Staged modifications (`staged: true`) are buffered by `(instanceId, threadId)`, enabling independent proposal reviews (`accept-changes` / `reject-changes`) across concurrent agents.
+- Optimistic Concurrency Control (OCC): Mutation commands submit `baseVersion` and are rejected with `WORKSPACE_STALE_BASE_VERSION` if applying against an outdated instance sequence.
+- Resilient client lifecycle: `SyncClient` pre-handles internal `readyPromise` with `.catch(() => {})`, preventing unhandled promise rejection crashes during React fiber unmounting and layout adjustments.
 - Idempotent content-addressed workspace snapshots (`workspace_snapshots`) and multi-project scoped checkpoint bundles (`CHECKPOINT_BUNDLE`).
 - Dual-path state restoration supporting baseline session clearance (`__start__`) and point-in-time chat message truncation paired with LangGraph checkpoint head rewinding.
 - Bi-directional WebSocket synchronization (`/ws/canvas/:id`, `/ws/editor/:id`) with monotonic sequence acknowledgments.
@@ -62,6 +67,7 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 | --------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | **UI Responsiveness (p95)** | < 16ms (60 FPS during canvas pan/zoom)     | Decoupled SVG edge rendering and DOM node layering; offloaded Leiden clustering to background Web Worker.                               |
 | **Stream Latency (TTFT)**   | < 350ms to first token                     | AsyncGenerator streaming over isolated dynamic IPC channels with token unbuffering.                                                     |
+| **Multi-Agent Concurrency** | Zero cross-thread blocking                 | Thread-partitioned WebSocket proposal buffers, OCC sequence validation, and lock-free turn checkpoints without global window pauses.    |
 | **Storage Scalability**     | > 10,000 nodes / 500 documents per project | Single-file SQLite V4 storage engine with B-Tree indexing and MessagePack BLOB compression (`instances`, `snapshots`, `chat_sessions`). |
 | **Data Integrity & Safety** | Zero data loss on abrupt window close      | Lock-file process concurrency protection, pre-close dirty state flush, and atomic disk writes.                                          |
 | **Memory Isolation**        | Max 500MB RAM baseline                     | Heavy project I/O, SQLite database engine, WAL checkpoints, and Express REST server forked into decoupled Node.js `UtilityProcess`.     |

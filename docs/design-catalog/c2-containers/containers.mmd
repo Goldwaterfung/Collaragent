@@ -10,13 +10,13 @@ flowchart TB
 
     subgraph DesktopProcessBoundary ["CollarAgent Application Boundary (Electron Multi-Process)"]
         
-        RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders 3-pane layout, graph canvas, Lexical editor, streaming chat, and state trees"]:::container
+        RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders multi-chat Dockview layout, graph canvas, Lexical editor, parallel agent streams, and state trees"]:::container
         
         PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / AsyncGenerators]<br/>Provides isolated, typed IPC channels and stream unbuffering"]:::container
         
         MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
         
-        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server for editor diffs and canvas commands"]:::container
+        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server with thread-segregated proposals, OCC validation, and transactional flush"]:::container
         
         UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, SqliteStorageEngine, and SqliteCheckpointStore"]:::container
 
@@ -31,11 +31,11 @@ flowchart TB
     User -->|"Interacts via Mouse, Keyboard, Drag & Drop"| RendererUI
     RendererUI -->|"Invokes typed APIs & receives stream chunks"| PreloadBridge
     PreloadBridge -->|"Bi-directional IPC [Electron IPC]"| MainHost
-    RendererUI <-->|"Bi-directional State Sync & Proposal Diffs [WebSocket / JSON-RPC]"| WSServer
+    RendererUI <-->|"Bi-directional State Sync & Thread Proposals [WebSocket / JSON-RPC]"| WSServer
     RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
     
     MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer
-    MainHost -->|"Spawns & triggers flush [In-Memory Call]"| WSServer
+    MainHost -->|"Agent tools dispatch staged mutations with threadId & OCC [WebSocket / SyncClient]"| WSServer
     MainHost -->|"Encrypts / decrypts API credentials [safeStorage]"| LocalVault
     MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
     MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP

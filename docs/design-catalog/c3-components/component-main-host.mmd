@@ -11,9 +11,9 @@ flowchart TB
         ModelMgr["🧠 ModelManager<br/>[Component]<br/>Catalog of supported LLMs, parameters, and context limits"]:::component
         AgentFac["🏭 AgentFactory<br/>[Component]<br/>Compiles DeepAgent instances with cached model clients and tools"]:::component
         MCPLoader["🔌 MCPLoader<br/>[Component]<br/>Manages MultiServerMCPClient, STDIO subprocesses, and tool caching"]:::component
-        IPCRouter["📡 IPC Handlers Router<br/>[Component]<br/>Dispatches agent, checkpoint, config, file, and skill IPC requests"]:::component
-        StreamCtrl["🌊 StreamController<br/>[Component]<br/>Throttles token/reasoning streams and chunks IPC pushes"]:::component
-        CheckOrch["⏱️ CheckpointOrchestrator<br/>[Component]<br/>Coordinates multi-domain snapshots (Agent + Workspace + Chat + Files)"]:::component
+        IPCRouter["📡 IPC Handlers Router<br/>[Component]<br/>Dispatches thread-keyed agent streams, direct checkpoint flushes, and skill IPC requests"]:::component
+        StreamCtrl["🌊 StreamController<br/>[Component]<br/>Manages concurrent agent streams, throttles tokens by streamId/threadId without cross-blocking"]:::component
+        CheckOrch["⏱️ CheckpointOrchestrator<br/>[Component]<br/>Coordinates snapshots; executes transactional wsHandle.flush() without global window pause"]:::component
     end
 
     subgraph ExternalContainers ["Adjacent Containers"]

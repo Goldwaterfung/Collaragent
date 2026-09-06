@@ -167,6 +167,8 @@ const removeProjectInputSchema = z.object({
 export interface ToolConnectionContext {
   wsPort?: number
   apiPort?: number
+  thread_id?: string
+  threadId?: string
 }
 
 interface ToolConfig {
@@ -618,7 +620,8 @@ async function createDocumentHandler(
     await executeWriteDocument({
       payload,
       instanceId: uuid,
-      wsPort: context?.wsPort
+      wsPort: context?.wsPort,
+      threadId: context?.thread_id || context?.threadId
     })
 
     return {
@@ -676,7 +679,8 @@ async function editDocumentHandler(
     await executeDocumentCommands({
       commands: compiled.commands,
       instanceId: uuid,
-      wsPort: context?.wsPort
+      wsPort: context?.wsPort,
+      threadId: context?.thread_id || context?.threadId
     })
 
     const diffViewSnippet = generateUnifiedDiff(currentPatchView, compiled.updatedContent)
@@ -1079,7 +1083,8 @@ export const writeGraph = tool(
         edges: edgesToUse,
         instanceId: uuid,
         wsPort: context?.wsPort,
-        apiPort: context?.apiPort
+        apiPort: context?.apiPort,
+        threadId: context?.thread_id || context?.threadId
       })
 
       return {
@@ -1192,7 +1197,8 @@ export const writeMindMap = tool(
         edges,
         instanceId: uuid,
         wsPort: context?.wsPort,
-        apiPort: context?.apiPort
+        apiPort: context?.apiPort,
+        threadId: context?.thread_id || context?.threadId
       })
 
       return {

@@ -45,9 +45,9 @@ flowchart LR
     CmdSendPrompt --> EvtPromptSent
     EvtPromptSent --> SysLLM
 
-    %% 4. Post-Turn Checkpoint & Bundle Capture
+    %% 4. Post-Turn Checkpoint & Bundle Capture (Decoupled, No Global Quiesce)
     EvtTurnFinished[Assistant Turn Finished]:::event
-    PolPostTurnCheck[Whenever Turn Finished -> Capture Post-Turn Checkpoint]:::policy
+    PolPostTurnCheck[Whenever Turn Finished -> Direct wsHandle.flush & Capture Checkpoint]:::policy
     EvtCheckSaved[Checkpoint Bundle Captured]:::event
     AggCheck[Checkpoint Aggregate]:::aggregate
 
@@ -55,29 +55,29 @@ flowchart LR
     PolPostTurnCheck --> EvtCheckSaved
     EvtCheckSaved --> AggCheck
 
-    %% 4. Agent Tool Execution & Staged Proposals
+    %% 5. Agent Tool Execution & Thread-Segregated Staged Proposals
     EvtPromptSent --> SysLLM
     SysLLM --> EvtToolCalled[Agent Tool Call Emitted]:::event
-    CmdStageProp[Stage Workspace Proposal]:::command
-    EvtPropStaged[Workspace Proposal Staged]:::event
-    AggProposal[Proposal Review Aggregate]:::aggregate
-    HotspotConflict[? Concurrent Local & Agent Edit Conflict]:::hotspot
+    CmdStageProp[Stage Proposal with threadId & baseVersion]:::command
+    PolOCC[Whenever Staged Command -> Verify OCC baseVersion >= currentSeq]:::policy
+    EvtPropStaged[Workspace Proposal Staged in Thread Buffer]:::event
+    AggProposal[Thread-Scoped Proposal Aggregate]:::aggregate
 
     EvtToolCalled --> CmdStageProp
-    CmdStageProp --> EvtPropStaged
+    CmdStageProp --> PolOCC
+    PolOCC --> EvtPropStaged
     EvtPropStaged --> AggProposal
-    EvtPropStaged -.conflict.- HotspotConflict
 
-    %% 5. Proposal Acceptance & Commit
-    CmdAccept[Accept Changes]:::command
-    EvtPropCommitted[Proposal Committed to Graph]:::event
+    %% 6. Thread-Scoped Proposal Acceptance & Commit
+    CmdAccept[Accept Thread Proposals]:::command
+    EvtPropCommitted[Proposal Committed to Instance]:::event
     User --> CmdAccept
     CmdAccept --> EvtPropCommitted
     EvtPropCommitted --> AggGraph
 
-    %% 6. Time-Travel Restore
+    %% 7. Time-Travel Restore (Exclusive Quiesce)
     CmdRestore[Restore Checkpoint]:::command
-    EvtQuiesced[Workspace Quiesced]:::event
+    EvtQuiesced[Workspace Quiesced exclusively for restore]:::event
     EvtStateRestored[Workspace State & Chat Head Restored]:::event
     PolResume[Whenever Restored -> Resume Sync & Refresh UI]:::policy
 

@@ -24,23 +24,25 @@ sequenceDiagram
 
     ExtLLM-->>Agent: ToolCall: manageGraph(action: "writeGraph", spec: {...})
     Agent->>Agent: CanvasDiffEngine computes atomic CanvasCommands
-    Agent->>WSS: Broadcast command with { staged: true }
-    WSS-->>UI: WebSocket push: 'graph:add_node' (staged)
-    UI->>UI: Render Proposal Banner ("Agent modified canvas: 1 node added")
+    Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
+    WSS->>WSS: OCC validation (baseVersion >= currentSeq); buffer in proposals[instanceId][threadId]
+    WSS-->>UI: WebSocket push: sync-command & sync-changes (with threadId)
+    UI->>UI: Render Proposal Banner for thread ("Agent modified canvas: 1 node added")
 
     ExtLLM-->>Agent: Final synthesis text
     Agent-->>Main: Turn finished & persist assistant message
     Main-->>Preload: IPC send(agent:stream:streamId:end)
     Preload-->>UI: Finalize assistant message in useChatStore
 
-    %% Post-Turn Checkpoint Creation
+    %% Post-Turn Checkpoint Creation (Decoupled, Zero Quiesce)
     UI->>Preload: window.checkpointIPC.create({ threadId, projectId, reason: 'auto' })
     Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
+    Main->>WSS: Direct wsHandle.flush() (Zero window quiesce pause)
     Main-->>Preload: CheckpointBundleSummary { id: "chk-turn-101", projectId }
     Preload-->>UI: Checkpoint stored
     UI->>Preload: window.checkpointIPC.list({ threadId, projectId })
     Preload-->>UI: CheckpointBundles -> Render CheckpointMarker under completed turn
 
     User->>UI: Clicks "Accept Changes"
-    UI->>WSS: WebSocket send: { type: 'accept-changes', instanceId }
-    WSS-->>UI: Commit staged commands to CanvasProvider history
+    UI->>WSS: WebSocket send: { type: 'accept-changes', instanceId, threadId }
+    WSS-->>UI: Commit thread staged commands to CanvasProvider history

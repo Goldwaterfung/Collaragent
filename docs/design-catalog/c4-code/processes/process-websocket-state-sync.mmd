@@ -10,23 +10,23 @@ flowchart LR
 
     Agent[🤖 Agent Tool / Client]:::actor
     
-    CmdSyncCmd[Command: sync-command<br/>{ command, staged: true, clientId }]:::command
+    CmdSyncCmd[Command: sync-command<br/>{ command, staged: true, threadId, baseVersion }]:::command
     EvtCmdReceived[Event: Staged Command Received]:::event
     AggWSServer[Aggregate: WsServer In-Memory DTO]:::aggregate
     
-    PolValidate[Policy: Whenever sync-command received -> validateCanonicalNodeId & applyCommandToDto]:::policy
+    PolValidate[Policy: Whenever sync-command received -> validate OCC baseVersion & apply to DTO]:::policy
     
     EvtStateMutated[Event: DTO Mutated & previousState Captured]:::event
-    EvtBuffered[Event: Command Buffered in proposals Map]:::event
+    EvtBuffered[Event: Command Buffered in proposals[instanceId][threadId]]:::event
     
-    CmdBroadcast[Command: Broadcast sync-command & sync-changes]:::command
+    CmdBroadcast[Command: Broadcast sync-command & sync-changes with threadId]:::command
     SysWSChannel[System: /ws/canvas/:instanceId Channel]:::system
     
-    EvtUIReflected[Event: UI Renders New Nodes & Shows Proposal Banner]:::event
+    EvtUIReflected[Event: UI Renders New Nodes & Shows Thread Proposal Banner]:::event
     User[👤 Knowledge Worker]:::actor
     
-    CmdDecision[Command: accept-changes OR reject-changes]:::command
-    PolResolve[Policy: If accept -> clear buffer & save; If reject -> revert via previousState & broadcast snapshot]:::policy
+    CmdDecision[Command: accept-changes OR reject-changes with threadId]:::command
+    PolResolve[Policy: If accept -> clear thread buffer & save; If reject -> revert thread commands & broadcast snapshot]:::policy
     EvtFinalized[Event: Workspace State Finalized & Persisted to Disk]:::event
 
     Agent --> CmdSyncCmd

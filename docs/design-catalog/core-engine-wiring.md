@@ -161,33 +161,33 @@ sequenceDiagram
 
     LLM->>Tools: editDocument({ instanceName: "Spec", operation: "update", targetBlockId: "blk-2", newHtml: "<p>New text</p>" })
 
-    Tools->>Tools: Fetch current snapshot via SyncClient
+    Tools->>Tools: Fetch current snapshot & baseVersion via SyncClient
     Tools->>DiffEngine: computePatch(currentBlocks, { op: "update", blkId: "blk-2", html: "..." })
     DiffEngine-->>Tools: { patchCommand, inverseCommand, unifiedDiff }
 
-    Note over Tools,WSServer: Dispatch Staged Mutation
-    Tools->>SyncAgent: send(patchCommand)
-    SyncAgent->>WSServer: {"type": "sync-command", "command": patchCommand, "clientId": "agent-1"}
-    WSServer->>WSServer: Apply patchCommand to memory state (marked staged)
+    Note over Tools,WSServer: Dispatch Staged Mutation with Thread Lineage & OCC
+    Tools->>SyncAgent: send(patchCommand, { threadId: "thread-101", baseVersion: 3 })
+    SyncAgent->>WSServer: {"type": "sync-command", "command": patchCommand, "clientId": "agent-1", "threadId": "thread-101", "baseVersion": 3}
+    WSServer->>WSServer: OCC validation (baseVersion >= currentSeq); buffer in proposals[instanceId][threadId]
     WSServer-->>SyncAgent: {"type": "sync-ack", "version": 4}
 
-    WSServer-)SyncUI: Broadcast {"type": "sync-changes", "commands": [patchCommand]}
+    WSServer-)SyncUI: Broadcast {"type": "sync-changes", "threadId": "thread-101", "commands": [patchCommand]}
     SyncUI->>UI: Apply patch to Lexical editor view
-    UI->>UI: Display Staged Proposal Banner (Accept / Reject)
+    UI->>UI: Display Staged Proposal Banner for Thread 101 (Accept / Reject)
 
     Tools-->>LLM: Return { status: "success", diff: "[diff_block_start]...", message: "Block updated." }
 
-    Note over User,WSServer: User Review Decision
+    Note over User,WSServer: User Review Decision (Thread-Scoped)
     alt User Clicks 'Accept'
         User->>UI: Click "Keep Changes"
-        UI->>SyncUI: acceptChanges()
-        SyncUI->>WSServer: {"type": "accept-changes", "instanceId": "doc-uuid"}
-        WSServer->>WSServer: Commit staged state & persist to disk
+        UI->>SyncUI: acceptChanges("thread-101")
+        SyncUI->>WSServer: {"type": "accept-changes", "instanceId": "doc-uuid", "threadId": "thread-101"}
+        WSServer->>WSServer: Commit thread-101 proposals & persist to disk
     else User Clicks 'Reject'
         User->>UI: Click "Undo / Reject"
-        UI->>SyncUI: rejectChanges()
-        SyncUI->>WSServer: {"type": "reject-changes", "instanceId": "doc-uuid"}
-        WSServer->>WSServer: Apply inverseCommand & broadcast rollback
+        UI->>SyncUI: rejectChanges("thread-101")
+        SyncUI->>WSServer: {"type": "reject-changes", "instanceId": "doc-uuid", "threadId": "thread-101"}
+        WSServer->>WSServer: Apply thread inverse commands & broadcast rollback
         WSServer-)SyncUI: Broadcast rollback changes
         SyncUI->>UI: Restore original Lexical editor state
     end

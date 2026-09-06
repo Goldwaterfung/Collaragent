@@ -205,10 +205,9 @@ export const Workspace = (props: { theme?: string }) => {
           }
           paramsRef.current.setActiveSkillPath(null)
         }
-      } else {
-        paramsRef.current.unsetInstanceId()
-        paramsRef.current.setActiveSkillPath(null)
       }
+      // When e?.panel is undefined (during layout restructuring, drag, or tab split),
+      // we preserve current state to avoid premature unmounting.
       updateOpenPanels()
     })
 

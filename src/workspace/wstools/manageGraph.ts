@@ -267,6 +267,7 @@ export type WriteGraphOptions = WriteGraphSpec & {
   wsPort?: number
   apiPort?: number
   staged?: boolean
+  threadId?: string
 }
 
 function resolveGraphSpecIdentity(
@@ -411,9 +412,13 @@ export async function executeWriteGraph(options: WriteGraphOptions) {
   // 4. Execute Commands
   // Send them in batch sequentially and await acknowledgments
   const staged = options.staged ?? true
+  const baseVersion = client.getServerVersion?.() ?? undefined
   try {
     if (commands.length > 0) {
-      await client.sendBatch(commands.map((cmd) => ({ ...cmd, staged })))
+      await client.sendBatch(
+        commands.map((cmd) => ({ ...cmd, staged })),
+        { threadId: options.threadId, baseVersion }
+      )
     }
   } finally {
     // 5. Cleanup

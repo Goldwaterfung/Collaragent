@@ -310,8 +310,8 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
         console.error('Stream error:', data.error)
         const state = useChatStore.getState()
 
-        if (state.threadId === data.threadId) {
-          const threadStream = data.threadId ? state.streamingParams[data.threadId] : undefined
+        if (data.threadId) {
+          const threadStream = state.streamingParams[data.threadId]
           if (threadStream) {
             const finalContent = threadStream.accumulatedContent
             const finalToolCalls = threadStream.toolCalls
@@ -336,12 +336,8 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
                 timestamp: new Date(),
                 metadata: { threadId: data.threadId }
               }
-              if (data.threadId) {
-                state.addThreadMessage(data.threadId, assistantMessage)
-              } else {
-                addMessage(assistantMessage)
-              }
-              if (data.threadId && apiPort) {
+              state.addThreadMessage(data.threadId, assistantMessage)
+              if (apiPort) {
                 void ChatService.postMessage(data.threadId, {
                   id: assistantId,
                   role: 'assistant',
@@ -367,8 +363,8 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
             timestamp: new Date(),
             metadata: { threadId: data.threadId }
           }
-          addMessage(errorMessage)
-          if (data.threadId && apiPort) {
+          state.addThreadMessage(data.threadId, errorMessage)
+          if (apiPort) {
             void ChatService.postMessage(data.threadId, {
               id: errorId,
               role: 'system',

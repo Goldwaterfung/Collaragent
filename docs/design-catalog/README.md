@@ -46,7 +46,8 @@ docs/design-catalog/
     ├── adr-005-deterministic-inverse-command-rollback.md
     ├── adr-006-large-tool-output-eviction-protocol.md
     ├── adr-007-websocket-staged-proposal-protocol.md
-    └── adr-008-hierarchical-leiden-clustering-and-spatial-layout.md
+    ├── adr-008-hierarchical-leiden-clustering-and-spatial-layout.md
+    └── adr-009-multi-chat-concurrency-and-workspace-synchronization.md
 ```
 
 > [!NOTE]
@@ -145,9 +146,9 @@ flowchart LR
     CmdSendPrompt --> EvtPromptSent
     EvtPromptSent --> SysLLM
 
-    %% 4. Post-Turn Checkpoint & Bundle Capture
+    %% 4. Post-Turn Checkpoint & Bundle Capture (Decoupled, No Global Quiesce)
     EvtTurnFinished[Assistant Turn Finished]:::event
-    PolPostTurnCheck[Whenever Turn Finished -> Capture Post-Turn Checkpoint]:::policy
+    PolPostTurnCheck[Whenever Turn Finished -> Direct wsHandle.flush & Capture Checkpoint]:::policy
     EvtCheckSaved[Checkpoint Bundle Captured]:::event
     AggCheck[Checkpoint Aggregate]:::aggregate
 
@@ -155,29 +156,29 @@ flowchart LR
     PolPostTurnCheck --> EvtCheckSaved
     EvtCheckSaved --> AggCheck
 
-    %% 4. Agent Tool Execution & Staged Proposals
+    %% 5. Agent Tool Execution & Thread-Segregated Staged Proposals
     EvtPromptSent --> SysLLM
     SysLLM --> EvtToolCalled[Agent Tool Call Emitted]:::event
-    CmdStageProp[Stage Workspace Proposal]:::command
-    EvtPropStaged[Workspace Proposal Staged]:::event
-    AggProposal[Proposal Review Aggregate]:::aggregate
-    HotspotConflict[? Concurrent Local & Agent Edit Conflict]:::hotspot
+    CmdStageProp[Stage Proposal with threadId & baseVersion]:::command
+    PolOCC[Whenever Staged Command -> Verify OCC baseVersion >= currentSeq]:::policy
+    EvtPropStaged[Workspace Proposal Staged in Thread Buffer]:::event
+    AggProposal[Thread-Scoped Proposal Aggregate]:::aggregate
 
     EvtToolCalled --> CmdStageProp
-    CmdStageProp --> EvtPropStaged
+    CmdStageProp --> PolOCC
+    PolOCC --> EvtPropStaged
     EvtPropStaged --> AggProposal
-    EvtPropStaged -.conflict.- HotspotConflict
 
-    %% 5. Proposal Acceptance & Commit
-    CmdAccept[Accept Changes]:::command
-    EvtPropCommitted[Proposal Committed to Graph]:::event
+    %% 6. Thread-Scoped Proposal Acceptance & Commit
+    CmdAccept[Accept Thread Proposals]:::command
+    EvtPropCommitted[Proposal Committed to Instance]:::event
     User --> CmdAccept
     CmdAccept --> EvtPropCommitted
     EvtPropCommitted --> AggGraph
 
-    %% 6. Time-Travel Restore
+    %% 7. Time-Travel Restore (Exclusive Quiesce)
     CmdRestore[Restore Checkpoint]:::command
-    EvtQuiesced[Workspace Quiesced]:::event
+    EvtQuiesced[Workspace Quiesced exclusively for restore]:::event
     EvtStateRestored[Workspace State & Chat Head Restored]:::event
     PolResume[Whenever Restored -> Resume Sync & Refresh UI]:::policy
 
@@ -209,13 +210,13 @@ flowchart TB
 
     subgraph DesktopProcessBoundary ["CollarAgent Application Boundary (Electron Multi-Process)"]
 
-        RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders 3-pane layout, graph canvas, Lexical editor, streaming chat, and state trees"]:::container
+        RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders multi-chat Dockview layout, graph canvas, Lexical editor, parallel agent streams, and state trees"]:::container
 
         PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / AsyncGenerators]<br/>Provides isolated, typed IPC channels and stream unbuffering"]:::container
 
         MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
 
-        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server for editor diffs and canvas commands"]:::container
+        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server with thread-segregated proposals, OCC validation, and transactional flush"]:::container
 
         UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, SqliteStorageEngine, and SqliteCheckpointStore"]:::container
 
@@ -230,11 +231,11 @@ flowchart TB
     User -->|"Interacts via Mouse, Keyboard, Drag & Drop"| RendererUI
     RendererUI -->|"Invokes typed APIs & receives stream chunks"| PreloadBridge
     PreloadBridge -->|"Bi-directional IPC [Electron IPC]"| MainHost
-    RendererUI <-->|"Bi-directional State Sync & Proposal Diffs [WebSocket / JSON-RPC]"| WSServer
+    RendererUI <-->|"Bi-directional State Sync & Thread Proposals [WebSocket / JSON-RPC]"| WSServer
     RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
 
     MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer
-    MainHost -->|"Spawns & triggers flush [In-Memory Call]"| WSServer
+    MainHost -->|"Agent tools dispatch staged mutations with threadId & OCC [WebSocket / SyncClient]"| WSServer
     MainHost -->|"Encrypts / decrypts API credentials [safeStorage]"| LocalVault
     MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
     MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP
@@ -318,9 +319,9 @@ flowchart TB
         ModelMgr["🧠 ModelManager<br/>[Component]<br/>Catalog of supported LLMs, parameters, and context limits"]:::component
         AgentFac["🏭 AgentFactory<br/>[Component]<br/>Compiles DeepAgent instances with cached model clients and tools"]:::component
         MCPLoader["🔌 MCPLoader<br/>[Component]<br/>Manages MultiServerMCPClient, STDIO subprocesses, and tool caching"]:::component
-        IPCRouter["📡 IPC Handlers Router<br/>[Component]<br/>Dispatches agent, checkpoint, config, file, and skill IPC requests"]:::component
-        StreamCtrl["🌊 StreamController<br/>[Component]<br/>Throttles token/reasoning streams and chunks IPC pushes"]:::component
-        CheckOrch["⏱️ CheckpointOrchestrator<br/>[Component]<br/>Coordinates multi-domain snapshots (Agent + Workspace + Chat + Files)"]:::component
+        IPCRouter["📡 IPC Handlers Router<br/>[Component]<br/>Dispatches thread-keyed agent streams, direct checkpoint flushes, and skill IPC requests"]:::component
+        StreamCtrl["🌊 StreamController<br/>[Component]<br/>Manages concurrent agent streams, throttles tokens by streamId/threadId without cross-blocking"]:::component
+        CheckOrch["⏱️ CheckpointOrchestrator<br/>[Component]<br/>Coordinates snapshots; executes transactional wsHandle.flush() without global window pause"]:::component
     end
 
     subgraph ExternalContainers ["Adjacent Containers"]
@@ -411,7 +412,7 @@ flowchart TB
         end
 
         subgraph ViewLayer ["Visual Component Tree"]
-            DockviewHost["🗔 Workspace (Dockview)<br/>[Component]<br/>Multi-dock tabbed container hosting Canvas, Document, and Skill views"]:::component
+            DockviewHost["🗔 Workspace (Dockview)<br/>[Component]<br/>Multi-dock layout hosting Canvas, Document, Skill, and Concurrent Chat Panes"]:::component
 
             subgraph CanvasView ["Graph Canvas Subsystem"]
                 CanvasViewport["🖼️ Canvas Viewport<br/>[Component]<br/>SVG cubic bezier edge layer, pan/zoom engine, and node renderer"]:::component
@@ -425,16 +426,17 @@ flowchart TB
                 DocxExporter["📑 DocxExporter<br/>[Component]<br/>Compiles DocumentPayload block AST directly into Word (.docx)"]:::component
             end
 
-            subgraph ChatView ["Agent Chat & Streaming Subsystem"]
-                ChatEngine["💬 Chat Engine<br/>[Component]<br/>Streaming lifecycle manager, mention popover (@), checkpoint markers"]:::component
-                MessageListComp["📜 MessageList<br/>[Component]<br/>Renders reasoning cards, tool call diffs, and token metrics"]:::component
+            subgraph ChatView ["Concurrent Agent Chat & Streaming Subsystem"]
+                ChatEngine["💬 Chat Engine & Panels<br/>[Component]<br/>Multi-chat stream managers, thread-scoped error routing, checkpoint markers"]:::component
+                MessageListComp["📜 MessageList<br/>[Component]<br/>Renders reasoning cards, tool call diffs, and thread proposal banners"]:::component
                 SubagentPane["🤖 SubagentStreamPane<br/>[Component]<br/>Dedicated slide-in drawer for deep subagent trace inspection"]:::component
             end
         end
 
-        subgraph SyncLayer ["Real-Time Synchronization Plugins"]
-            CanvasSync["⚡ CanvasWebSocketSyncPlugin<br/>[Component]<br/>Syncs graph commands and viewport changes over /ws/canvas/:id"]:::component
-            EditorSync["⚡ EditorWebSocketSyncPlugin<br/>[Component]<br/>Syncs Lexical AST, diff reviews, and staged agent proposals"]:::component
+        subgraph SyncLayer ["Real-Time Synchronization Plugins & Resilient SyncClient"]
+            CanvasSync["⚡ CanvasWebSocketSyncPlugin<br/>[Component]<br/>Syncs graph commands, thread proposals, and OCC versions over /ws/canvas/:id"]:::component
+            EditorSync["⚡ EditorWebSocketSyncPlugin<br/>[Component]<br/>Syncs Lexical AST, diff reviews, and thread-scoped staged proposals"]:::component
+            ClientLifecycle["🛡️ Resilient SyncClient<br/>[Component]<br/>Pre-handled readyPromise, safe ack drain, and unmount fiber protection"]:::component
         end
     end
 
@@ -741,26 +743,28 @@ sequenceDiagram
 
     ExtLLM-->>Agent: ToolCall: manageGraph(action: "writeGraph", spec: {...})
     Agent->>Agent: CanvasDiffEngine computes atomic CanvasCommands
-    Agent->>WSS: Broadcast command with { staged: true }
-    WSS-->>UI: WebSocket push: 'graph:add_node' (staged)
-    UI->>UI: Render Proposal Banner ("Agent modified canvas: 1 node added")
+    Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
+    WSS->>WSS: OCC validation (baseVersion >= currentSeq); buffer in proposals[instanceId][threadId]
+    WSS-->>UI: WebSocket push: sync-command & sync-changes (with threadId)
+    UI->>UI: Render Proposal Banner for thread ("Agent modified canvas: 1 node added")
 
     ExtLLM-->>Agent: Final synthesis text
     Agent-->>Main: Turn finished & persist assistant message
     Main-->>Preload: IPC send(agent:stream:streamId:end)
     Preload-->>UI: Finalize assistant message in useChatStore
 
-    %% Post-Turn Checkpoint Creation
+    %% Post-Turn Checkpoint Creation (Decoupled, Zero Quiesce)
     UI->>Preload: window.checkpointIPC.create({ threadId, projectId, reason: 'auto' })
     Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
+    Main->>WSS: Direct wsHandle.flush() (Zero window quiesce pause)
     Main-->>Preload: CheckpointBundleSummary { id: "chk-turn-101", projectId }
     Preload-->>UI: Checkpoint stored
     UI->>Preload: window.checkpointIPC.list({ threadId, projectId })
     Preload-->>UI: CheckpointBundles -> Render CheckpointMarker under completed turn
 
     User->>UI: Clicks "Accept Changes"
-    UI->>WSS: WebSocket send: { type: 'accept-changes', instanceId }
-    WSS-->>UI: Commit staged commands to CanvasProvider history
+    UI->>WSS: WebSocket send: { type: 'accept-changes', instanceId, threadId }
+    WSS-->>UI: Commit thread staged commands to CanvasProvider history
 ```
 
 #### Sequence 2: Multi-Domain Point-in-Time Checkpoint Restore
@@ -831,44 +835,44 @@ sequenceDiagram
     Note over DiffEngine: 1. Remove obsolete relationships<br/>2. Remove deleted nodes<br/>3. Add new nodes + cardinal ports<br/>4. Update node attrs & layouts<br/>5. Add new relationships
     DiffEngine-->>AgentTool: Return atomic CanvasCommand[]
 
-    %% Step 3: Staged Transmission
-    Note over AgentTool: Tag commands with { staged: true }
+    %% Step 3: Staged Transmission with Thread Scoping & OCC
+    Note over AgentTool: Tag commands with { staged: true, threadId, baseVersion }
     loop For each CanvasCommand in batch
-        AgentTool->>WSS: Send { type: 'sync-command', command: { ...cmd, staged: true }, version: 1 }
+        AgentTool->>WSS: Send { type: 'sync-command', command: { ...cmd, staged: true }, version: 1, threadId, baseVersion }
 
-        %% Step 4: Server Mutation & Staging
-        WSS->>WSS: validateIncomingCanvasCommand(cmd)
+        %% Step 4: Server OCC Validation & Staging
+        WSS->>WSS: validateOCC(baseVersion >= currentSeq)
         WSS->>WSS: applyCommandToDto() & capture previousState
-        WSS->>WSS: proposals.get(instanceId).push({ ...cmd, previousState })
+        WSS->>WSS: proposals.get(instanceId).get(threadId).push({ ...cmd, previousState })
         WSS->>WSS: nextSeq = commandSequences++
 
         WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
 
         par Real-time Broadcast & Logging
             WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
-            WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, commands: bufferedProposals }
+            WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: bufferedProposals }
             WSS->>RESTServer: POST /api/checkpoints/workspace/logs (Audit Trail)
         end
     end
-    AgentTool->>AgentTool: Disconnect ephemeral SyncClient
+    AgentTool->>AgentTool: Disconnect ephemeral SyncClient (try/finally safe cleanup)
 
     %% Step 5: UI Proposal Banner
-    Note over CanvasUI: CanvasProvider updates visual DOM & displays Proposal Banner
+    Note over CanvasUI: CanvasProvider updates visual DOM & displays Thread Proposal Banner
 
-    %% Step 6: User Accept/Reject
-    alt User clicks "Keep" (Accept Changes)
+    %% Step 6: User Accept/Reject (Thread-Scoped)
+    alt User clicks "Keep" (Accept Changes for Thread)
         User->>CanvasUI: Clicks "Accept Changes"
-        CanvasUI->>WSS: Send { type: 'accept-changes', instanceId, clientId }
-        WSS->>WSS: proposals.delete(instanceId)
-        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, commands: [] }
+        CanvasUI->>WSS: Send { type: 'accept-changes', instanceId, threadId, clientId }
+        WSS->>WSS: proposals.get(instanceId).delete(threadId)
+        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
         WSS->>RESTServer: 500ms debouncedSave() persists committed state
-    else User clicks "Undo" (Reject Changes)
+    else User clicks "Undo" (Reject Changes for Thread)
         User->>CanvasUI: Clicks "Reject Changes"
-        CanvasUI->>WSS: Send { type: 'reject-changes', instanceId, clientId }
-        WSS->>WSS: Replay proposals in reverse using captured previousState
-        WSS->>WSS: proposals.delete(instanceId)
+        CanvasUI->>WSS: Send { type: 'reject-changes', instanceId, threadId, clientId }
+        WSS->>WSS: Replay thread proposals in reverse using captured previousState
+        WSS->>WSS: proposals.get(instanceId).delete(threadId)
         WSS-->>CanvasUI: Broadcast { type: 'sync-snapshot', graph, layout, from: 'agent-proposal-reverted' }
-        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, commands: [] }
+        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
         WSS->>RESTServer: 500ms debouncedSave() persists restored state
     end
 ```
@@ -984,23 +988,23 @@ flowchart LR
 
     Agent[🤖 Agent Tool / Client]:::actor
 
-    CmdSyncCmd[Command: sync-command<br/>{ command, staged: true, clientId }]:::command
+    CmdSyncCmd[Command: sync-command<br/>{ command, staged: true, threadId, baseVersion }]:::command
     EvtCmdReceived[Event: Staged Command Received]:::event
     AggWSServer[Aggregate: WsServer In-Memory DTO]:::aggregate
 
-    PolValidate[Policy: Whenever sync-command received -> validateCanonicalNodeId & applyCommandToDto]:::policy
+    PolValidate[Policy: Whenever sync-command received -> validate OCC baseVersion & apply to DTO]:::policy
 
     EvtStateMutated[Event: DTO Mutated & previousState Captured]:::event
-    EvtBuffered[Event: Command Buffered in proposals Map]:::event
+    EvtBuffered[Event: Command Buffered in proposals[instanceId][threadId]]:::event
 
-    CmdBroadcast[Command: Broadcast sync-command & sync-changes]:::command
+    CmdBroadcast[Command: Broadcast sync-command & sync-changes with threadId]:::command
     SysWSChannel[System: /ws/canvas/:instanceId Channel]:::system
 
-    EvtUIReflected[Event: UI Renders New Nodes & Shows Proposal Banner]:::event
+    EvtUIReflected[Event: UI Renders New Nodes & Shows Thread Proposal Banner]:::event
     User[👤 Knowledge Worker]:::actor
 
-    CmdDecision[Command: accept-changes OR reject-changes]:::command
-    PolResolve[Policy: If accept -> clear buffer & save; If reject -> revert via previousState & broadcast snapshot]:::policy
+    CmdDecision[Command: accept-changes OR reject-changes with threadId]:::command
+    PolResolve[Policy: If accept -> clear thread buffer & save; If reject -> revert thread commands & broadcast snapshot]:::policy
     EvtFinalized[Event: Workspace State Finalized & Persisted to Disk]:::event
 
     Agent --> CmdSyncCmd
@@ -1021,16 +1025,17 @@ flowchart LR
 
 ## 6. Architecture Decision Records (ADRs)
 
-| ADR                                                                                                                                             | Title                                                                                              | Decision & Key Rationale                                                                                                                                                                                                                                             |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)             | **Multi-Process Electron Host with Forked Utility Daemons**                                        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.                                                                                                   |
-| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)                  | **Sharded V3 Storage Engine (Superseded by V4 SQLite Engine)**                                     | Historical V3 sharded layout (`manifest.json`, `instances/*.json`, `snapshots/*.msgpack`). Superseded by V4 single-file SQLite database with WAL journaling and B-Tree indexing.                                                                                     |
-| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md)            | **Nominal ID Branding for Graph Entities**                                                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                                                                                                                    |
-| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)               | **Progressive Disclosure Architecture for Agent Skills**                                           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.                                                                                                 |
-| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)            | **Deterministic Inverse Command Rollback Engine**                                                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.                                                                                                    |
-| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)               | **Large Tool Output Eviction Protocol**                                                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.                                                                                            |
-| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)                | **WebSocket Real-Time Synchronization & Staged Proposal Protocol**                                 | Stream real-time canvas mutations over dedicated WebSocket channels with `staged: true` buffering, monotonic sequence acks, and one-click accept/revert capabilities.                                                                                                |
-| [ADR-008](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-008-hierarchical-leiden-clustering-and-spatial-layout.md) | **Hierarchical Leiden Community Detection, Derived Group Enclosures, and Two-Tier Spatial Layout** | Adopt Option A (derived cluster layer in `node.attrs`) with a two-tier spatial layout engine (intra-cluster Dagre/grid + inter-cluster shelf-packing), off-thread WebWorker delta patching for concurrency safety, and granular transactional WebSocket persistence. |
+| ADR                                                                                                                                                | Title                                                                                              | Decision & Key Rationale                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)                | **Multi-Process Electron Host with Forked Utility Daemons**                                        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.                                                                                                   |
+| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)                     | **Sharded V3 Storage Engine (Superseded by V4 SQLite Engine)**                                     | Historical V3 sharded layout (`manifest.json`, `instances/*.json`, `snapshots/*.msgpack`). Superseded by V4 single-file SQLite database with WAL journaling and B-Tree indexing.                                                                                     |
+| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md)               | **Nominal ID Branding for Graph Entities**                                                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                                                                                                                    |
+| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)                  | **Progressive Disclosure Architecture for Agent Skills**                                           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.                                                                                                 |
+| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)               | **Deterministic Inverse Command Rollback Engine**                                                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.                                                                                                    |
+| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)                  | **Large Tool Output Eviction Protocol**                                                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.                                                                                            |
+| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)                   | **WebSocket Real-Time Synchronization & Staged Proposal Protocol**                                 | Stream real-time canvas mutations over dedicated WebSocket channels with thread-partitioned proposal buffering, monotonic sequence acks, and thread-scoped review.                                                                                                   |
+| [ADR-008](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-008-hierarchical-leiden-clustering-and-spatial-layout.md)    | **Hierarchical Leiden Community Detection, Derived Group Enclosures, and Two-Tier Spatial Layout** | Adopt Option A (derived cluster layer in `node.attrs`) with a two-tier spatial layout engine (intra-cluster Dagre/grid + inter-cluster shelf-packing), off-thread WebWorker delta patching for concurrency safety, and granular transactional WebSocket persistence. |
+| [ADR-009](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-009-multi-chat-concurrency-and-workspace-synchronization.md) | **Multi-Chat Concurrent Execution & Workspace Synchronization Architecture**                       | Support concurrent multi-chat Dockview panes via thread-segregated proposal maps, sequence-based Optimistic Concurrency Control, decoupled transactional checkpoint flushes without global window pauses, and unmount-resilient client lifecycle.                    |
 
 ---
 
