@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { AgentStreamProps } from '../../types/ui'
-import { renderMarkdown } from '../../utils/markdown'
+import { renderMarkdown, parseContentSegments } from '../../utils/markdown'
 import ToolCallCard from './ToolCallCard'
 import ReasoningCard from './ReasoningCard'
 import { LoadingIcon } from '../../assets/icons/LoadingIcon'
@@ -8,17 +8,31 @@ import ProgressContainer from './ProgressContainer'
 import { groupBlocksByTodos } from './groupBlocks'
 import { useChatStore } from '../../store/chatStore'
 import { parseSubagentTaskFromToolCall } from './subagentUtils'
+import { ChatErrorBoundary } from './ChatErrorBoundary'
+import { MermaidDiagram } from './MermaidDiagram'
 
 interface StreamedMarkdownProps {
   content: string
 }
 
 const StreamedMarkdown: React.FC<StreamedMarkdownProps> = ({ content }) => {
+  const segments = parseContentSegments(content)
   return (
-    <div
-      className="chat-markdown prose max-w-none text-black wrap-break-word"
-      dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-    />
+    <ChatErrorBoundary fallbackContent={content}>
+      <div className="space-y-3">
+        {segments.map((seg, idx) =>
+          seg.type === 'mermaid' ? (
+            <MermaidDiagram key={idx} code={seg.code} />
+          ) : (
+            <div
+              key={idx}
+              className="chat-markdown prose max-w-none text-black wrap-break-word"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.content) }}
+            />
+          )
+        )}
+      </div>
+    </ChatErrorBoundary>
   )
 }
 

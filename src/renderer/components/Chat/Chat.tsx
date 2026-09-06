@@ -15,22 +15,33 @@ import { useInstanceContext } from '@workspace/contexts/instance/InstanceContext
 import * as ChatService from '@shared/services/ChatService'
 import type { CheckpointBundleSummary } from '@shared/ipc/checkpoints/types'
 import { getStreamErrorPresentation } from '../../utils/streamErrors'
+import { ChatIcon } from '../../assets/icons/ChatIcon'
 
-export const Chat: React.FC = () => {
+export interface ChatProps {
+  sessionId?: string
+}
+
+export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
   const {
-    messages,
+    messages: globalMessages,
+    messagesByThread,
     streamingParams,
     addMessage,
+    addThreadMessage,
     setStreaming,
     resetStreaming,
     threadId,
     setThreadId,
-    setMessages,
-    setDraftInput,
+    setThreadMessages,
+    setThreadDraftInput,
     upsertSubagentTask
   } = useChatStore()
 
+  const currentThreadId = sessionId || threadId
+  const messages = (sessionId ? messagesByThread[sessionId] : undefined) || globalMessages
+
   const { activeProjectId, instanceId, openInstanceIds, projects } = useInstanceContext()
+  const { wsPort, apiPort, hasSession } = useProjectSession()
 
   const activeProjectIdRef = useRef(activeProjectId)
   const instanceIdRef = useRef(instanceId)
@@ -44,10 +55,27 @@ export const Chat: React.FC = () => {
     projectsRef.current = projects
   }, [activeProjectId, instanceId, openInstanceIds, projects])
 
+  // Hydrate session history when a sessionId is provided and messages are empty
+  useEffect(() => {
+    if (!sessionId || !hasSession || !apiPort) return
+    const threadMsgs = useChatStore.getState().messagesByThread[sessionId]
+    if (!threadMsgs || threadMsgs.length === 0) {
+      ChatService.getMessages(sessionId)
+        .then((history) => {
+          if (history && history.length > 0) {
+            setThreadMessages(sessionId, history as unknown as ChatMessage[])
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to load session history for', sessionId, err)
+        })
+    }
+  }, [sessionId, hasSession, apiPort, setThreadMessages])
+
   // Derive active streaming state for current view
   const activeStreaming =
-    threadId && streamingParams[threadId]
-      ? streamingParams[threadId]
+    currentThreadId && streamingParams[currentThreadId]
+      ? streamingParams[currentThreadId]
       : {
           isStreaming: false,
           accumulatedContent: '',
@@ -57,7 +85,7 @@ export const Chat: React.FC = () => {
           currentMessage: ''
         }
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const streamMessageIdsRef = useRef<Map<string, { assistantId: string }>>(new Map())
   const [checkpointBundles, setCheckpointBundles] = useState<CheckpointBundleSummary[]>([])
   const [checkpointBusy, setCheckpointBusy] = useState(false)
@@ -100,12 +128,14 @@ export const Chat: React.FC = () => {
 
   // Scroll to bottom on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = messagesContainerRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
   }, [messages, activeStreaming.accumulatedContent, activeStreaming.isStreaming])
 
   const refreshBundles = useCallback(
     async (targetThreadId?: string) => {
-      const activeThreadId = targetThreadId || threadId
+      const activeThreadId = targetThreadId || currentThreadId
       if (!activeThreadId || !window.checkpointIPC) return
       setCheckpointError(null)
       try {
@@ -122,7 +152,7 @@ export const Chat: React.FC = () => {
         setCheckpointError(message)
       }
     },
-    [threadId]
+    [currentThreadId]
   )
 
   const refreshBundlesRef = useRef(refreshBundles)
@@ -133,8 +163,6 @@ export const Chat: React.FC = () => {
   useEffect(() => {
     void refreshBundles()
   }, [refreshBundles])
-
-  const { wsPort, apiPort } = useProjectSession()
 
   const startStream = useCallback(
     (request: Types.AgentStreamRequest) => {
@@ -241,7 +269,9 @@ export const Chat: React.FC = () => {
             metadata: { threadId: data.threadId }
           }
 
-          if (state.threadId === data.threadId) {
+          if (data.threadId) {
+            state.addThreadMessage(data.threadId, assistantMessage)
+          } else {
             addMessage(assistantMessage)
           }
 
@@ -306,7 +336,11 @@ export const Chat: React.FC = () => {
                 timestamp: new Date(),
                 metadata: { threadId: data.threadId }
               }
-              addMessage(assistantMessage)
+              if (data.threadId) {
+                state.addThreadMessage(data.threadId, assistantMessage)
+              } else {
+                addMessage(assistantMessage)
+              }
               if (data.threadId && apiPort) {
                 void ChatService.postMessage(data.threadId, {
                   id: assistantId,
@@ -388,18 +422,18 @@ export const Chat: React.FC = () => {
         timestamp: new Date()
       }
 
-      addMessage(userMessage)
-
       // Ensure we have a thread id for persistence and agent
-      let sid = threadId
+      let sid = sessionId || threadId
       if (!sid) {
         sid = crypto.randomUUID()
         setThreadId(sid)
       }
 
+      addThreadMessage(sid, userMessage)
+
       // Note: We used to explicitly persist the user message here via ChatService.postMessage.
       // That is now removed because the backend Agent automatically persists the input message
-      // when processing AGENT_STREAM. Keeping addMessage above ensures immediate UI feedback (Optimistic Update).
+      // when processing AGENT_STREAM. Keeping addThreadMessage above ensures immediate UI feedback (Optimistic Update).
 
       const request: Types.AgentStreamRequest = {
         message: userMessage.content,
@@ -418,8 +452,9 @@ export const Chat: React.FC = () => {
     },
     [
       activeStreaming.isStreaming,
-      addMessage,
+      addThreadMessage,
       apiPort,
+      sessionId,
       setStreaming,
       setThreadId,
       startStream,
@@ -436,19 +471,20 @@ export const Chat: React.FC = () => {
   )
 
   const handleCancelMessage = useCallback(async () => {
-    if (!threadId) return
+    const sid = sessionId || threadId
+    if (!sid) return
     // Mark as no longer streaming immediately to stop the typing indicator,
     // but keep the content in streamingParams so it can be moved to history
     // by the final onStreamEnd signal.
-    setStreaming(threadId, false)
+    setStreaming(sid, false)
     try {
-      await window.electron.ipcRenderer.invoke(Channels.AGENT_ABORT, threadId)
+      await window.electron.ipcRenderer.invoke(Channels.AGENT_ABORT, sid)
     } catch (e) {
       console.error('Failed to abort stream:', e)
       // Fallback: if abort failed, we still need to clear state
-      resetStreaming(threadId)
+      resetStreaming(sid)
     }
-  }, [threadId, setStreaming, resetStreaming])
+  }, [sessionId, threadId, setStreaming, resetStreaming])
 
   const handleResume = useCallback(
     async (decision: unknown) => {
@@ -491,26 +527,27 @@ export const Chat: React.FC = () => {
 
   const handleRestoreCheckpoint = useCallback(
     async (bundleId: string, restoreContent?: string) => {
-      if (!threadId || !window.checkpointIPC) return
+      const targetId = currentThreadId
+      if (!targetId || !window.checkpointIPC) return
       setCheckpointBusy(true)
       setCheckpointError(null)
       try {
         await window.checkpointIPC.restore({
-          threadId,
+          threadId: targetId,
           bundleId,
           createAutoCheckpoint: true,
           reason: 'restore'
         })
 
-        const history = await ChatService.getMessages(threadId)
-        setMessages(history as unknown as ChatMessage[])
-        resetStreaming(threadId)
+        const history = await ChatService.getMessages(targetId)
+        setThreadMessages(targetId, history as unknown as ChatMessage[])
+        resetStreaming(targetId)
 
         if (restoreContent) {
-          setDraftInput(restoreContent)
+          setThreadDraftInput(targetId, restoreContent)
         }
 
-        await refreshBundles(threadId)
+        await refreshBundles(targetId)
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Failed to restore checkpoint'
         setCheckpointError(message)
@@ -525,11 +562,11 @@ export const Chat: React.FC = () => {
       }
     },
     [
-      threadId,
+      currentThreadId,
       window.checkpointIPC,
       resetStreaming,
-      setMessages,
-      setDraftInput,
+      setThreadMessages,
+      setThreadDraftInput,
       refreshBundles,
       setCheckpointBusy,
       setCheckpointError,
@@ -571,7 +608,7 @@ export const Chat: React.FC = () => {
   }, [activeStreaming.toolCalls, historyTodos])
 
   return (
-    <div className="flex flex-col h-full bg-surface-50">
+    <div className="flex flex-col h-full w-full bg-surface-50 min-w-0 relative">
       {/* Subagent Task Pane (overlays the main content) */}
       {activeSubagentToolCallId && activeSubagentTool ? (
         <SubagentStreamPane
@@ -581,9 +618,12 @@ export const Chat: React.FC = () => {
         />
       ) : (
         <>
-          {/* Messages Area - responsive padding */}
-          <div className="flex-1 overflow-y-auto min-w-0">
-            <div className="max-w-4xl mx-auto w-full p-3 sm:p-4 md:p-6">
+          {/* Messages Area - responsive padding & centered */}
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto min-w-0 w-full custom-scrollbar flex flex-col items-center"
+          >
+            <div className="reading-column p-3 sm:p-4 md:p-6 flex-1 flex flex-col min-w-0">
               {checkpointError && (
                 <div
                   role="alert"
@@ -601,44 +641,60 @@ export const Chat: React.FC = () => {
                 </div>
               )}
 
-              <MessageList
-                messages={messages}
-                checkpointBundles={checkpointBundles}
-                checkpointBusy={checkpointBusy || activeStreaming.isStreaming}
-                onRestoreCheckpoint={handleRestoreCheckpoint}
-                onSystemAction={handleSystemAction}
-                onOpenSubagentTask={handleOpenSubagentTask}
-              />
+              {messages.length === 0 && !activeStreaming.isStreaming ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 my-auto animate-in fade-in zoom-in-95 duration-300">
+                  <div className="w-12 h-12 rounded-2xl bg-surface-200 flex items-center justify-center mb-4 text-black/70">
+                    <ChatIcon width={24} height={24} />
+                  </div>
+                  <p className="text-xs sm:text-sm text-[var(--ev-c-text-3)] max-w-sm">
+                    Ask questions, create documents, build canvas graphs, or inspect agent
+                    workflows.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <MessageList
+                    messages={messages}
+                    checkpointBundles={checkpointBundles}
+                    checkpointBusy={checkpointBusy || activeStreaming.isStreaming}
+                    onRestoreCheckpoint={handleRestoreCheckpoint}
+                    onSystemAction={handleSystemAction}
+                    onOpenSubagentTask={handleOpenSubagentTask}
+                  />
 
-              {/* Active Agent Stream */}
-              <div className="mt-4">
-                <AgentStream
-                  isStreaming={activeStreaming.isStreaming}
-                  currentNode={activeStreaming.currentNode}
-                  interrupt={activeStreaming.currentInterrupt}
-                  toolCalls={activeStreaming.toolCalls}
-                  blocks={activeStreaming.blocks}
-                  onResume={handleResume}
-                  onOpenSubagentTask={handleOpenSubagentTask}
-                />
-              </div>
-
-              <div ref={messagesEndRef} />
+                  {/* Active Agent Stream */}
+                  <div className="mt-4">
+                    <AgentStream
+                      isStreaming={activeStreaming.isStreaming}
+                      currentNode={activeStreaming.currentNode}
+                      interrupt={activeStreaming.currentInterrupt}
+                      toolCalls={activeStreaming.toolCalls}
+                      blocks={activeStreaming.blocks}
+                      onResume={handleResume}
+                      onOpenSubagentTask={handleOpenSubagentTask}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
           {/* Active Todos Display */}
-          <div className="max-w-4xl mx-auto w-full px-4">
-            <TodoCard todos={activeTodos} />
+          <div className="w-full px-4 shrink-0 flex justify-center">
+            <div className="reading-column">
+              <TodoCard todos={activeTodos} />
+            </div>
           </div>
 
           {/* Input Area - MessageInput Component */}
-          <div className="w-full max-w-4xl mx-auto px-4 pb-6 pt-2">
-            <MessageInput
-              onSendMessage={handleSendMessage}
-              onCancelMessage={handleCancelMessage}
-              disabled={activeStreaming.isStreaming}
-            />
+          <div className="w-full px-4 pb-4 sm:pb-6 pt-2 shrink-0 flex justify-center">
+            <div className="reading-column">
+              <MessageInput
+                onSendMessage={handleSendMessage}
+                onCancelMessage={handleCancelMessage}
+                disabled={activeStreaming.isStreaming}
+              />
+            </div>
           </div>
         </>
       )}

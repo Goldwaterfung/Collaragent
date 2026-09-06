@@ -1,5 +1,5 @@
 import React from 'react'
-import { renderMarkdown } from '../../utils/markdown'
+import { renderMarkdown, parseContentSegments } from '../../utils/markdown'
 import { ChatMessage } from '../../types/ui'
 import ToolCallCard from './ToolCallCard'
 import ReasoningCard from './ReasoningCard'
@@ -7,6 +7,8 @@ import { CheckpointMarker } from './CheckpointMarker'
 import type { CheckpointBundleSummary } from '@shared/ipc/checkpoints/types'
 import ProgressContainer from './ProgressContainer'
 import { groupBlocksByTodos } from './groupBlocks'
+import { ChatErrorBoundary } from './ChatErrorBoundary'
+import { MermaidDiagram } from './MermaidDiagram'
 
 type MessageListProps = {
   messages: ChatMessage[]
@@ -25,12 +27,26 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   onSystemAction,
   onOpenSubagentTask
 }) => {
-  const renderContent = (content: string) => (
-    <div
-      className="chat-markdown prose max-w-none text-sm sm:text-base wrap-break-word"
-      dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-    />
-  )
+  const renderContent = (content: string) => {
+    const segments = parseContentSegments(content)
+    return (
+      <ChatErrorBoundary fallbackContent={content}>
+        <div className="space-y-3">
+          {segments.map((seg, idx) =>
+            seg.type === 'mermaid' ? (
+              <MermaidDiagram key={idx} code={seg.code} />
+            ) : (
+              <div
+                key={idx}
+                className="chat-markdown prose max-w-none text-sm sm:text-base wrap-break-word"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.content) }}
+              />
+            )
+          )}
+        </div>
+      </ChatErrorBoundary>
+    )
+  }
 
   const bundleByMessageId = new Map<string, CheckpointBundleSummary>()
   let startBundle: CheckpointBundleSummary | undefined = undefined

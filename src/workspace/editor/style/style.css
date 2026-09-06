@@ -44,7 +44,7 @@ h1 {
 }
 
 .editor-container {
-  @apply relative mx-auto my-8 w-full max-w-3xl;
+  @apply relative mx-auto my-8 reading-column;
   background: white;
   color: var(--color-text);
   line-height: 1.75;

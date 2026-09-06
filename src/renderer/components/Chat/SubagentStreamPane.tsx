@@ -22,7 +22,7 @@ export const SubagentStreamPane: React.FC<SubagentStreamPaneProps> = ({
   const parsedTask = useMemo(() => parseSubagentTaskFromToolCall(tool), [tool])
   const task = storeTask || parsedTask
 
-  const resultRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
 
   const agentType = task.subagentType
@@ -34,7 +34,9 @@ export const SubagentStreamPane: React.FC<SubagentStreamPaneProps> = ({
   // Auto-scroll to result when it arrives
   useEffect(() => {
     if (result) {
-      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      const container = scrollContainerRef.current
+      if (!container) return
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
     }
   }, [result])
 
@@ -161,8 +163,11 @@ export const SubagentStreamPane: React.FC<SubagentStreamPaneProps> = ({
       </div>
 
       {/* ── Scrollable body ── */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto w-full p-4 sm:p-6 space-y-6">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto w-full custom-scrollbar flex flex-col items-center"
+      >
+        <div className="reading-column p-4 sm:p-6 space-y-6">
           {/* 1. Task Objective / Prompt Card */}
           {description && (
             <div>
@@ -338,7 +343,7 @@ export const SubagentStreamPane: React.FC<SubagentStreamPaneProps> = ({
 
           {/* 3. Final Synthesized Report Section */}
           {result && (
-            <div ref={resultRef} className="pt-2">
+            <div className="pt-2">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <svg

@@ -185,6 +185,7 @@ font-family:
 - Sidebar: 150px - 500px
 - Chat Panel: 300px - min(800px, 60% window width)
 - Workspace: Remaining flexible space
+- Reading Column (`reading-column`): 100% width up to max `48rem` (768px, equivalent to `max-w-3xl`), shared uniformly across CardEditor, Chat messages/inputs, and Subagent views
 
 ---
 

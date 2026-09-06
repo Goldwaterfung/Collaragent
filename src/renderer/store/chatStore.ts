@@ -10,14 +10,21 @@ import {
 
 interface ChatState {
   messages: ChatMessage[]
+  messagesByThread: Record<string, ChatMessage[]> // Keyed by threadId
   streamingParams: Record<string, StreamingState> // Keyed by threadId
   threadId: string | undefined
   draftInput?: string | null
+  draftInputs: Record<string, string> // Keyed by threadId
   subagentTasks: Record<string, SubagentTask> // Keyed by toolCallId
 
   // Actions
   addMessage: (message: ChatMessage) => void
   updateLastMessage: (updates: Partial<ChatMessage>) => void
+  addThreadMessage: (threadId: string, message: ChatMessage) => void
+  updateThreadLastMessage: (threadId: string, updates: Partial<ChatMessage>) => void
+  setThreadMessages: (threadId: string, messages: ChatMessage[]) => void
+  clearThreadMessages: (threadId: string) => void
+  setThreadDraftInput: (threadId: string, value: string | null) => void
 
   // All streaming actions now require a threadId
   setStreaming: (threadId: string, isStreaming: boolean, node?: string) => void
@@ -61,15 +68,27 @@ const initialStreamingState: StreamingState = {
 
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
-  streamingParams: {}, // New: Dictionary keyed by threadId
+  messagesByThread: {},
+  streamingParams: {}, // Dictionary keyed by threadId
   threadId: undefined,
   draftInput: null,
+  draftInputs: {},
   subagentTasks: {},
 
   addMessage: (message) =>
-    set((state) => ({
-      messages: [...state.messages, message]
-    })),
+    set((state) => {
+      const activeId = state.threadId
+      const nextMessages = [...state.messages, message]
+      return {
+        messages: nextMessages,
+        messagesByThread: activeId
+          ? {
+              ...state.messagesByThread,
+              [activeId]: [...(state.messagesByThread[activeId] || []), message]
+            }
+          : state.messagesByThread
+      }
+    }),
 
   updateLastMessage: (updates) =>
     set((state) => {
@@ -77,8 +96,75 @@ export const useChatStore = create<ChatState>((set) => ({
       if (messages.length > 0) {
         messages[messages.length - 1] = { ...messages[messages.length - 1], ...updates }
       }
-      return { messages }
+      const activeId = state.threadId
+      return {
+        messages,
+        messagesByThread: activeId
+          ? {
+              ...state.messagesByThread,
+              [activeId]: messages
+            }
+          : state.messagesByThread
+      }
     }),
+
+  addThreadMessage: (threadId, message) =>
+    set((state) => {
+      const existing = state.messagesByThread[threadId] || []
+      const nextThreadMessages = [...existing, message]
+      return {
+        messagesByThread: {
+          ...state.messagesByThread,
+          [threadId]: nextThreadMessages
+        },
+        messages: state.threadId === threadId ? nextThreadMessages : state.messages
+      }
+    }),
+
+  updateThreadLastMessage: (threadId, updates) =>
+    set((state) => {
+      const existing = state.messagesByThread[threadId] || []
+      if (existing.length === 0) return state
+      const nextThreadMessages = [...existing]
+      nextThreadMessages[nextThreadMessages.length - 1] = {
+        ...nextThreadMessages[nextThreadMessages.length - 1],
+        ...updates
+      }
+      return {
+        messagesByThread: {
+          ...state.messagesByThread,
+          [threadId]: nextThreadMessages
+        },
+        messages: state.threadId === threadId ? nextThreadMessages : state.messages
+      }
+    }),
+
+  setThreadMessages: (threadId, messages) =>
+    set((state) => ({
+      messagesByThread: {
+        ...state.messagesByThread,
+        [threadId]: messages
+      },
+      messages: state.threadId === threadId ? messages : state.messages
+    })),
+
+  clearThreadMessages: (threadId) =>
+    set((state) => {
+      const { [threadId]: _, ...rest } = state.messagesByThread
+      return {
+        messagesByThread: rest,
+        messages: state.threadId === threadId ? [] : state.messages
+      }
+    }),
+
+  setThreadDraftInput: (threadId, value) =>
+    set((state) => ({
+      draftInputs: {
+        ...state.draftInputs,
+        [threadId]: value || ''
+      },
+      draftInput: state.threadId === threadId ? value : state.draftInput
+    })),
 
   // Refactored: setStreaming now takes threadId
   setStreaming: (threadId, isStreaming, node) =>
@@ -145,13 +231,45 @@ export const useChatStore = create<ChatState>((set) => ({
       }
     }),
 
-  setThreadId: (id) => set({ threadId: id }),
+  setThreadId: (id) =>
+    set((state) => ({
+      threadId: id,
+      messages: state.messagesByThread[id] || [],
+      draftInput: state.draftInputs[id] || null
+    })),
 
-  clearMessages: () => set({ messages: [] }),
+  clearMessages: () =>
+    set((state) => ({
+      messages: [],
+      messagesByThread: state.threadId
+        ? {
+            ...state.messagesByThread,
+            [state.threadId]: []
+          }
+        : state.messagesByThread
+    })),
 
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messages) =>
+    set((state) => ({
+      messages,
+      messagesByThread: state.threadId
+        ? {
+            ...state.messagesByThread,
+            [state.threadId]: messages
+          }
+        : state.messagesByThread
+    })),
 
-  setDraftInput: (value) => set({ draftInput: value }),
+  setDraftInput: (value) =>
+    set((state) => ({
+      draftInput: value,
+      draftInputs: state.threadId
+        ? {
+            ...state.draftInputs,
+            [state.threadId]: value || ''
+          }
+        : state.draftInputs
+    })),
 
   resetStreaming: (threadId) =>
     set((state) => {

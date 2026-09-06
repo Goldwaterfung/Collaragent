@@ -79,8 +79,17 @@ ul {
   list-style: none;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
 body {
-  min-height: 100vh;
   color: var(--color-text);
   background: var(--color-background);
   line-height: 1.6;
@@ -157,4 +166,10 @@ body {
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* Unified reading column constraint for CardEditor and Chat surfaces */
+@utility reading-column {
+  width: 100%;
+  max-width: 48rem; /* 768px */
 }

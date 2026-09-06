@@ -8,47 +8,79 @@ import { PlusIcon } from '../../assets/icons/PlusIcon'
 import { SettingsIcon } from '../../assets/icons/SettingsIcon'
 import * as ChatService from '@shared/services/ChatService'
 import { useProjectSession } from '@workspace/contexts/project/ProjectSession'
-import type { ChatMessage } from '../../types/ui'
+import type { IDockviewPanelProps } from 'dockview-react'
+import { emitOpenChatTab } from '../Workspace/layoutPersistence'
+import { useUiStore } from '../../store/uiStore'
 
 export interface ChatContainerProps {
-  onOpenSettings: () => void
+  sessionId?: string
+  dockviewPanelApi?: IDockviewPanelProps['api']
+  onOpenSettings?: () => void
 }
 
-export const ChatContainer: React.FC<ChatContainerProps> = ({ onOpenSettings }) => {
+export const ChatContainer: React.FC<ChatContainerProps> = ({
+  sessionId,
+  dockviewPanelApi,
+  onOpenSettings
+}) => {
   const [showHistory, setShowHistory] = useState(false)
-  const { threadId, setThreadId, setMessages, clearMessages } = useChatStore()
+  const { threadId, setThreadId } = useChatStore()
   const { hasSession, apiPort } = useProjectSession()
 
-  const handleSelectSession = useCallback(
-    async (sessionId: string) => {
-      try {
-        const history = await ChatService.getMessages(sessionId)
-        setMessages(history as unknown as ChatMessage[])
-        setThreadId(sessionId)
-      } catch (error: unknown) {
-        // ChatService will already log missing apiPort. Keep console debug here.
-        console.error('Failed to load history:', error)
-      }
-    },
-    [setMessages, setThreadId]
-  )
+  const activeSessionId = sessionId || threadId
+
+  const handleSelectSession = useCallback((selectedSessionId: string) => {
+    setShowHistory(false)
+    emitOpenChatTab(selectedSessionId)
+  }, [])
 
   const handleNewChat = useCallback(() => {
-    clearMessages()
-    setThreadId(crypto.randomUUID())
-  }, [clearMessages, setThreadId])
+    const newSessionId = crypto.randomUUID()
+    emitOpenChatTab(newSessionId)
+  }, [])
+
+  const handleOpenSettings = useCallback(() => {
+    if (onOpenSettings) {
+      onOpenSettings()
+    } else {
+      useUiStore.getState().openSettings()
+    }
+  }, [onOpenSettings])
+
+  useEffect(() => {
+    if (!dockviewPanelApi || !activeSessionId) return
+    let isMounted = true
+
+    ChatService.getSessions()
+      .then((sessions) => {
+        if (!isMounted) return
+        const found = sessions.find((s) => s.id === activeSessionId)
+        if (found?.title) {
+          dockviewPanelApi.setTitle(found.title)
+        }
+      })
+      .catch((error: unknown) => {
+        if (isMounted) {
+          console.warn('Failed to resolve chat session title:', error)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [dockviewPanelApi, activeSessionId])
 
   useEffect(() => {
     let isMounted = true
 
-    if (hasSession && apiPort && !threadId) {
+    if (hasSession && apiPort && !activeSessionId) {
       ChatService.getSessions()
         .then(async (sessions) => {
           if (!isMounted) return
           if (sessions.length > 0) {
-            await handleSelectSession(sessions[0].id)
+            setThreadId(sessions[0].id)
           } else {
-            handleNewChat()
+            setThreadId(crypto.randomUUID())
           }
         })
         .catch((error: unknown) => {
@@ -61,34 +93,33 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ onOpenSettings }) 
     return () => {
       isMounted = false
     }
-  }, [hasSession, apiPort, threadId, handleSelectSession, handleNewChat])
+  }, [hasSession, apiPort, activeSessionId, setThreadId])
 
   return (
-    <div className="flex flex-col h-full w-full relative border-l border-surface-200">
+    <div className="flex flex-col h-full w-full relative bg-surface-50">
       {/* Header / Toolbar */}
-      <div className="flex items-center justify-between p-3 border-b border-surface-200 bg-surface-50/80 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-200 bg-surface-50/80 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setShowHistory(!showHistory)}
             className={`p-1.5 rounded-md transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary ${showHistory ? 'bg-primary/20 text-primary' : 'hover:bg-surface-200 text-black/60 hover:text-black'}`}
-            title="History"
           >
             <HistoryIcon />
           </button>
-          <h2 className="text-sm font-semibold text-black/70">Chat</h2>
         </div>
         <div className="flex items-center gap-1">
           <button
+            type="button"
             onClick={handleNewChat}
             className="p-1.5 rounded-md hover:bg-surface-200 text-black/60 hover:text-black transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
-            title="New Chat"
           >
             <PlusIcon />
           </button>
           <button
-            onClick={onOpenSettings}
+            type="button"
+            onClick={handleOpenSettings}
             className="p-1.5 rounded-md hover:bg-surface-200 text-black/60 hover:text-black transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
-            title="Settings"
           >
             <SettingsIcon />
           </button>
@@ -96,14 +127,14 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ onOpenSettings }) 
       </div>
 
       {/* Chat Content */}
-      <div className="flex-1 flex overflow-hidden relative">
-        <div className="flex-1 h-full overflow-hidden">
-          <Chat />
+      <div className="flex-1 flex flex-col overflow-hidden relative w-full h-full min-w-0">
+        <div className="flex-1 h-full w-full overflow-hidden flex flex-col min-w-0">
+          <Chat sessionId={activeSessionId} />
         </div>
 
         {showHistory && (
           <div className="absolute left-0 top-0 h-full z-40 shadow-lg">
-            <ChatHistory onSelectSession={handleSelectSession} currentSessionId={threadId} />
+            <ChatHistory onSelectSession={handleSelectSession} currentSessionId={activeSessionId} />
           </div>
         )}
       </div>

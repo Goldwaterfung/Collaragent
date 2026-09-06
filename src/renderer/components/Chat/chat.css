@@ -1,82 +1,213 @@
 @reference "../../assets/base.css";
+@import 'katex/dist/katex.css';
 
 /* Scoped markdown styling for chat output. */
 .chat-markdown {
-	& ul {
-		@apply list-disc pl-6;
-	}
+  & ul {
+    @apply list-disc pl-6;
+  }
 
-	& ol {
-		@apply list-decimal pl-6;
-	}
+  & ol {
+    @apply list-decimal pl-6;
+  }
 
-	& li {
-		@apply my-1;
-	}
+  & li {
+    @apply my-1;
+  }
 
-	& h1,
-	& h2,
-	& h3 {
-		@apply font-semibold mt-3 mb-2;
-	}
+  & h1,
+  & h2,
+  & h3 {
+    @apply font-semibold mt-3 mb-2;
+  }
 
-	& h1 {
-		@apply text-2xl;
-	}
+  & h1 {
+    @apply text-2xl;
+  }
 
-	& h2 {
-		@apply text-xl;
-	}
+  & h2 {
+    @apply text-xl;
+  }
 
-	& h3 {
-		@apply text-[1.1rem];
-	}
+  & h3 {
+    @apply text-[1.1rem];
+  }
 
-	& p {
-		@apply my-2;
-	}
+  & h4,
+  & h5,
+  & h6 {
+    @apply font-semibold mt-2.5 mb-1.5 text-black/90;
+  }
 
-	& strong {
-		@apply font-semibold;
-	}
+  & h4 {
+    @apply text-base;
+  }
 
-	& em {
-		@apply italic;
-	}
+  & h5 {
+    @apply text-sm;
+  }
 
-	& blockquote {
-		@apply my-3 pl-3 border-l-[3px] border-black/20 text-black/70;
-	}
+  & h6 {
+    @apply text-xs uppercase tracking-wider text-black/60;
+  }
 
-	& code {
-		@apply px-[0.3rem] py-[0.1rem] rounded-sm bg-surface-100 font-mono text-[0.95em];
-	}
+  & p {
+    @apply my-2;
+  }
 
-	& pre {
-		@apply my-3 p-3 rounded-md bg-surface-100 overflow-x-auto;
+  & strong {
+    @apply font-semibold;
+  }
 
-		&::-webkit-scrollbar {
-			@apply h-1.5;
-		}
+  & em {
+    @apply italic;
+  }
 
-		&::-webkit-scrollbar-track {
-			@apply bg-transparent;
-		}
+  & blockquote {
+    @apply my-3 pl-3 border-l-[3px] border-black/20 text-black/70;
+  }
 
-		&::-webkit-scrollbar-thumb {
-			@apply bg-surface-300 rounded-full hover:bg-primary/80;
-		}
-	}
+  & code {
+    @apply px-[0.3rem] py-[0.1rem] rounded-sm bg-surface-100 font-mono text-[0.95em];
+  }
 
-	& pre code {
-		@apply p-0 bg-transparent;
-	}
+  & pre {
+    @apply my-3 p-3 rounded-md bg-surface-100 overflow-x-auto;
 
-	& hr {
-		@apply my-4 border-0 border-t border-black/15;
-	}
+    &::-webkit-scrollbar {
+      @apply h-1.5;
+    }
 
-	& a {
-		@apply underline underline-offset-2;
-	}
+    &::-webkit-scrollbar-track {
+      @apply bg-transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      @apply bg-surface-300 rounded-full hover:bg-primary/80;
+    }
+  }
+
+  & pre code {
+    @apply p-0 bg-transparent;
+  }
+
+  & hr {
+    @apply my-4 border-0 border-t border-black/15;
+  }
+
+  & a {
+    @apply underline underline-offset-2;
+  }
+
+  & img {
+    @apply max-w-full h-auto rounded-lg border border-surface-200 my-2;
+  }
+
+  /* GFM Tables */
+  & .chat-table-wrapper {
+    @apply my-3 w-full overflow-x-auto rounded-lg border border-surface-200 bg-white;
+  }
+
+  & table {
+    @apply w-full border-collapse text-left text-sm;
+  }
+
+  & thead {
+    @apply bg-surface-100/70 border-b border-surface-200 text-xs uppercase tracking-wider font-semibold text-black/70;
+  }
+
+  & th {
+    @apply px-4 py-2.5 font-semibold;
+  }
+
+  & td {
+    @apply px-4 py-2 border-b border-surface-200/50 text-black/85;
+  }
+
+  & tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  & tbody tr:nth-child(even) {
+    @apply bg-surface-50/50;
+  }
+
+  & tbody tr:hover {
+    @apply bg-surface-100/40 transition-colors;
+  }
+}
+
+/* Prism Syntax Highlighting Tokens */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: #4b5563;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol {
+  color: #4f46e5;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #059669;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #d97706;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #9333ea;
+  font-weight: 500;
+}
+
+.token.function,
+.token.class-name {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #b45309;
+}
+
+.token.important,
+.token.bold {
+  font-weight: 700;
+}
+
+.token.italic {
+  font-style: italic;
+}
+
+/* Mermaid SVG display */
+.mermaid-svg-container svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
 }

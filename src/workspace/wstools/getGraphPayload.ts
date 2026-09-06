@@ -25,7 +25,9 @@ export async function getGraphPayload(overrides: GetGraphPayloadOptions = {}) {
     }
 
     const snapRecord =
-      snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : undefined
+      snapshot && typeof snapshot === 'object'
+        ? (snapshot as unknown as Record<string, unknown>)
+        : undefined
 
     const rawPayload = snapRecord?.graph
       ? {
