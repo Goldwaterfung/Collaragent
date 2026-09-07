@@ -1127,7 +1127,7 @@ export async function startFilesystemApi(
           restoredPayload = await storage.loadWorkspaceSnapshot(instance.snapshotId)
         }
 
-        if (restoredPayload === undefined) {
+        if (restoredPayload === undefined || restoredPayload === null) {
           const livePayload = instancePayloads.get(instance.instanceId)
           const logEntries = storage.getWorkspaceLogEntries
             ? storage.getWorkspaceLogEntries(instance.instanceId)
@@ -1157,13 +1157,17 @@ export async function startFilesystemApi(
                 undoEntries
               )
             }
-          } else if (livePayload !== undefined) {
+          } else if (livePayload !== undefined && !instance.snapshotId) {
             restoredPayload = livePayload
           }
         }
 
-        if (restoredPayload === undefined) {
-          continue
+        if (restoredPayload === undefined || restoredPayload === null) {
+          throw new StorageError(
+            StorageErrorCode.STORAGE_CHECKPOINT_NOT_FOUND,
+            `Failed to restore workspace snapshot for instance '${instance.instanceId}'. Snapshot data is missing or corrupted.`,
+            { instanceId: instance.instanceId, snapshotId: instance.snapshotId }
+          )
         }
 
         storage.updateInstance(instance.instanceId, {
@@ -1175,7 +1179,8 @@ export async function startFilesystemApi(
           type: 'update',
           instanceId: instance.instanceId,
           payload: restoredPayload,
-          clientId: 'system-checkpoint-restore'
+          clientId: 'system-checkpoint-restore',
+          sequenceNumber: instance.targetCursor?.seq ?? 0
         })
       }
 

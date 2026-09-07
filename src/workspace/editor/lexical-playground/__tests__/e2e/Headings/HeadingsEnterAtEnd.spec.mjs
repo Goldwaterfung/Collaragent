@@ -6,28 +6,21 @@
  *
  */
 
-import {
-  assertHTML,
-  click,
-  focusEditor,
-  html,
-  initialize,
-  test,
-} from '../../utils/index.mjs';
+import { assertHTML, click, focusEditor, html, initialize, test } from '../../utils/index.mjs'
 
 test('Headings - changes to a paragraph when you press enter at the end of a heading', async ({
   page,
   isPlainText,
-  isCollab,
+  isCollab
 }) => {
-  test.skip(isPlainText);
-  await initialize({isCollab, page});
-  await focusEditor(page);
+  test.skip(isPlainText)
+  await initialize({ isCollab, page })
+  await focusEditor(page)
 
-  await click(page, '.block-controls');
-  await click(page, '.dropdown .icon.h1');
+  await click(page, '.block-controls')
+  await click(page, '.dropdown .icon.h1')
 
-  await page.keyboard.type('Welcome to the playground');
+  await page.keyboard.type('Welcome to the playground')
 
   await assertHTML(
     page,
@@ -35,10 +28,10 @@ test('Headings - changes to a paragraph when you press enter at the end of a hea
       <h1 class="PlaygroundEditorTheme__h1" dir="auto">
         <span data-lexical-text="true">Welcome to the playground</span>
       </h1>
-    `,
-  );
+    `
+  )
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter')
 
   await assertHTML(
     page,
@@ -47,6 +40,6 @@ test('Headings - changes to a paragraph when you press enter at the end of a hea
         <span data-lexical-text="true">Welcome to the playground</span>
       </h1>
       <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-    `,
-  );
-});
+    `
+  )
+})

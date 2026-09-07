@@ -16,6 +16,7 @@ import {
 } from '../config/sqliteConfig'
 import { StorageError, StorageErrorCode, isStorageError } from '../errors/StorageErrors'
 import { V4_INIT_SQL } from './migrations/v4_init_sql'
+import { V5_CAS_BLOBS_SQL } from './migrations/v5_cas_blobs_sql'
 
 export interface SqliteDatabaseOptions {
   config?: SqliteEngineConfig
@@ -95,57 +96,6 @@ export class SqliteDatabase {
     }
   }
 
-  private ensureWorkspaceSnapshotsNullable(): void {
-    const tableExists = this.db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='workspace_snapshots'")
-      .get()
-    if (!tableExists) return
-
-    const tableInfo = this.db.prepare("PRAGMA table_info('workspace_snapshots')").all()
-    let isNotNull = false
-    for (const col of tableInfo) {
-      if (
-        typeof col === 'object' &&
-        col !== null &&
-        'name' in col &&
-        col.name === 'instance_id' &&
-        'notnull' in col &&
-        typeof col.notnull === 'number' &&
-        col.notnull === 1
-      ) {
-        isNotNull = true
-        break
-      }
-    }
-
-    if (!isNotNull) return
-
-    this.immediateTransaction(() => {
-      this.db.pragma('foreign_keys = OFF')
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS workspace_snapshots_new (
-            id TEXT PRIMARY KEY NOT NULL,
-            instance_id TEXT REFERENCES instances(id) ON DELETE CASCADE,
-            project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-            instance_type TEXT,
-            snapshot_ref TEXT NOT NULL UNIQUE,
-            snapshot_hash TEXT NOT NULL,
-            snapshot_cursor_json TEXT NOT NULL DEFAULT '{}',
-            snapshot_msgpack BLOB NOT NULL,
-            created_at TEXT NOT NULL
-        );
-
-        INSERT INTO workspace_snapshots_new
-        SELECT id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, snapshot_cursor_json, snapshot_msgpack, created_at
-        FROM workspace_snapshots;
-
-        DROP TABLE workspace_snapshots;
-        ALTER TABLE workspace_snapshots_new RENAME TO workspace_snapshots;
-      `)
-      this.db.pragma('foreign_keys = ON')
-    })
-  }
-
   public migrate(): void {
     try {
       const currentVersion = this.getUserVersion()
@@ -163,7 +113,21 @@ export class SqliteDatabase {
         })
       }
 
-      this.ensureWorkspaceSnapshotsNullable()
+      if (this.getUserVersion() < 5) {
+        let ddlV5: string
+        const migrationFileV5 = path.join(this.migrationsDir, '002_cas_blobs.sql')
+        if (fs.existsSync(migrationFileV5)) {
+          ddlV5 = fs.readFileSync(migrationFileV5, 'utf8')
+        } else {
+          ddlV5 = V5_CAS_BLOBS_SQL
+        }
+
+        this.immediateTransaction(() => {
+          this.db.pragma('foreign_keys = OFF')
+          this.db.exec(ddlV5)
+          this.db.pragma('foreign_keys = ON')
+        })
+      }
 
       if (!this.foreignKeyCheck()) {
         throw new StorageError(

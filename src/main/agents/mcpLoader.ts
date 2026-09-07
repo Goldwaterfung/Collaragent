@@ -1,17 +1,19 @@
-import { MultiServerMCPClient } from "@langchain/mcp-adapters";
-import type { StdioConnection, StreamableHTTPConnection } from "@langchain/mcp-adapters";
-import { MCPServerConfig } from "../../shared/config/types";
-import { logger } from "../utils/Logger";
-import crypto from "crypto";
+import { MultiServerMCPClient } from '@langchain/mcp-adapters'
+import type { StdioConnection, StreamableHTTPConnection } from '@langchain/mcp-adapters'
+import { MCPServerConfig } from '../../shared/config/types'
+import { logger } from '../utils/Logger'
+import crypto from 'crypto'
 
-type ServerMap = Record<string, StdioConnection | StreamableHTTPConnection>;
+type ServerMap = Record<string, StdioConnection | StreamableHTTPConnection>
 
 // --- Implementation for dynamic-subagent: BEGIN ---
-// Cache individual MCP clients and their tools to prevent duplicate process spawning 
+// Cache individual MCP clients and their tools to prevent duplicate process spawning
 // and resource leaks when loadMCPTools is called multiple times.
-const mcpServerCache = new Map<string, Promise<{ client: MultiServerMCPClient | null; tools: any[] }>>();
+const mcpServerCache = new Map<
+  string,
+  Promise<{ client: MultiServerMCPClient | null; tools: any[] }>
+>()
 // --- Implementation for dynamic-subagent: END ---
-
 
 /**
  * Converts our app's MCPServerConfig[] into a server map keyed by server id.
@@ -22,52 +24,54 @@ function buildServerMap(
   mcpServers: MCPServerConfig[],
   resolveApiKey: (id: string) => string | undefined
 ): ServerMap {
-  const servers: ServerMap = {};
+  const servers: ServerMap = {}
 
   for (const server of mcpServers) {
+    const { id, transport, requireAPI, apiKeyName } = server
 
-    const { id, transport, requireAPI, apiKeyName } = server;
-
-    if (transport.type === "stdio") {
+    if (transport.type === 'stdio') {
       if (!transport.command) {
-        logger.warn(`MCP server "${id}" uses stdio but has no command — skipped.`);
-        continue;
+        logger.warn(`MCP server "${id}" uses stdio but has no command — skipped.`)
+        continue
       }
 
       // Inject process.env to ensure PATH and other necessary variables are available
-      const env: Record<string, string> = { ...process.env, ...(transport.env || {}) } as Record<string, string>;
+      const env: Record<string, string> = { ...process.env, ...(transport.env || {}) } as Record<
+        string,
+        string
+      >
       if (requireAPI) {
-        const apiKey = resolveApiKey(id);
+        const apiKey = resolveApiKey(id)
         if (apiKey) {
-          env[apiKeyName || "API_KEY"] = apiKey;
+          env[apiKeyName || 'API_KEY'] = apiKey
         }
       }
 
       const conn: StdioConnection = {
-        transport: "stdio",
+        transport: 'stdio',
         command: transport.command,
         args: transport.args ?? [],
-        env,
-      };
-      servers[id] = conn;
-    } else if (transport.type === "sse" || transport.type === "http") {
+        env
+      }
+      servers[id] = conn
+    } else if (transport.type === 'sse' || transport.type === 'http') {
       if (!transport.url) {
-        logger.warn(`MCP server "${id}" uses ${transport.type} but has no url — skipped.`);
-        continue;
+        logger.warn(`MCP server "${id}" uses ${transport.type} but has no url — skipped.`)
+        continue
       }
 
       const conn: StreamableHTTPConnection = {
-        transport: "http",
+        transport: 'http',
         url: transport.url,
-        automaticSSEFallback: true,
-      };
-      servers[id] = conn;
+        automaticSSEFallback: true
+      }
+      servers[id] = conn
     } else {
-      logger.warn(`MCP server "${id}" has unknown transport type — skipped.`);
+      logger.warn(`MCP server "${id}" has unknown transport type — skipped.`)
     }
   }
 
-  return servers;
+  return servers
 }
 
 export async function loadMCPTools(
@@ -75,21 +79,21 @@ export async function loadMCPTools(
   resolveApiKey: (id: string) => string | undefined
 ): Promise<any[]> {
   if (mcpServers.length === 0) {
-    return [];
+    return []
   }
 
-  const serverMap = buildServerMap(mcpServers, resolveApiKey);
+  const serverMap = buildServerMap(mcpServers, resolveApiKey)
 
   if (Object.keys(serverMap).length === 0) {
-    return [];
+    return []
   }
 
-  const allTools: any[] = [];
-  const disabledToolsSet = new Set<string>();
+  const allTools: any[] = []
+  const disabledToolsSet = new Set<string>()
 
   for (const server of mcpServers) {
     if (server.disabledTools) {
-      server.disabledTools.forEach(t => disabledToolsSet.add(t));
+      server.disabledTools.forEach((t) => disabledToolsSet.add(t))
     }
   }
 
@@ -98,40 +102,45 @@ export async function loadMCPTools(
   // can repeatedly fetch all tools without causing process collision.
   const promises = Object.entries(serverMap).map(async ([serverId, conn]) => {
     // Hash the connection configuration to reuse if unchanged
-    const cacheKey = crypto.createHash("sha256").update(JSON.stringify({ serverId, conn })).digest("hex");
-    
-    let cachedPromise = mcpServerCache.get(cacheKey);
+    const cacheKey = crypto
+      .createHash('sha256')
+      .update(JSON.stringify({ serverId, conn }))
+      .digest('hex')
+
+    let cachedPromise = mcpServerCache.get(cacheKey)
     if (!cachedPromise) {
       cachedPromise = (async () => {
         try {
-          const singleServerMap = { [serverId]: conn };
-          const client = new MultiServerMCPClient({ mcpServers: singleServerMap });
+          const singleServerMap = { [serverId]: conn }
+          const client = new MultiServerMCPClient({ mcpServers: singleServerMap })
           // Note: getTools() returns tools specifically named for `serverId`
-          const tools = await client.getTools();
-          return { client, tools };
+          const tools = await client.getTools()
+          return { client, tools }
         } catch (err) {
-          logger.error(`Failed to load MCP tools for server ${serverId}`, err);
-          return { client: null, tools: [] };
+          logger.error(`Failed to load MCP tools for server ${serverId}`, err)
+          return { client: null, tools: [] }
         }
-      })();
-      mcpServerCache.set(cacheKey, cachedPromise);
+      })()
+      mcpServerCache.set(cacheKey, cachedPromise)
     }
-    
-    const { tools } = await cachedPromise;
-    return tools;
-  });
 
-  const toolsArrays = await Promise.all(promises);
+    const { tools } = await cachedPromise
+    return tools
+  })
+
+  const toolsArrays = await Promise.all(promises)
   for (const tools of toolsArrays) {
-    allTools.push(...tools);
+    allTools.push(...tools)
   }
   // --- Implementation for dynamic-subagent: END ---
 
   // Filter out disabled tools
-  const filteredTools = allTools.filter(tool => !disabledToolsSet.has(tool.name));
+  const filteredTools = allTools.filter((tool) => !disabledToolsSet.has(tool.name))
 
-  logger.info(`Loaded ${filteredTools.length} MCP tools (${allTools.length - filteredTools.length} disabled) from ${Object.keys(serverMap).length} servers`);
-  return filteredTools;
+  logger.info(
+    `Loaded ${filteredTools.length} MCP tools (${allTools.length - filteredTools.length} disabled) from ${Object.keys(serverMap).length} servers`
+  )
+  return filteredTools
 }
 
 /**
@@ -143,12 +152,11 @@ export async function fetchToolsForServer(
   resolveApiKey: (id: string) => string | undefined
 ): Promise<{ name: string; description?: string }[]> {
   // We temporarily enable the server just to fetch its tools without filtering them out
-  const configCopy = { ...serverConfig, enabled: true, disabledTools: [] };
-  const tools = await loadMCPTools([configCopy], resolveApiKey);
+  const configCopy = { ...serverConfig, enabled: true, disabledTools: [] }
+  const tools = await loadMCPTools([configCopy], resolveApiKey)
 
-  return tools.map(t => ({
+  return tools.map((t) => ({
     name: t.name,
-    description: t.description,
-  }));
+    description: t.description
+  }))
 }
-

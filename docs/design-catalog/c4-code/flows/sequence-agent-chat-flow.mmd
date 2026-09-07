@@ -24,10 +24,17 @@ sequenceDiagram
 
     ExtLLM-->>Agent: ToolCall: manageGraph(action: "writeGraph", spec: {...})
     Agent->>Agent: CanvasDiffEngine computes atomic CanvasCommands
-    Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
-    WSS->>WSS: OCC validation (baseVersion >= currentSeq); buffer in proposals[instanceId][threadId]
-    WSS-->>UI: WebSocket push: sync-command & sync-changes (with threadId)
-    UI->>UI: Render Proposal Banner for thread ("Agent modified canvas: 1 node added")
+    alt Direct Workspace Tool Call (Default: staged = false)
+        Agent->>WSS: Broadcast command with { staged: false, threadId, baseVersion }
+        WSS->>WSS: OCC validation & apply to live doc
+        WSS->>WSS: debouncedSave() persists directly to SQLite
+        WSS-->>UI: WebSocket push: sync-command (renders immediately)
+    else Proposal Staging Flow (Explicit: staged = true)
+        Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
+        WSS->>WSS: OCC validation & buffer in proposals[instanceId][threadId]
+        WSS-->>UI: WebSocket push: sync-command & sync-changes (with threadId)
+        UI->>UI: Render Proposal Banner for thread ("Agent modified canvas: 1 node added")
+    end
 
     ExtLLM-->>Agent: Final synthesis text
     Agent-->>Main: Turn finished & persist assistant message

@@ -4,72 +4,72 @@
  */
 export interface SkillEntry {
   /** Skill name (from frontmatter `name` field) */
-  name: string;
+  name: string
   /** Skill description (from frontmatter `description`, max 1024 chars) */
-  description: string;
+  description: string
   /** Absolute path to the SKILL.md file itself */
-  skillMdPath: string;
+  skillMdPath: string
   /** Absolute path to the skill's parent directory */
-  skillDirPath: string;
+  skillDirPath: string
   /** Which configured source directory this came from */
-  sourcePath: string;
+  sourcePath: string
   /** Optional: license from frontmatter */
-  license?: string;
+  license?: string
   /** Optional: compatibility notes from frontmatter */
-  compatibility?: string;
+  compatibility?: string
 }
 
 // --- Request / Response Types ---
 
 export interface SkillsListRequest {
   /** Source directory to scan. If empty, uses configured source from config. */
-  source?: string;
+  source?: string
 }
 
 export interface SkillsListResponse {
-  skills: SkillEntry[];
-  errors: Array<{ source: string; error: string }>; // non-fatal per-source errors
+  skills: SkillEntry[]
+  errors: Array<{ source: string; error: string }> // non-fatal per-source errors
 }
 
 export interface SkillsReadFileRequest {
-  path: string;
+  path: string
 }
 
 export interface SkillsReadFileResponse {
-  content: string;
+  content: string
 }
 
 export interface SkillsWriteFileRequest {
-  path: string;
-  content: string;
+  path: string
+  content: string
 }
 
 export interface SkillsWriteFileResponse {
-  success: boolean;
+  success: boolean
 }
 
 export interface SkillsCreateRequest {
   /** Which source directory to create the skill in */
-  sourcePath: string;
+  sourcePath: string
   /** Skill directory name (must be lowercase-alphanumeric-with-hyphens) */
-  name: string;
+  name: string
 }
 
 export interface SkillsCreateResponse {
-  skillMdPath: string; // absolute path to the new SKILL.md
-  success: boolean;
+  skillMdPath: string // absolute path to the new SKILL.md
+  success: boolean
 }
 
 export interface SkillsDeleteRequest {
-  skillDirPath: string;
+  skillDirPath: string
 }
 
 export interface SkillsDeleteResponse {
-  success: boolean;
+  success: boolean
 }
 
 export interface SkillsPickDirectoryRequest {}
 
 export interface SkillsPickDirectoryResponse {
-  path: string | null; // null if user cancelled the dialog
+  path: string | null // null if user cancelled the dialog
 }

@@ -9,30 +9,23 @@
 import {
   moveRight,
   moveToEditorBeginning,
-  STANDARD_KEYPRESS_DELAY_MS,
-} from '../../keyboardShortcuts/index.mjs';
-import {
-  assertHTML,
-  click,
-  focusEditor,
-  html,
-  initialize,
-  test,
-} from '../../utils/index.mjs';
+  STANDARD_KEYPRESS_DELAY_MS
+} from '../../keyboardShortcuts/index.mjs'
+import { assertHTML, click, focusEditor, html, initialize, test } from '../../utils/index.mjs'
 
 test(`Headings - stays as a heading when you press enter in the middle of a heading`, async ({
   page,
   isCollab,
-  isPlainText,
+  isPlainText
 }) => {
-  test.skip(isPlainText);
-  await initialize({isCollab, page});
-  await focusEditor(page);
+  test.skip(isPlainText)
+  await initialize({ isCollab, page })
+  await focusEditor(page)
 
-  await click(page, '.block-controls');
-  await click(page, '.dropdown .icon.h1');
+  await click(page, '.block-controls')
+  await click(page, '.dropdown .icon.h1')
 
-  await page.keyboard.type('Welcome to the playground');
+  await page.keyboard.type('Welcome to the playground')
 
   await assertHTML(
     page,
@@ -40,14 +33,14 @@ test(`Headings - stays as a heading when you press enter in the middle of a head
       <h1 class="PlaygroundEditorTheme__h1" dir="auto">
         <span data-lexical-text="true">Welcome to the playground</span>
       </h1>
-    `,
-  );
+    `
+  )
 
-  await moveToEditorBeginning(page);
+  await moveToEditorBeginning(page)
 
-  await moveRight(page, 5, STANDARD_KEYPRESS_DELAY_MS);
+  await moveRight(page, 5, STANDARD_KEYPRESS_DELAY_MS)
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter')
 
   await assertHTML(
     page,
@@ -58,6 +51,6 @@ test(`Headings - stays as a heading when you press enter in the middle of a head
       <h1 class="PlaygroundEditorTheme__h1" dir="auto">
         <span data-lexical-text="true">me to the playground</span>
       </h1>
-    `,
-  );
-});
+    `
+  )
+})

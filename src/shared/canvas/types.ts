@@ -1,10 +1,10 @@
-import { Graph, NodeId } from './entities';
+import { Graph, NodeId } from './entities'
 
 export interface NodeLayout {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 /**
@@ -12,6 +12,6 @@ export interface NodeLayout {
  * and the visual layout of nodes.
  */
 export interface CanvasSnapshot {
-  graph: Graph;
-  layoutByNodeId: Record<NodeId, NodeLayout>;
+  graph: Graph
+  layoutByNodeId: Record<NodeId, NodeLayout>
 }

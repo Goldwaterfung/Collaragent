@@ -1,67 +1,68 @@
-import { NodeId, NodeEntity, RelationshipId, RelationshipEntity } from '@workspace/canvas/domain';
+import { NodeId, NodeEntity, RelationshipId, RelationshipEntity } from '@workspace/canvas/domain'
+import { Block, Comment, DocumentPayload } from '@shared/schemas/instances'
 
-export type Command = CanvasCommand | EditorCommand;
+export type Command = CanvasCommand | EditorCommand
 
 // --- Canvas Commands ---
 
-export type CanvasCommand = 
-  | AddNodeCommand 
-  | UpdateNodeCommand 
+export type CanvasCommand =
+  | AddNodeCommand
+  | UpdateNodeCommand
   | UpdateNodeLayoutCommand
-  | RemoveNodeCommand 
-  | AddRelationshipCommand 
+  | RemoveNodeCommand
+  | AddRelationshipCommand
   | UpdateRelationshipCommand
-  | RemoveRelationshipCommand;
+  | RemoveRelationshipCommand
 
 export interface StagedCommand {
-  staged?: boolean;
-  previousState?: any;
+  staged?: boolean
+  previousState?: unknown
 }
 
 export interface AddNodeCommand extends StagedCommand {
-  type: 'graph:add_node';
-  nodeId: NodeId;
-  entity: NodeEntity;
-  position: { x: number; y: number };
+  type: 'graph:add_node'
+  nodeId: NodeId
+  entity: NodeEntity
+  position: { x: number; y: number }
 }
 
 export interface UpdateNodeCommand extends StagedCommand {
-  type: 'graph:update_node';
-  nodeId: NodeId;
-  changes: Partial<Omit<NodeEntity, 'id'>>;
+  type: 'graph:update_node'
+  nodeId: NodeId
+  changes: Partial<Omit<NodeEntity, 'id'>>
 }
 
 export interface UpdateNodeLayoutCommand extends StagedCommand {
-  type: 'graph:update_node_layout';
-  nodeId: NodeId;
+  type: 'graph:update_node_layout'
+  nodeId: NodeId
   layout: {
-    x?: number;
-    y?: number;
-    width?: number;
-    height?: number;
-  };
+    x?: number
+    y?: number
+    width?: number
+    height?: number
+  }
 }
 
 export interface RemoveNodeCommand extends StagedCommand {
-  type: 'graph:remove_node';
-  nodeId: NodeId;
+  type: 'graph:remove_node'
+  nodeId: NodeId
 }
 
 export interface AddRelationshipCommand extends StagedCommand {
-  type: 'graph:add_relationship';
-  relationshipId: RelationshipId;
-  relationship: RelationshipEntity;
+  type: 'graph:add_relationship'
+  relationshipId: RelationshipId
+  relationship: RelationshipEntity
 }
 
 export interface UpdateRelationshipCommand extends StagedCommand {
-  type: 'graph:update_relationship';
-  relationshipId: RelationshipId;
-  changes: Partial<Omit<RelationshipEntity, 'id'>>;
+  type: 'graph:update_relationship'
+  relationshipId: RelationshipId
+  changes: Partial<Omit<RelationshipEntity, 'id'>>
 }
 
 export interface RemoveRelationshipCommand extends StagedCommand {
-  type: 'graph:remove_relationship';
-  relationshipId: RelationshipId;
+  type: 'graph:remove_relationship'
+  relationshipId: RelationshipId
 }
 
 // --- Editor Commands ---
@@ -71,31 +72,31 @@ export type EditorCommand =
   | InsertBlockCommand
   | RemoveBlockCommand
   | UpdateCommentsCommand
-  | ReplaceDocumentCommand;
+  | ReplaceDocumentCommand
 
 export interface UpdateBlockCommand extends StagedCommand {
-  type: 'editor:update_block';
-  blockId: string;
-  changes: any; // Partial<Block>
+  type: 'editor:update_block'
+  blockId: string
+  changes: Partial<Block>
 }
 
 export interface InsertBlockCommand extends StagedCommand {
-  type: 'editor:insert_block';
-  index: number;
-  block: any; // Block
+  type: 'editor:insert_block'
+  index: number
+  block: Block
 }
 
 export interface RemoveBlockCommand extends StagedCommand {
-  type: 'editor:remove_block';
-  blockId: string;
+  type: 'editor:remove_block'
+  blockId: string
 }
 
 export interface UpdateCommentsCommand extends StagedCommand {
-  type: 'editor:update_comments';
-  comments: Record<string, any>; // Record<string, Comment>
+  type: 'editor:update_comments'
+  comments: Record<string, Comment>
 }
 
 export interface ReplaceDocumentCommand extends StagedCommand {
-  type: 'editor:replace_document';
-  payload: any; // DocumentPayload
+  type: 'editor:replace_document'
+  payload: DocumentPayload
 }

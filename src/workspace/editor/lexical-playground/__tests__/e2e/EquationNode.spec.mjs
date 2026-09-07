@@ -15,19 +15,19 @@ import {
   initialize,
   selectFromInsertDropdown,
   test,
-  waitForSelector,
-} from '../utils/index.mjs';
+  waitForSelector
+} from '../utils/index.mjs'
 
 export async function insertBlockEquation(page, equation) {
-  await selectFromInsertDropdown(page, '.equation');
-  await click(page, 'input[data-test-id="equation-inline-checkbox"]');
-  await focus(page, 'textarea[data-test-id="equation-input"]');
-  await page.keyboard.type(equation);
-  await click(page, 'button[data-test-id="equation-submit-btn"]');
+  await selectFromInsertDropdown(page, '.equation')
+  await click(page, 'input[data-test-id="equation-inline-checkbox"]')
+  await focus(page, 'textarea[data-test-id="equation-input"]')
+  await page.keyboard.type(equation)
+  await click(page, 'button[data-test-id="equation-submit-btn"]')
 }
 
 function equationHtml(inline = true) {
-  const tag = inline ? 'span' : 'div';
+  const tag = inline ? 'span' : 'div'
   return `<${tag}
             class="editor-equation"
             contenteditable="false"
@@ -54,24 +54,21 @@ function equationHtml(inline = true) {
               height="0"
               src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
               width="0" />
-          </${tag}>`;
+          </${tag}>`
 }
 
 test.describe('EquationNode', () => {
-  test.beforeEach(({isCollab, isPlainText, page}) => {
-    test.skip(isPlainText);
+  test.beforeEach(({ isCollab, isPlainText, page }) => {
+    test.skip(isPlainText)
     return initialize({
       isCollab,
-      page,
-    });
-  });
-  test('inline EquationNode is wrapped in a paragraph', async ({
-    page,
-    isCollab,
-  }) => {
-    await focusEditor(page);
-    await page.keyboard.type('$1$');
-    await waitForSelector(page, '.editor-equation');
+      page
+    })
+  })
+  test('inline EquationNode is wrapped in a paragraph', async ({ page, isCollab }) => {
+    await focusEditor(page)
+    await page.keyboard.type('$1$')
+    await waitForSelector(page, '.editor-equation')
 
     await assertHTML(
       page,
@@ -80,16 +77,13 @@ test.describe('EquationNode', () => {
           ${equationHtml(true)}
           <br />
         </p>
-      `,
-    );
-  });
-  test('block EquationNode is a child of the root', async ({
-    page,
-    isCollab,
-  }) => {
-    await focusEditor(page);
-    await insertBlockEquation(page, '1');
-    await waitForSelector(page, '.editor-equation');
+      `
+    )
+  })
+  test('block EquationNode is a child of the root', async ({ page, isCollab }) => {
+    await focusEditor(page)
+    await insertBlockEquation(page, '1')
+    await waitForSelector(page, '.editor-equation')
 
     await assertHTML(
       page,
@@ -101,7 +95,7 @@ test.describe('EquationNode', () => {
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <br />
         </p>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

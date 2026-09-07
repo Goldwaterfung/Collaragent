@@ -84,20 +84,6 @@ export function isFSTool(name?: string): boolean {
   return !!name && FS_TOOL_NAMES.has(name)
 }
 
-export function isSkillFilePath(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, '/')
-  return normalized.endsWith('/SKILL.md') || normalized === 'SKILL.md'
-}
-
-export function extractSkillName(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/')
-  const parts = normalized.split('/')
-  if (parts.length >= 2 && parts[parts.length - 1] === 'SKILL.md') {
-    return parts[parts.length - 2]
-  }
-  return parts[parts.length - 1] || 'Skill'
-}
-
 export function formatToolResult(result: unknown): string {
   if (result === null || result === undefined) {
     return ''
@@ -163,7 +149,7 @@ export const FilesystemCard: React.FC<Props> = ({ tool }) => {
   const displayResult = formatToolResult(fsTool.result)
   const isError =
     tool.status === 'error' ||
-    (displayResult.length > 0 && displayResult.toLowerCase().includes('error'))
+    (typeof fsTool.result === 'object' && fsTool.result !== null && 'error' in fsTool.result)
 
   if (!fsTool.result && !tool.result && tool.status !== 'completed' && tool.status !== 'error') {
     return null
@@ -190,21 +176,6 @@ export const FilesystemCard: React.FC<Props> = ({ tool }) => {
 
     case 'read_file': {
       const targetPath = fsTool.args.file_path || fsTool.args.path || ''
-      const isSkill = isSkillFilePath(targetPath)
-      if (isSkill) {
-        const skillName = extractSkillName(targetPath)
-        return (
-          <div className="text-[11px] p-2 bg-indigo-50/80 border border-indigo-200 text-indigo-900 rounded-lg flex items-center gap-2 overflow-hidden">
-            <span className="font-semibold text-indigo-700 whitespace-nowrap flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-              Skill:
-            </span>
-            <span className="font-mono bg-indigo-100/80 px-1.5 py-0.5 rounded truncate text-indigo-950 font-medium">
-              {skillName}
-            </span>
-          </div>
-        )
-      }
       return (
         <div className="text-[11px] p-2 bg-surface-50/80 border border-surface-200 text-gray-800 rounded-lg flex items-center gap-2 overflow-hidden">
           <span className="font-medium text-gray-600 whitespace-nowrap">Read:</span>
@@ -219,21 +190,18 @@ export const FilesystemCard: React.FC<Props> = ({ tool }) => {
     case 'load_skill':
     case 'skill':
     case 'skills': {
-      const skillName =
+      const targetPath =
+        fsTool.args.file_path ||
+        fsTool.args.path ||
         fsTool.args.name ||
         fsTool.args.skill ||
         fsTool.args.skill_name ||
-        (fsTool.args.file_path ? extractSkillName(fsTool.args.file_path) : '') ||
-        (fsTool.args.path ? extractSkillName(fsTool.args.path) : '') ||
-        'Custom Skill'
+        ''
       return (
-        <div className="text-[11px] p-2 bg-indigo-50/80 border border-indigo-200 text-indigo-900 rounded-lg flex items-center gap-2 overflow-hidden">
-          <span className="font-semibold text-indigo-700 whitespace-nowrap flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-            Skill:
-          </span>
-          <span className="font-mono bg-indigo-100/80 px-1.5 py-0.5 rounded truncate text-indigo-950 font-medium">
-            {skillName}
+        <div className="text-[11px] p-2 bg-surface-50/80 border border-surface-200 text-gray-800 rounded-lg flex items-center gap-2 overflow-hidden">
+          <span className="font-medium text-gray-600 whitespace-nowrap">Read:</span>
+          <span className="font-mono bg-surface-100 px-1.5 py-0.5 rounded truncate text-gray-800">
+            {targetPath}
           </span>
         </div>
       )

@@ -6,26 +6,20 @@
  *
  */
 
-import {
-  assertHTML,
-  focusEditor,
-  html,
-  initialize,
-  test,
-} from '../utils/index.mjs';
+import { assertHTML, focusEditor, html, initialize, test } from '../utils/index.mjs'
 
 test.describe('Regression test #3433', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
   test('can merge markdown lists created immediately before existing lists', async ({
     page,
-    isPlainText,
+    isPlainText
   }) => {
-    test.skip(isPlainText);
-    await focusEditor(page);
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('- one');
-    await page.keyboard.press('ArrowUp');
-    await page.keyboard.type('- two');
+    test.skip(isPlainText)
+    await focusEditor(page)
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('- one')
+    await page.keyboard.press('ArrowUp')
+    await page.keyboard.type('- two')
     await assertHTML(
       page,
       html`
@@ -37,7 +31,7 @@ test.describe('Regression test #3433', () => {
             <span data-lexical-text="true">one</span>
           </li>
         </ul>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

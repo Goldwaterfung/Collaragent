@@ -15,7 +15,6 @@ This guide walks you through ingesting your first trace into Langfuse. If you're
 
 ## Ingest your first trace
 
-
 import { BookOpen, Code } from "lucide-react";
 
 If you're using one of our supported integrations, following their specific guide will be the fastest way to get started with minimal code changes. For more control, you can instrument your application directly using the Python or JS/TS SDKs.
@@ -29,9 +28,6 @@ Langfuse’s OpenAI SDK is a drop-in replacement for the OpenAI client that auto
 
 Start by installing the Langfuse OpenAI SDK. It includes the wrapped OpenAI client and sends traces in the background.
 
-
-
-
 ```bash
 pip install langfuse
 ```
@@ -44,8 +40,6 @@ LANGFUSE_PUBLIC_KEY = "pk-lf-..."
 LANGFUSE_BASE_URL = "https://cloud.langfuse.com" # 🇪🇺 EU region
 # LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com" # 🇺🇸 US region
 ```
-
-
 
 Swap the regular OpenAI import to Langfuse’s OpenAI drop-in. It behaves like the regular OpenAI client while also recording each call for you.
 
@@ -65,7 +59,6 @@ completion = openai.chat.completions.create(
   metadata={"someMetadataKey": "someValue"},
 )
 ```
-
 
 <Cards num={2}>
   <Card
@@ -98,18 +91,15 @@ Langfuse’s JS/TS OpenAI SDK wraps the official client so your model calls are 
 
 First install the Langfuse OpenAI wrapper. It extends the official client to send traces in the background.
 
-
 **Install package**
+
 ```sh
 npm install @langfuse/openai
 ```
 
 **Add credentials**
 
-Add your Langfuse credentials to your environment variables so the SDK knows which project to write to. 
-
-
-
+Add your Langfuse credentials to your environment variables so the SDK knows which project to write to.
 
 ```bash filename=".env"
 LANGFUSE_SECRET_KEY = "sk-lf-..."
@@ -118,10 +108,7 @@ LANGFUSE_BASE_URL = "https://cloud.langfuse.com" # 🇪🇺 EU region
 # LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com" # 🇺🇸 US region
 ```
 
-
-
 **Initialize OpenTelemetry**
-
 
 Install the OpenTelemetry SDK, which the Langfuse integration uses under the hood to capture the data from each OpenAI call.
 
@@ -131,26 +118,25 @@ npm install @opentelemetry/sdk-node
 
 Next is initializing the Node SDK. You can do that either in a dedicated instrumentation file or directly at the top of your main file.
 
-
 <LangTabs items={["Inline setup", "Instrumentation file"]}>
 
 <Tab>
 
 The inline setup is the simplest way to get started. It works well for projects where your main file is executed first and import order is straightforward.
 
-We can now initialize the `LangfuseSpanProcessor` and start the SDK. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project. 
+We can now initialize the `LangfuseSpanProcessor` and start the SDK. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project.
 
 Important: start the SDK before initializing the logic that needs to be traced to avoid losing data.
 
 ```ts
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { LangfuseSpanProcessor } from "@langfuse/otel";
- 
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
+
 const sdk = new NodeSDK({
-  spanProcessors: [new LangfuseSpanProcessor()],
-});
- 
-sdk.start();
+  spanProcessors: [new LangfuseSpanProcessor()]
+})
+
+sdk.start()
 ```
 
 </Tab>
@@ -162,47 +148,42 @@ The instrumentation file often preferred when you're using frameworks that have 
 Create an `instrumentation.ts` file, which sets up the _collector_ that gathers data about each OpenAI call. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project.
 
 ```ts filename="instrumentation.ts" /LangfuseSpanProcessor/
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { LangfuseSpanProcessor } from "@langfuse/otel";
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
 
 const sdk = new NodeSDK({
-  spanProcessors: [new LangfuseSpanProcessor()],
-});
+  spanProcessors: [new LangfuseSpanProcessor()]
+})
 
-sdk.start();
+sdk.start()
 ```
 
 Import the `instrumentation.ts` file first so all later imports run with tracing enabled.
 
 ```ts filename="index.ts"
-import "./instrumentation"; // Must be the first import
+import './instrumentation' // Must be the first import
 ```
 
 </Tab>
 
 </LangTabs>
 
-
-
-
-
-Wrap your normal OpenAI client. From now on, each OpenAI request  is automatically collected and forwarded to Langfuse.
+Wrap your normal OpenAI client. From now on, each OpenAI request is automatically collected and forwarded to Langfuse.
 
 **Wrap OpenAI client**
-```ts
-import OpenAI from "openai";
-import { observeOpenAI } from "@langfuse/openai";
 
-const openai = observeOpenAI(new OpenAI());
+```ts
+import OpenAI from 'openai'
+import { observeOpenAI } from '@langfuse/openai'
+
+const openai = observeOpenAI(new OpenAI())
 
 const res = await openai.chat.completions.create({
-    messages: [{ role: "system", content: "Tell me a story about a dog." }],
-    model: "gpt-4o",
-    max_tokens: 300,
-});
+  messages: [{ role: 'system', content: 'Tell me a story about a dog.' }],
+  model: 'gpt-4o',
+  max_tokens: 300
+})
 ```
-
-
 
 <Cards num={2}>
   <Card
@@ -226,7 +207,6 @@ const res = await openai.chat.completions.create({
 
 Langfuse's Vercel AI SDK integration uses OpenTelemetry to automatically trace your AI calls. If you already use the Vercel AI SDK, you can start using Langfuse with minimal changes to your code.
 
-
 **Install packages**
 
 Install the Vercel AI SDK, OpenTelemetry, and the Langfuse integration packages.
@@ -239,8 +219,6 @@ npm install ai @ai-sdk/openai @langfuse/tracing @langfuse/otel @opentelemetry/sd
 
 Set your Langfuse credentials as environment variables so the SDK knows which project to write to.
 
-
-
 ```bash filename=".env"
 LANGFUSE_SECRET_KEY = "sk-lf-..."
 LANGFUSE_PUBLIC_KEY = "pk-lf-..."
@@ -248,21 +226,19 @@ LANGFUSE_BASE_URL = "https://cloud.langfuse.com" # 🇪🇺 EU region
 # LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com" # 🇺🇸 US region
 ```
 
-
-
 **Initialize OpenTelemetry with Langfuse**
 
 Set up the OpenTelemetry SDK with the Langfuse span processor. This captures telemetry data from the Vercel AI SDK and sends it to Langfuse.
 
 ```typescript
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { LangfuseSpanProcessor } from "@langfuse/otel";
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
 
 const sdk = new NodeSDK({
-  spanProcessors: [new LangfuseSpanProcessor()],
-});
+  spanProcessors: [new LangfuseSpanProcessor()]
+})
 
-sdk.start();
+sdk.start()
 ```
 
 **Enable telemetry in your AI SDK calls**
@@ -270,17 +246,15 @@ sdk.start();
 Pass `experimental_telemetry: { isEnabled: true }` to your AI SDK functions. The AI SDK automatically creates telemetry spans, which the `LangfuseSpanProcessor` captures and sends to Langfuse.
 
 ```typescript
-import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { generateText } from 'ai'
+import { openai } from '@ai-sdk/openai'
 
 const { text } = await generateText({
-  model: openai("gpt-4o"),
-  prompt: "What is the weather like today?",
-  experimental_telemetry: { isEnabled: true },
-});
+  model: openai('gpt-4o'),
+  prompt: 'What is the weather like today?',
+  experimental_telemetry: { isEnabled: true }
+})
 ```
-
-
 
 <Cards num={1}>
   <Card
@@ -298,10 +272,7 @@ const { text } = await generateText({
 
 Langfuse's LangChain integration uses a callback handler to record and send traces to Langfuse. If you already use LangChain, you can start using Langfuse with minimal changes to your code.
 
-First install the Langfuse SDK and your LangChain SDK. 
-
-
-
+First install the Langfuse SDK and your LangChain SDK.
 
 ```bash
 pip install langfuse langchain-openai
@@ -309,15 +280,12 @@ pip install langfuse langchain-openai
 
 Add your Langfuse credentials as environment variables so the callback handler knows which project to write to.
 
-
 ```bash filename=".env"
 LANGFUSE_SECRET_KEY = "sk-lf-..."
 LANGFUSE_PUBLIC_KEY = "pk-lf-..."
 LANGFUSE_BASE_URL = "https://cloud.langfuse.com" # 🇪🇺 EU region
 # LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com" # 🇺🇸 US region
 ```
-
-
 
 Initialize the Langfuse callback handler. LangChain has its own callback system, and Langfuse listens to those callbacks to record what your chains and LLMs are doing.
 
@@ -332,16 +300,15 @@ Add the Langfuse callback handler to your chain. The Langfuse callback handler p
 ```python {10}
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
- 
+
 llm = ChatOpenAI(model_name="gpt-4o")
 prompt = ChatPromptTemplate.from_template("Tell me a joke about {topic}")
 chain = prompt | llm
- 
+
 response = chain.invoke(
-    {"topic": "cats"}, 
+    {"topic": "cats"},
     config={"callbacks": [langfuse_handler]})
 ```
-
 
 <Cards num={2}>
   <Card
@@ -374,15 +341,11 @@ Langfuse's LangChain integration uses a callback handler to record and send trac
 
 First install the Langfuse core SDK and the LangChain integration.
 
-
 ```bash
 npm install @langfuse/core @langfuse/langchain
 ```
 
-
-
 Add your Langfuse credentials as environment variables so the integration knows which project to send your traces to.
-
 
 ```bash filename=".env"
 LANGFUSE_SECRET_KEY = "sk-lf-..."
@@ -391,10 +354,7 @@ LANGFUSE_BASE_URL = "https://cloud.langfuse.com" # 🇪🇺 EU region
 # LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com" # 🇺🇸 US region
 ```
 
-
-
 **Initialize OpenTelemetry**
-
 
 Install the OpenTelemetry SDK, which the Langfuse integration uses under the hood to capture the data from each OpenAI call.
 
@@ -404,26 +364,25 @@ npm install @opentelemetry/sdk-node
 
 Next is initializing the Node SDK. You can do that either in a dedicated instrumentation file or directly at the top of your main file.
 
-
 <LangTabs items={["Inline setup", "Instrumentation file"]}>
 
 <Tab>
 
 The inline setup is the simplest way to get started. It works well for projects where your main file is executed first and import order is straightforward.
 
-We can now initialize the `LangfuseSpanProcessor` and start the SDK. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project. 
+We can now initialize the `LangfuseSpanProcessor` and start the SDK. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project.
 
 Important: start the SDK before initializing the logic that needs to be traced to avoid losing data.
 
 ```ts
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { LangfuseSpanProcessor } from "@langfuse/otel";
- 
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
+
 const sdk = new NodeSDK({
-  spanProcessors: [new LangfuseSpanProcessor()],
-});
- 
-sdk.start();
+  spanProcessors: [new LangfuseSpanProcessor()]
+})
+
+sdk.start()
 ```
 
 </Tab>
@@ -435,70 +394,61 @@ The instrumentation file often preferred when you're using frameworks that have 
 Create an `instrumentation.ts` file, which sets up the _collector_ that gathers data about each OpenAI call. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project.
 
 ```ts filename="instrumentation.ts" /LangfuseSpanProcessor/
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { LangfuseSpanProcessor } from "@langfuse/otel";
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
 
 const sdk = new NodeSDK({
-  spanProcessors: [new LangfuseSpanProcessor()],
-});
+  spanProcessors: [new LangfuseSpanProcessor()]
+})
 
-sdk.start();
+sdk.start()
 ```
 
 Import the `instrumentation.ts` file first so all later imports run with tracing enabled.
 
 ```ts filename="index.ts"
-import "./instrumentation"; // Must be the first import
+import './instrumentation' // Must be the first import
 ```
 
 </Tab>
 
 </LangTabs>
 
-
-
-
-
 Finally, initialize the Langfuse `CallbackHandler` and add it to your chain. The `CallbackHandler` listens to the LangChain agent's actions and prepares that information to be sent to Langfuse.
 
 ```typescript
-import { CallbackHandler } from "@langfuse/langchain";
- 
+import { CallbackHandler } from '@langfuse/langchain'
+
 // Initialize the Langfuse CallbackHandler
-const langfuseHandler = new CallbackHandler();
+const langfuseHandler = new CallbackHandler()
 ```
 
 The line `{ callbacks: [langfuseHandler] }` is what attaches the `CallbackHandler` to the agent.
 
 ```typescript /{ callbacks: [langfuseHandler] }/
-import { createAgent, tool } from "@langchain/core/agents";
-import * as z from "zod";
+import { createAgent, tool } from '@langchain/core/agents'
+import * as z from 'zod'
 
-const getWeather = tool(
-  (input) => `It's always sunny in ${input.city}!`,
-  {
-    name: "get_weather",
-    description: "Get the weather for a given city",
-    schema: z.object({
-      city: z.string().describe("The city to get the weather for"),
-    }),
-  }
-);
+const getWeather = tool((input) => `It's always sunny in ${input.city}!`, {
+  name: 'get_weather',
+  description: 'Get the weather for a given city',
+  schema: z.object({
+    city: z.string().describe('The city to get the weather for')
+  })
+})
 
 const agent = createAgent({
-  model: "openai:gpt-5-mini",
-  tools: [getWeather],
-});
+  model: 'openai:gpt-5-mini',
+  tools: [getWeather]
+})
 
 console.log(
-    await agent.invoke(
-        { messages: [{ role: "user", content: "What's the weather in San Francisco?" }] }, 
-        { callbacks: [langfuseHandler] }
-    )
-);
+  await agent.invoke(
+    { messages: [{ role: 'user', content: "What's the weather in San Francisco?" }] },
+    { callbacks: [langfuseHandler] }
+  )
+)
 ```
-
-
 
 <Cards num={2}>
   <Card
@@ -522,7 +472,6 @@ console.log(
 
 The Langfuse Python SDK gives you full control over how you instrument your application and can be used with any other framework.
 
-
 **1. Install package:**
 
 ```bash
@@ -531,16 +480,12 @@ pip install langfuse
 
 **2. Add credentials:**
 
-
-
 ```bash filename=".env"
 LANGFUSE_SECRET_KEY = "sk-lf-..."
 LANGFUSE_PUBLIC_KEY = "pk-lf-..."
 LANGFUSE_BASE_URL = "https://cloud.langfuse.com" # 🇪🇺 EU region
 # LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com" # 🇺🇸 US region
 ```
-
-
 
 **3. Instrument your application:**
 
@@ -569,6 +514,7 @@ with langfuse.start_as_current_observation(as_type="span", name="process-request
 # Flush events in short-lived applications
 langfuse.flush()
 ```
+
 _[When should I call `langfuse.flush()`?](/docs/observability/data-model#background-processing)_
 
 **4. Run your application and see the trace in Langfuse:**
@@ -576,7 +522,6 @@ _[When should I call `langfuse.flush()`?](/docs/observability/data-model#backgro
 <Frame>
 ![First trace in Langfuse](/images/docs/observability/first-trace-python.png)
 </Frame>
-
 
 <Cards num={1}>
   <Card
@@ -594,7 +539,6 @@ _[When should I call `langfuse.flush()`?](/docs/observability/data-model#backgro
 
 Use the Langfuse JS/TS SDK to wrap any LLM or Agent
 
-
 **Install packages**
 
 Install the Langfuse tracing SDK, the Langfuse OpenTelemetry integration, and the OpenTelemetry Node SDK.
@@ -605,10 +549,7 @@ npm install @langfuse/tracing @langfuse/otel @opentelemetry/sdk-node
 
 **Add credentials**
 
-
-
 Add your Langfuse credentials to your environment variables so the tracing SDK knows which Langfuse project it should send your recorded data to.
-
 
 ```bash filename=".env"
 LANGFUSE_SECRET_KEY = "sk-lf-..."
@@ -617,10 +558,7 @@ LANGFUSE_BASE_URL = "https://cloud.langfuse.com" # 🇪🇺 EU region
 # LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com" # 🇺🇸 US region
 ```
 
-
-
 **Initialize OpenTelemetry**
-
 
 Install the OpenTelemetry SDK, which the Langfuse integration uses under the hood to capture the data from each OpenAI call.
 
@@ -630,26 +568,25 @@ npm install @opentelemetry/sdk-node
 
 Next is initializing the Node SDK. You can do that either in a dedicated instrumentation file or directly at the top of your main file.
 
-
 <LangTabs items={["Inline setup", "Instrumentation file"]}>
 
 <Tab>
 
 The inline setup is the simplest way to get started. It works well for projects where your main file is executed first and import order is straightforward.
 
-We can now initialize the `LangfuseSpanProcessor` and start the SDK. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project. 
+We can now initialize the `LangfuseSpanProcessor` and start the SDK. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project.
 
 Important: start the SDK before initializing the logic that needs to be traced to avoid losing data.
 
 ```ts
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { LangfuseSpanProcessor } from "@langfuse/otel";
- 
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
+
 const sdk = new NodeSDK({
-  spanProcessors: [new LangfuseSpanProcessor()],
-});
- 
-sdk.start();
+  spanProcessors: [new LangfuseSpanProcessor()]
+})
+
+sdk.start()
 ```
 
 </Tab>
@@ -661,68 +598,62 @@ The instrumentation file often preferred when you're using frameworks that have 
 Create an `instrumentation.ts` file, which sets up the _collector_ that gathers data about each OpenAI call. The `LangfuseSpanProcessor` is the part that takes that collected data and sends it to your Langfuse project.
 
 ```ts filename="instrumentation.ts" /LangfuseSpanProcessor/
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { LangfuseSpanProcessor } from "@langfuse/otel";
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { LangfuseSpanProcessor } from '@langfuse/otel'
 
 const sdk = new NodeSDK({
-  spanProcessors: [new LangfuseSpanProcessor()],
-});
+  spanProcessors: [new LangfuseSpanProcessor()]
+})
 
-sdk.start();
+sdk.start()
 ```
 
 Import the `instrumentation.ts` file first so all later imports run with tracing enabled.
 
 ```ts filename="index.ts"
-import "./instrumentation"; // Must be the first import
+import './instrumentation' // Must be the first import
 ```
 
 </Tab>
 
 </LangTabs>
 
-
-
-
-
 **Instrument application**
 
 Instrumentation means adding code that records what’s happening in your application so it can be sent to Langfuse. Here, OpenTelemetry acts as the system that collects those recordings.
 
 ```ts filename="server.ts"
-import { startActiveObservation, startObservation } from "@langfuse/tracing";
+import { startActiveObservation, startObservation } from '@langfuse/tracing'
 
 // startActiveObservation creates a trace for this block of work.
 // Everything inside automatically becomes part of that trace.
-await startActiveObservation("user-request", async (span) => {
+await startActiveObservation('user-request', async (span) => {
   span.update({
-    input: { query: "What is the capital of France?" },
-  });
+    input: { query: 'What is the capital of France?' }
+  })
 
   // This generation will automatically be a child of "user-request" because of the startObservation function.
   const generation = startObservation(
-    "llm-call",
+    'llm-call',
     {
-      model: "gpt-4",
-      input: [{ role: "user", content: "What is the capital of France?" }],
+      model: 'gpt-4',
+      input: [{ role: 'user', content: 'What is the capital of France?' }]
     },
-    { asType: "generation" },
-  );
+    { asType: 'generation' }
+  )
 
   // ... your real LLM call would happen here ...
 
   generation
     .update({
-      output: { content: "The capital of France is Paris." }, // update the output of the generation
+      output: { content: 'The capital of France is Paris.' } // update the output of the generation
     })
-    .end(); // mark this nested observation as complete
+    .end() // mark this nested observation as complete
 
   // Add final information about the overall request
-  span.update({ output: "Successfully answered." });
-});
+  span.update({ output: 'Successfully answered.' })
+})
 ```
-
-
 
 <Cards num={2}>
   <Card
@@ -746,7 +677,6 @@ await startActiveObservation("user-request", async (span) => {
 
 Use the agent mode of your editor to integrate Langfuse into your existing codebase.
 
-
 import { CopyAgentOnboardingPrompt } from "@/components/agentic-onboarding/CopyAgentOnboardingPrompt";
 
 <Callout type="warning" emoji="🤖">
@@ -764,7 +694,6 @@ npx skills add langfuse/skills --skill "langfuse-observability"
 **Using the Langfuse Docs MCP Server**
 
 Install the Langfuse Docs MCP Server. The agent will use the Langfuse `searchLangfuseDocs` tool ([docs](/docs/docs-mcp)) to find the correct documentation for the integration.
-
 
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -937,16 +866,11 @@ If you use a client that does not support `streamableHttp` (e.g. Windsurf), you 
 
 </Tabs>
 
-
-
 **Using the agent prompt**
 
 Copy and execute the following prompt in your editor's agent mode. The agent can use its native web search capabilities to find documentation.
 
 <CopyAgentOnboardingPrompt />
-
-
-
 
 <Cards num={2}>
   <Card
@@ -1073,15 +997,15 @@ Explore all integrations and frameworks that Langfuse supports.
 After running your application, visit the Langfuse interface to view the trace you just created. _[(Example LangGraph trace in Langfuse)](https://cloud.langfuse.com/project/cloramnkj0002jz088vzn1ja4/traces/7d5f970573b8214d1ca891251e42282c)_
 
 <Video
-  src="https://static.langfuse.com/docs-videos/trace-new-ui.mp4"
-  aspectRatio={16 / 9}
-  gifStyle
+src="https://static.langfuse.com/docs-videos/trace-new-ui.mp4"
+aspectRatio={16 / 9}
+gifStyle
 />
-
 
 </Steps>
 
 #### Not seeing what you expected?
+
 import { FaqPreview } from "@/components/faq/FaqPreview";
 
 <FaqPreview tags={["observability-get-started"]} />
@@ -1089,9 +1013,9 @@ import { FaqPreview } from "@/components/faq/FaqPreview";
 ## Next steps
 
 Now that you've ingested your first trace, you can start adding on more functionality to your traces. We recommend starting with the following:
+
 - [Group traces into sessions for multi-turn applications](/docs/observability/features/sessions)
 - [Split traces into environments for different stages of your application](/docs/observability/features/environments)
 - [Add attributes to your traces so you can filter them in the future](/docs/observability/features/tags)
 
-Already know what you want? Take a look under _Features_ for guides on specific topics. 
-
+Already know what you want? Take a look under _Features_ for guides on specific topics.

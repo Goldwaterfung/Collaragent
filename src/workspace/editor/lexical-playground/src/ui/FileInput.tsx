@@ -6,24 +6,24 @@
  *
  */
 
-import type {JSX} from 'react';
+import type { JSX } from 'react'
 
-import './Input.css';
+import './Input.css'
 
-import * as React from 'react';
+import * as React from 'react'
 
 type Props = Readonly<{
-  'data-test-id'?: string;
-  accept?: string;
-  label: string;
-  onChange: (files: FileList | null) => void;
-}>;
+  'data-test-id'?: string
+  accept?: string
+  label: string
+  onChange: (files: FileList | null) => void
+}>
 
 export default function FileInput({
   accept,
   label,
   onChange,
-  'data-test-id': dataTestId,
+  'data-test-id': dataTestId
 }: Props): JSX.Element {
   return (
     <div className="Input__wrapper">
@@ -36,5 +36,5 @@ export default function FileInput({
         data-test-id={dataTestId}
       />
     </div>
-  );
+  )
 }

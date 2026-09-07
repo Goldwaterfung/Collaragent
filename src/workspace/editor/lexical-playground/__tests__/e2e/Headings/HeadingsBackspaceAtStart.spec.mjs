@@ -6,42 +6,22 @@
  *
  */
 
-import {moveToEditorBeginning} from '../../keyboardShortcuts/index.mjs';
-import {
-  assertHTML,
-  click,
-  focusEditor,
-  html,
-  initialize,
-  test,
-} from '../../utils/index.mjs';
+import { moveToEditorBeginning } from '../../keyboardShortcuts/index.mjs'
+import { assertHTML, click, focusEditor, html, initialize, test } from '../../utils/index.mjs'
 
 test('Headings - stays as a heading when you backspace at the start of a heading with no previous sibling nodes present', async ({
   page,
   isPlainText,
-  isCollab,
+  isCollab
 }) => {
-  test.skip(isPlainText);
-  await initialize({isCollab, page});
-  await focusEditor(page);
+  test.skip(isPlainText)
+  await initialize({ isCollab, page })
+  await focusEditor(page)
 
-  await click(page, '.block-controls');
-  await click(page, '.dropdown .icon.h1');
+  await click(page, '.block-controls')
+  await click(page, '.dropdown .icon.h1')
 
-  await page.keyboard.type('Welcome to the playground');
-
-  await assertHTML(
-    page,
-    html`
-      <h1 class="PlaygroundEditorTheme__h1" dir="auto">
-        <span data-lexical-text="true">Welcome to the playground</span>
-      </h1>
-    `,
-  );
-
-  await moveToEditorBeginning(page);
-
-  await page.keyboard.press('Backspace');
+  await page.keyboard.type('Welcome to the playground')
 
   await assertHTML(
     page,
@@ -49,6 +29,19 @@ test('Headings - stays as a heading when you backspace at the start of a heading
       <h1 class="PlaygroundEditorTheme__h1" dir="auto">
         <span data-lexical-text="true">Welcome to the playground</span>
       </h1>
-    `,
-  );
-});
+    `
+  )
+
+  await moveToEditorBeginning(page)
+
+  await page.keyboard.press('Backspace')
+
+  await assertHTML(
+    page,
+    html`
+      <h1 class="PlaygroundEditorTheme__h1" dir="auto">
+        <span data-lexical-text="true">Welcome to the playground</span>
+      </h1>
+    `
+  )
+})

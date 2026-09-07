@@ -17,9 +17,13 @@ export const CheckpointMarker: React.FC<CheckpointMarkerProps> = ({
   createdAt,
   onRestore
 }) => {
-  const formattedTime = createdAt
-    ? new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : undefined
+  const formattedTime = (() => {
+    if (!createdAt) return undefined
+    const date = new Date(createdAt)
+    return isNaN(date.getTime())
+      ? undefined
+      : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  })()
 
   return (
     <div

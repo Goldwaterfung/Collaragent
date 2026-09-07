@@ -12,19 +12,19 @@ import type {
   LexicalEditor,
   NodeKey,
   SerializedTextNode,
-  Spread,
-} from 'lexical';
+  Spread
+} from 'lexical'
 
-import {TextNode} from 'lexical';
+import { TextNode } from 'lexical'
 
-import {uuid as UUID} from '../plugins/AutocompletePlugin';
+import { uuid as UUID } from '../plugins/AutocompletePlugin'
 
 export type SerializedAutocompleteNode = Spread<
   {
-    uuid: string;
+    uuid: string
   },
   SerializedTextNode
->;
+>
 
 export class AutocompleteNode extends TextNode {
   /**
@@ -35,67 +35,61 @@ export class AutocompleteNode extends TextNode {
    *   other sessions.
    * See https://github.com/facebook/lexical/blob/main/packages/lexical-playground/src/plugins/AutocompletePlugin/index.tsx
    */
-  __uuid: string;
+  __uuid: string
 
   static clone(node: AutocompleteNode): AutocompleteNode {
-    return new AutocompleteNode(node.__text, node.__uuid, node.__key);
+    return new AutocompleteNode(node.__text, node.__uuid, node.__key)
   }
 
   static getType(): 'autocomplete' {
-    return 'autocomplete';
+    return 'autocomplete'
   }
 
   static importDOM() {
     // Never import from DOM
-    return null;
+    return null
   }
 
-  static importJSON(
-    serializedNode: SerializedAutocompleteNode,
-  ): AutocompleteNode {
-    return $createAutocompleteNode(
-      serializedNode.text,
-      serializedNode.uuid,
-    ).updateFromJSON(serializedNode);
+  static importJSON(serializedNode: SerializedAutocompleteNode): AutocompleteNode {
+    return $createAutocompleteNode(serializedNode.text, serializedNode.uuid).updateFromJSON(
+      serializedNode
+    )
   }
 
   exportJSON(): SerializedAutocompleteNode {
     return {
       ...super.exportJSON(),
-      uuid: this.__uuid,
-    };
+      uuid: this.__uuid
+    }
   }
 
   constructor(text: string, uuid: string, key?: NodeKey) {
-    super(text, key);
-    this.__uuid = uuid;
+    super(text, key)
+    this.__uuid = uuid
   }
 
   updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
-    return false;
+    return false
   }
 
   exportDOM(_: LexicalEditor): DOMExportOutput {
-    return {element: null};
+    return { element: null }
   }
 
   excludeFromCopy() {
-    return true;
+    return true
   }
 
   createDOM(config: EditorConfig): HTMLElement {
-    const dom = super.createDOM(config);
-    dom.classList.add(config.theme.autocomplete);
+    const dom = super.createDOM(config)
+    dom.classList.add(config.theme.autocomplete)
     if (this.__uuid !== UUID) {
-      dom.style.display = 'none';
+      dom.style.display = 'none'
     }
-    return dom;
+    return dom
   }
 }
 
-export function $createAutocompleteNode(
-  text: string,
-  uuid: string,
-): AutocompleteNode {
-  return new AutocompleteNode(text, uuid).setMode('token');
+export function $createAutocompleteNode(text: string, uuid: string): AutocompleteNode {
+  return new AutocompleteNode(text, uuid).setMode('token')
 }

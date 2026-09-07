@@ -15,35 +15,35 @@ Run sequentially at specific execution points. Use for logging, validation, and 
 
 **Available hooks:**
 
-* `beforeAgent` - Before agent starts (once per invocation)
-* `beforeModel` - Before each model call
-* `afterModel` - After each model response
-* `afterAgent` - After agent completes (once per invocation)
+- `beforeAgent` - Before agent starts (once per invocation)
+- `beforeModel` - Before each model call
+- `afterModel` - After each model response
+- `afterAgent` - After agent completes (once per invocation)
 
 **Example:**
 
-```typescript  theme={null}
-import { createMiddleware, AIMessage } from "langchain";
+```typescript theme={null}
+import { createMiddleware, AIMessage } from 'langchain'
 
 const createMessageLimitMiddleware = (maxMessages: number = 50) => {
   return createMiddleware({
-    name: "MessageLimitMiddleware",
+    name: 'MessageLimitMiddleware',
     beforeModel: (state) => {
       if (state.messages.length === maxMessages) {
         return {
-          messages: [new AIMessage("Conversation limit reached.")],
-          jumpTo: "end",
-        };
+          messages: [new AIMessage('Conversation limit reached.')],
+          jumpTo: 'end'
+        }
       }
-      return;
+      return
     },
     afterModel: (state) => {
-      const lastMessage = state.messages[state.messages.length - 1];
-      console.log(`Model returned: ${lastMessage.content}`);
-      return;
-    },
-  });
-};
+      const lastMessage = state.messages[state.messages.length - 1]
+      console.log(`Model returned: ${lastMessage.content}`)
+      return
+    }
+  })
+}
 ```
 
 ### Wrap-style hooks
@@ -54,68 +54,68 @@ You decide if the handler is called zero times (short-circuit), once (normal flo
 
 **Available hooks:**
 
-* `wrapModelCall` - Around each model call
-* `wrapToolCall` - Around each tool call
+- `wrapModelCall` - Around each model call
+- `wrapToolCall` - Around each tool call
 
 **Example:**
 
-```typescript  theme={null}
-import { createMiddleware } from "langchain";
+```typescript theme={null}
+import { createMiddleware } from 'langchain'
 
 const createRetryMiddleware = (maxRetries: number = 3) => {
   return createMiddleware({
-    name: "RetryMiddleware",
+    name: 'RetryMiddleware',
     wrapModelCall: (request, handler) => {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
-          return handler(request);
+          return handler(request)
         } catch (e) {
           if (attempt === maxRetries - 1) {
-            throw e;
+            throw e
           }
-          console.log(`Retry ${attempt + 1}/${maxRetries} after error: ${e}`);
+          console.log(`Retry ${attempt + 1}/${maxRetries} after error: ${e}`)
         }
       }
-      throw new Error("Unreachable");
-    },
-  });
-};
+      throw new Error('Unreachable')
+    }
+  })
+}
 ```
 
 ## Create middleware
 
 Use the `createMiddleware` function to define custom middleware:
 
-```typescript  theme={null}
-import { createMiddleware } from "langchain";
+```typescript theme={null}
+import { createMiddleware } from 'langchain'
 
 const loggingMiddleware = createMiddleware({
-  name: "LoggingMiddleware",
+  name: 'LoggingMiddleware',
   beforeModel: (state) => {
-    console.log(`About to call model with ${state.messages.length} messages`);
-    return;
+    console.log(`About to call model with ${state.messages.length} messages`)
+    return
   },
   afterModel: (state) => {
-    const lastMessage = state.messages[state.messages.length - 1];
-    console.log(`Model returned: ${lastMessage.content}`);
-    return;
-  },
-});
+    const lastMessage = state.messages[state.messages.length - 1]
+    console.log(`Model returned: ${lastMessage.content}`)
+    return
+  }
+})
 ```
 
 ## Custom state schema
 
 Middleware can extend the agent's state with custom properties. This enables middleware to:
 
-* **Track state across execution**: Maintain counters, flags, or other values that persist throughout the agent's execution lifecycle
+- **Track state across execution**: Maintain counters, flags, or other values that persist throughout the agent's execution lifecycle
 
-* **Share data between hooks**: Pass information from `beforeModel` to `afterModel` or between different middleware instances
+- **Share data between hooks**: Pass information from `beforeModel` to `afterModel` or between different middleware instances
 
-* **Implement cross-cutting concerns**: Add functionality like rate limiting, usage tracking, user context, or audit logging without modifying the core agent logic
+- **Implement cross-cutting concerns**: Add functionality like rate limiting, usage tracking, user context, or audit logging without modifying the core agent logic
 
-* **Make conditional decisions**: Use accumulated state to determine whether to continue execution, jump to different nodes, or modify behavior dynamically
+- **Make conditional decisions**: Use accumulated state to determine whether to continue execution, jump to different nodes, or modify behavior dynamically
 
-```typescript  theme={null}
+```typescript theme={null}
 import { createMiddleware, createAgent, HumanMessage } from "langchain";
 import * as z from "zod";
 
@@ -153,107 +153,107 @@ State fields can be either public or private. Fields that start with an undersco
 
 This is useful for storing internal middleware state that shouldn't be exposed to the caller, such as temporary tracking variables or internal flags:
 
-```typescript  theme={null}
+```typescript theme={null}
 const middleware = createMiddleware({
-  name: "ExampleMiddleware",
+  name: 'ExampleMiddleware',
   stateSchema: z.object({
     // Public field - included in invoke result
     publicCounter: z.number().default(0),
     // Private field - excluded from invoke result
-    _internalFlag: z.boolean().default(false),
+    _internalFlag: z.boolean().default(false)
   }),
   afterModel: (state) => {
     // Both fields are accessible during execution
     if (state._internalFlag) {
-      return { publicCounter: state.publicCounter + 1 };
+      return { publicCounter: state.publicCounter + 1 }
     }
-    return { _internalFlag: true };
-  },
-});
+    return { _internalFlag: true }
+  }
+})
 
 const result = await agent.invoke({
-  messages: [new HumanMessage("Hello")],
+  messages: [new HumanMessage('Hello')],
   publicCounter: 0
-});
+})
 
 // result only contains publicCounter, not _internalFlag
-console.log(result.publicCounter); // 1
-console.log(result._internalFlag); // undefined
+console.log(result.publicCounter) // 1
+console.log(result._internalFlag) // undefined
 ```
 
 ## Custom context
 
 Middleware can define a custom context schema to access per-invocation metadata. Unlike state, context is read-only and not persisted between invocations. This makes it ideal for:
 
-* **User information**: Pass user ID, roles, or preferences that don't change during execution
-* **Configuration overrides**: Provide per-invocation settings like rate limits or feature flags
-* **Tenant/workspace context**: Include organization-specific data for multi-tenant applications
-* **Request metadata**: Pass request IDs, API keys, or other metadata needed by middleware
+- **User information**: Pass user ID, roles, or preferences that don't change during execution
+- **Configuration overrides**: Provide per-invocation settings like rate limits or feature flags
+- **Tenant/workspace context**: Include organization-specific data for multi-tenant applications
+- **Request metadata**: Pass request IDs, API keys, or other metadata needed by middleware
 
 Define a context schema using Zod and access it via `runtime.context` in middleware hooks. Required fields in the context schema will be enforced at the TypeScript level, ensuring you must provide them when calling `agent.invoke()`.
 
-```typescript  theme={null}
-import { createAgent, createMiddleware, HumanMessage } from "langchain";
-import * as z from "zod";
+```typescript theme={null}
+import { createAgent, createMiddleware, HumanMessage } from 'langchain'
+import * as z from 'zod'
 
 const contextSchema = z.object({
   userId: z.string(),
   tenantId: z.string(),
-  apiKey: z.string().optional(),
-});
+  apiKey: z.string().optional()
+})
 
 const userContextMiddleware = createMiddleware({
-  name: "UserContextMiddleware",
+  name: 'UserContextMiddleware',
   contextSchema,
   wrapModelCall: (request, handler) => {
     // Access context from runtime
-    const { userId, tenantId } = request.runtime.context;
+    const { userId, tenantId } = request.runtime.context
 
     // Add user context to system message
-    const contextText = `User ID: ${userId}, Tenant: ${tenantId}`;
-    const newSystemMessage = request.systemMessage.concat(contextText);
+    const contextText = `User ID: ${userId}, Tenant: ${tenantId}`
+    const newSystemMessage = request.systemMessage.concat(contextText)
 
     return handler({
       ...request,
-      systemMessage: newSystemMessage,
-    });
-  },
-});
+      systemMessage: newSystemMessage
+    })
+  }
+})
 
 const agent = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   middleware: [userContextMiddleware],
   tools: [],
-  contextSchema,
-});
+  contextSchema
+})
 
 const result = await agent.invoke(
-  { messages: [new HumanMessage("Hello")] },
+  { messages: [new HumanMessage('Hello')] },
   // Required fields (userId, tenantId) must be provided
   {
     context: {
-      userId: "user-123",
-      tenantId: "acme-corp",
-    },
+      userId: 'user-123',
+      tenantId: 'acme-corp'
+    }
   }
-);
+)
 ```
 
 **Required context fields**: When you define required fields in your `contextSchema` (fields without `.optional()` or `.default()`), TypeScript will enforce that these fields must be provided during `agent.invoke()` calls. This ensures type safety and prevents runtime errors from missing required context.
 
-```typescript  theme={null}
+```typescript theme={null}
 // This will cause a TypeScript error if userId or tenantId are missing
 const result = await agent.invoke(
-  { messages: [new HumanMessage("Hello")] },
-  { context: { userId: "user-123" } } // Error: tenantId is required
-);
+  { messages: [new HumanMessage('Hello')] },
+  { context: { userId: 'user-123' } } // Error: tenantId is required
+)
 ```
 
 ## Execution order
 
 When using multiple middleware, understand how they execute:
 
-```typescript  theme={null}
+```typescript theme={null}
 const agent = createAgent({
   model: "gpt-4o",
   middleware: [middleware1, middleware2, middleware3],
@@ -264,38 +264,38 @@ const agent = createAgent({
 <Accordion title="Execution flow">
   **Before hooks run in order:**
 
-  1. `middleware1.before_agent()`
-  2. `middleware2.before_agent()`
-  3. `middleware3.before_agent()`
+1. `middleware1.before_agent()`
+2. `middleware2.before_agent()`
+3. `middleware3.before_agent()`
 
-  **Agent loop starts**
+**Agent loop starts**
 
-  4. `middleware1.before_model()`
-  5. `middleware2.before_model()`
-  6. `middleware3.before_model()`
+4. `middleware1.before_model()`
+5. `middleware2.before_model()`
+6. `middleware3.before_model()`
 
-  **Wrap hooks nest like function calls:**
+**Wrap hooks nest like function calls:**
 
-  7. `middleware1.wrap_model_call()` → `middleware2.wrap_model_call()` → `middleware3.wrap_model_call()` → model
+7. `middleware1.wrap_model_call()` → `middleware2.wrap_model_call()` → `middleware3.wrap_model_call()` → model
 
-  **After hooks run in reverse order:**
+**After hooks run in reverse order:**
 
-  8. `middleware3.after_model()`
-  9. `middleware2.after_model()`
-  10. `middleware1.after_model()`
+8. `middleware3.after_model()`
+9. `middleware2.after_model()`
+10. `middleware1.after_model()`
 
-  **Agent loop ends**
+**Agent loop ends**
 
-  11. `middleware3.after_agent()`
-  12. `middleware2.after_agent()`
-  13. `middleware1.after_agent()`
+11. `middleware3.after_agent()`
+12. `middleware2.after_agent()`
+13. `middleware1.after_agent()`
 </Accordion>
 
 **Key rules:**
 
-* `before_*` hooks: First to last
-* `after_*` hooks: Last to first (reverse)
-* `wrap_*` hooks: Nested (first middleware wraps all others)
+- `before_*` hooks: First to last
+- `after_*` hooks: Last to first (reverse)
+- `wrap_*` hooks: Nested (first middleware wraps all others)
 
 ## Agent jumps
 
@@ -303,43 +303,43 @@ To exit early from middleware, return a dictionary with `jump_to`:
 
 **Available jump targets:**
 
-* `'end'`: Jump to the end of the agent execution (or the first `after_agent` hook)
-* `'tools'`: Jump to the tools node
-* `'model'`: Jump to the model node (or the first `before_model` hook)
+- `'end'`: Jump to the end of the agent execution (or the first `after_agent` hook)
+- `'tools'`: Jump to the tools node
+- `'model'`: Jump to the model node (or the first `before_model` hook)
 
-```typescript  theme={null}
-import { createAgent, createMiddleware, AIMessage } from "langchain";
+```typescript theme={null}
+import { createAgent, createMiddleware, AIMessage } from 'langchain'
 
 const agent = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   middleware: [
     createMiddleware({
-      name: "BlockedContentMiddleware",
+      name: 'BlockedContentMiddleware',
       beforeModel: {
-        canJumpTo: ["end"],
+        canJumpTo: ['end'],
         hook: (state) => {
-          if (state.messages.at(-1)?.content.includes("BLOCKED")) {
+          if (state.messages.at(-1)?.content.includes('BLOCKED')) {
             return {
-              messages: [new AIMessage("I cannot respond to that request.")],
-              jumpTo: "end" as const,
-            };
+              messages: [new AIMessage('I cannot respond to that request.')],
+              jumpTo: 'end' as const
+            }
           }
-          return;
-        },
-      },
-    }),
-  ],
-});
+          return
+        }
+      }
+    })
+  ]
+})
 
 const result = await agent.invoke({
-    messages: "Hello, world! BLOCKED"
-});
+  messages: 'Hello, world! BLOCKED'
+})
 
 /**
  * Expected output:
  * I cannot respond to that request.
  */
-console.log(result.messages.at(-1)?.content);
+console.log(result.messages.at(-1)?.content)
 ```
 
 ## Best practices
@@ -347,8 +347,8 @@ console.log(result.messages.at(-1)?.content);
 1. Keep middleware focused - each should do one thing well
 2. Handle errors gracefully - don't let middleware errors crash the agent
 3. **Use appropriate hook types**:
-   * Node-style for sequential logic (logging, validation)
-   * Wrap-style for control flow (retry, fallback, caching)
+   - Node-style for sequential logic (logging, validation)
+   - Wrap-style for control flow (retry, fallback, caching)
 4. Clearly document any custom state properties
 5. Unit test middleware independently before integrating
 6. Consider execution order - place critical middleware first in the list
@@ -358,43 +358,43 @@ console.log(result.messages.at(-1)?.content);
 
 ### Dynamic model selection
 
-```typescript  theme={null}
-import { createMiddleware, initChatModel } from "langchain";
+```typescript theme={null}
+import { createMiddleware, initChatModel } from 'langchain'
 
 const dynamicModelMiddleware = createMiddleware({
-  name: "DynamicModelMiddleware",
+  name: 'DynamicModelMiddleware',
   wrapModelCall: (request, handler) => {
-    const modifiedRequest = { ...request };
+    const modifiedRequest = { ...request }
     if (request.messages.length > 10) {
-      modifiedRequest.model = initChatModel("gpt-4o");
+      modifiedRequest.model = initChatModel('gpt-4o')
     } else {
-      modifiedRequest.model = initChatModel("gpt-4o-mini");
+      modifiedRequest.model = initChatModel('gpt-4o-mini')
     }
-    return handler(modifiedRequest);
-  },
-});
+    return handler(modifiedRequest)
+  }
+})
 ```
 
 ### Tool call monitoring
 
-```typescript  theme={null}
-import { createMiddleware } from "langchain";
+```typescript theme={null}
+import { createMiddleware } from 'langchain'
 
 const toolMonitoringMiddleware = createMiddleware({
-  name: "ToolMonitoringMiddleware",
+  name: 'ToolMonitoringMiddleware',
   wrapToolCall: (request, handler) => {
-    console.log(`Executing tool: ${request.toolCall.name}`);
-    console.log(`Arguments: ${JSON.stringify(request.toolCall.args)}`);
+    console.log(`Executing tool: ${request.toolCall.name}`)
+    console.log(`Arguments: ${JSON.stringify(request.toolCall.args)}`)
     try {
-      const result = handler(request);
-      console.log("Tool completed successfully");
-      return result;
+      const result = handler(request)
+      console.log('Tool completed successfully')
+      return result
     } catch (e) {
-      console.log(`Tool failed: ${e}`);
-      throw e;
+      console.log(`Tool failed: ${e}`)
+      throw e
     }
-  },
-});
+  }
+})
 ```
 
 ### Dynamically selecting tools
@@ -403,28 +403,28 @@ Select relevant tools at runtime to improve performance and accuracy.
 
 **Benefits:**
 
-* **Shorter prompts** - Reduce complexity by exposing only relevant tools
-* **Better accuracy** - Models choose correctly from fewer options
-* **Permission control** - Dynamically filter tools based on user access
+- **Shorter prompts** - Reduce complexity by exposing only relevant tools
+- **Better accuracy** - Models choose correctly from fewer options
+- **Permission control** - Dynamically filter tools based on user access
 
-```typescript  theme={null}
-import { createAgent, createMiddleware } from "langchain";
+```typescript theme={null}
+import { createAgent, createMiddleware } from 'langchain'
 
 const toolSelectorMiddleware = createMiddleware({
-  name: "ToolSelector",
+  name: 'ToolSelector',
   wrapModelCall: (request, handler) => {
     // Select a small, relevant subset of tools based on state/context
-    const relevantTools = selectRelevantTools(request.state, request.runtime);
-    const modifiedRequest = { ...request, tools: relevantTools };
-    return handler(modifiedRequest);
-  },
-});
+    const relevantTools = selectRelevantTools(request.state, request.runtime)
+    const modifiedRequest = { ...request, tools: relevantTools }
+    return handler(modifiedRequest)
+  }
+})
 
 const agent = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   tools: allTools,
-  middleware: [toolSelectorMiddleware],
-});
+  middleware: [toolSelectorMiddleware]
+})
 ```
 
 ### Working with system messages
@@ -433,23 +433,23 @@ Modify system messages in middleware using the `systemMessage` field in `ModelRe
 
 **Example: Chaining middleware** - Different middleware can use different approaches:
 
-```typescript  theme={null}
-import { createMiddleware, SystemMessage, createAgent } from "langchain";
+```typescript theme={null}
+import { createMiddleware, SystemMessage, createAgent } from 'langchain'
 
 // Middleware 1: Uses systemMessage with simple concatenation
 const myMiddleware = createMiddleware({
-  name: "MyMiddleware",
+  name: 'MyMiddleware',
   wrapModelCall: async (request, handler) => {
     return handler({
       ...request,
-      systemMessage: request.systemMessage.concat(`Additional context.`),
-    });
-  },
-});
+      systemMessage: request.systemMessage.concat(`Additional context.`)
+    })
+  }
+})
 
 // Middleware 2: Uses systemMessage with structured content (preserves structure)
 const myOtherMiddleware = createMiddleware({
-  name: "MyOtherMiddleware",
+  name: 'MyOtherMiddleware',
   wrapModelCall: async (request, handler) => {
     return handler({
       ...request,
@@ -457,36 +457,36 @@ const myOtherMiddleware = createMiddleware({
         new SystemMessage({
           content: [
             {
-              type: "text",
-              text: " More additional context. This will be cached.",
-              cache_control: { type: "ephemeral", ttl: "5m" },
-            },
-          ],
+              type: 'text',
+              text: ' More additional context. This will be cached.',
+              cache_control: { type: 'ephemeral', ttl: '5m' }
+            }
+          ]
         })
-      ),
-    });
-  },
-});
+      )
+    })
+  }
+})
 
 const agent = createAgent({
-  model: "anthropic:claude-3-5-sonnet",
-  systemPrompt: "You are a helpful assistant.",
-  middleware: [myMiddleware, myOtherMiddleware],
-});
+  model: 'anthropic:claude-3-5-sonnet',
+  systemPrompt: 'You are a helpful assistant.',
+  middleware: [myMiddleware, myOtherMiddleware]
+})
 ```
 
 The resulting system message will be:
 
-```typescript  theme={null}
+```typescript theme={null}
 new SystemMessage({
   content: [
-    { type: "text", text: "You are a helpful assistant." },
-    { type: "text", text: "Additional context." },
+    { type: 'text', text: 'You are a helpful assistant.' },
+    { type: 'text', text: 'Additional context.' },
     {
-        type: "text",
-        text: " More additional context. This will be cached.",
-        cache_control: { type: "ephemeral", ttl: "5m" },
-    },
-  ],
-});
+      type: 'text',
+      text: ' More additional context. This will be cached.',
+      cache_control: { type: 'ephemeral', ttl: '5m' }
+    }
+  ]
+})
 ```

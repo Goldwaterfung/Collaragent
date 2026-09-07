@@ -6,71 +6,63 @@
  *
  */
 
-import type {BaseSelection, LexicalEditor} from 'lexical';
-import type {JSX} from 'react';
+import type { BaseSelection, LexicalEditor } from 'lexical'
+import type { JSX } from 'react'
 
-import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
-import {IS_APPLE} from '@lexical/utils';
-import {
-  $createParagraphNode,
-  $createTextNode,
-  $getRoot,
-  getDOMSelection,
-} from 'lexical';
-import * as React from 'react';
-import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { IS_APPLE } from '@lexical/utils'
+import { $createParagraphNode, $createTextNode, $getRoot, getDOMSelection } from 'lexical'
+import * as React from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 const copy = (text: string | null) => {
-  const textArea = document.createElement('textarea');
-  textArea.value = text || '';
-  textArea.style.position = 'absolute';
-  textArea.style.opacity = '0';
-  document.body?.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
+  const textArea = document.createElement('textarea')
+  textArea.value = text || ''
+  textArea.style.position = 'absolute'
+  textArea.style.opacity = '0'
+  document.body?.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
   try {
-    const result = document.execCommand('copy');
+    const result = document.execCommand('copy')
     // eslint-disable-next-line no-console
-    console.log(result);
+    console.log(result)
   } catch (error) {
-    console.error(error);
+    console.error(error)
   }
-  document.body?.removeChild(textArea);
-};
+  document.body?.removeChild(textArea)
+}
 
 const download = (filename: string, text: string | null) => {
-  const a = document.createElement('a');
-  a.setAttribute(
-    'href',
-    'data:text/plain;charset=utf-8,' + encodeURIComponent(text || ''),
-  );
-  a.setAttribute('download', filename);
-  a.style.display = 'none';
-  document.body?.appendChild(a);
-  a.click();
-  document.body?.removeChild(a);
-};
+  const a = document.createElement('a')
+  a.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text || ''))
+  a.setAttribute('download', filename)
+  a.style.display = 'none'
+  document.body?.appendChild(a)
+  a.click()
+  document.body?.removeChild(a)
+}
 
 const formatStep = (step: Step) => {
   const formatOneStep = (name: string, value: Step['value']) => {
     switch (name) {
       case 'click': {
-        return `      await page.mouse.click(${value.x}, ${value.y});`;
+        return `      await page.mouse.click(${value.x}, ${value.y});`
       }
       case 'press': {
-        return `      await page.keyboard.press('${value}');`;
+        return `      await page.keyboard.press('${value}');`
       }
       case 'keydown': {
-        return `      await page.keyboard.keydown('${value}');`;
+        return `      await page.keyboard.keydown('${value}');`
       }
       case 'keyup': {
-        return `      await page.keyboard.keyup('${value}');`;
+        return `      await page.keyboard.keyup('${value}');`
       }
       case 'type': {
-        return `      await page.keyboard.type('${value}');`;
+        return `      await page.keyboard.type('${value}');`
       }
       case 'selectAll': {
-        return `      await selectAll(page);`;
+        return `      await selectAll(page);`
       }
       case 'snapshot': {
         return `      await assertHTMLSnapshot(page);
@@ -80,59 +72,54 @@ const formatStep = (step: Step) => {
         focusPath: [${value.focusPath.toString()}],
         focusOffset: ${value.focusOffset},
       });
-`;
+`
       }
       default:
-        return ``;
+        return ``
     }
-  };
-  const formattedStep = formatOneStep(step.name, step.value);
+  }
+  const formattedStep = formatOneStep(step.name, step.value)
   switch (step.count) {
     case 1:
-      return formattedStep;
+      return formattedStep
     case 2:
-      return [formattedStep, formattedStep].join(`\n`);
+      return [formattedStep, formattedStep].join(`\n`)
     default:
       return `      await repeat(${step.count}, async () => {
   ${formattedStep}
-      );`;
+      );`
   }
-};
+}
 
 export function isSelectAll(event: KeyboardEvent): boolean {
-  return (
-    event.key.toLowerCase() === 'a' &&
-    (IS_APPLE ? event.metaKey : event.ctrlKey)
-  );
+  return event.key.toLowerCase() === 'a' && (IS_APPLE ? event.metaKey : event.ctrlKey)
 }
 
 // stolen from LexicalSelection-test
 function sanitizeSelection(selection: Selection) {
-  const {anchorNode, focusNode} = selection;
-  let {anchorOffset, focusOffset} = selection;
+  const { anchorNode, focusNode } = selection
+  let { anchorOffset, focusOffset } = selection
   if (anchorOffset !== 0) {
-    anchorOffset--;
+    anchorOffset--
   }
   if (focusOffset !== 0) {
-    focusOffset--;
+    focusOffset--
   }
-  return {anchorNode, anchorOffset, focusNode, focusOffset};
+  return { anchorNode, anchorOffset, focusNode, focusOffset }
 }
 
 function getPathFromNodeToEditor(node: Node, rootElement: HTMLElement | null) {
-  let currentNode: Node | null | undefined = node;
-  const path = [];
+  let currentNode: Node | null | undefined = node
+  const path = []
   while (currentNode !== rootElement) {
     if (currentNode !== null && currentNode !== undefined) {
       path.unshift(
-        Array.from(currentNode?.parentNode?.childNodes ?? []).indexOf(
-          currentNode as ChildNode,
-        ),
-      );
+        Array.from(currentNode?.parentNode?.childNodes ?? []).indexOf(currentNode as ChildNode)
+      )
     }
-    currentNode = currentNode?.parentNode;
+    currentNode = currentNode?.parentNode
   }
-  return path;
+  return path
 }
 
 const keyPresses = new Set([
@@ -143,36 +130,34 @@ const keyPresses = new Set([
   'ArrowLeft',
   'ArrowRight',
   'ArrowUp',
-  'ArrowDown',
-]);
+  'ArrowDown'
+])
 
 type Step = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any;
-  count: number;
-  name: string;
-};
+  value: any
+  count: number
+  name: string
+}
 
-type Steps = Step[];
+type Steps = Step[]
 
-function useTestRecorder(
-  editor: LexicalEditor,
-): [JSX.Element, JSX.Element | null] {
-  const [steps, setSteps] = useState<Steps>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [, setCurrentInnerHTML] = useState('');
-  const [templatedTest, setTemplatedTest] = useState('');
-  const previousSelectionRef = useRef<BaseSelection | null>(null);
-  const skipNextSelectionChangeRef = useRef(false);
-  const preRef = useRef<HTMLPreElement>(null);
+function useTestRecorder(editor: LexicalEditor): [JSX.Element, JSX.Element | null] {
+  const [steps, setSteps] = useState<Steps>([])
+  const [isRecording, setIsRecording] = useState(false)
+  const [, setCurrentInnerHTML] = useState('')
+  const [templatedTest, setTemplatedTest] = useState('')
+  const previousSelectionRef = useRef<BaseSelection | null>(null)
+  const skipNextSelectionChangeRef = useRef(false)
+  const preRef = useRef<HTMLPreElement>(null)
 
   const getCurrentEditor = useCallback(() => {
-    return editor;
-  }, [editor]);
+    return editor
+  }, [editor])
 
   const generateTestContent = useCallback(() => {
-    const rootElement = editor.getRootElement();
-    const browserSelection = getDOMSelection(editor._window);
+    const rootElement = editor.getRootElement()
+    const browserSelection = getDOMSelection(editor._window)
 
     if (
       rootElement == null ||
@@ -182,7 +167,7 @@ function useTestRecorder(
       !rootElement.contains(browserSelection.anchorNode) ||
       !rootElement.contains(browserSelection.focusNode)
     ) {
-      return null;
+      return null
     }
 
     return `
@@ -213,8 +198,8 @@ describe('Test case', () => {
 ${steps.map(formatStep).join(`\n`)}
     });
 });
-    `;
-  }, [editor, steps]);
+    `
+  }, [editor, steps])
 
   // just a wrapper around inserting new actions so that we can
   // coalesce some actions like insertText/moveNativeSelection
@@ -222,181 +207,172 @@ ${steps.map(formatStep).join(`\n`)}
     (name: string, value: Step['value']) => {
       setSteps((currentSteps) => {
         // trying to group steps
-        const currentIndex = steps.length - 1;
-        const lastStep = steps[currentIndex];
+        const currentIndex = steps.length - 1
+        const lastStep = steps[currentIndex]
         if (lastStep) {
           if (lastStep.name === name) {
             if (name === 'type') {
               // for typing events we just append the text
               return [
                 ...steps.slice(0, currentIndex),
-                {...lastStep, value: lastStep.value + value},
-              ];
+                { ...lastStep, value: lastStep.value + value }
+              ]
             } else {
               // for other events we bump the counter if their values are the same
               if (lastStep.value === value) {
-                return [
-                  ...steps.slice(0, currentIndex),
-                  {...lastStep, count: lastStep.count + 1},
-                ];
+                return [...steps.slice(0, currentIndex), { ...lastStep, count: lastStep.count + 1 }]
               }
             }
           }
         }
         // could not group, just append a new one
-        return [...currentSteps, {count: 1, name, value}];
-      });
+        return [...currentSteps, { count: 1, name, value }]
+      })
     },
-    [steps, setSteps],
-  );
+    [steps, setSteps]
+  )
 
   useLayoutEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isRecording) {
-        return;
+        return
       }
-      const key = event.key;
+      const key = event.key
       if (isSelectAll(event)) {
-        pushStep('selectAll', '');
+        pushStep('selectAll', '')
       } else if (keyPresses.has(key)) {
-        pushStep('press', event.key);
+        pushStep('press', event.key)
       } else if ([...key].length > 1) {
-        pushStep('keydown', event.key);
+        pushStep('keydown', event.key)
       } else {
-        pushStep('type', event.key);
+        pushStep('type', event.key)
       }
-    };
+    }
 
     const onKeyUp = (event: KeyboardEvent) => {
       if (!isRecording) {
-        return;
+        return
       }
-      const key = event.key;
+      const key = event.key
       if (!keyPresses.has(key) && [...key].length > 1) {
-        pushStep('keyup', event.key);
+        pushStep('keyup', event.key)
       }
-    };
+    }
 
     return editor.registerRootListener((rootElement) => {
       if (rootElement) {
-        rootElement.addEventListener('keydown', onKeyDown);
-        rootElement.addEventListener('keyup', onKeyUp);
+        rootElement.addEventListener('keydown', onKeyDown)
+        rootElement.addEventListener('keyup', onKeyUp)
         return () => {
-          rootElement.removeEventListener('keydown', onKeyDown);
-          rootElement.removeEventListener('keyup', onKeyUp);
-        };
+          rootElement.removeEventListener('keydown', onKeyDown)
+          rootElement.removeEventListener('keyup', onKeyUp)
+        }
       }
-    });
-  }, [editor, isRecording, pushStep]);
+    })
+  }, [editor, isRecording, pushStep])
 
   useLayoutEffect(() => {
     if (preRef.current) {
-      preRef.current.scrollTo(0, preRef.current.scrollHeight);
+      preRef.current.scrollTo(0, preRef.current.scrollHeight)
     }
-  }, [generateTestContent]);
+  }, [generateTestContent])
 
   useEffect(() => {
     if (steps) {
-      const testContent = generateTestContent();
+      const testContent = generateTestContent()
       if (testContent !== null) {
-        setTemplatedTest(testContent);
+        setTemplatedTest(testContent)
       }
       if (preRef.current) {
-        preRef.current.scrollTo(0, preRef.current.scrollHeight);
+        preRef.current.scrollTo(0, preRef.current.scrollHeight)
       }
     }
-  }, [generateTestContent, steps]);
+  }, [generateTestContent, steps])
 
   useEffect(() => {
     const removeUpdateListener = editor.registerUpdateListener(
-      ({editorState, dirtyLeaves, dirtyElements}) => {
+      ({ editorState, dirtyLeaves, dirtyElements }) => {
         if (!isRecording) {
-          return;
+          return
         }
-        const currentSelection = editorState._selection;
-        const previousSelection = previousSelectionRef.current;
-        const skipNextSelectionChange = skipNextSelectionChangeRef.current;
+        const currentSelection = editorState._selection
+        const previousSelection = previousSelectionRef.current
+        const skipNextSelectionChange = skipNextSelectionChangeRef.current
         if (previousSelection !== currentSelection) {
-          if (
-            dirtyLeaves.size === 0 &&
-            dirtyElements.size === 0 &&
-            !skipNextSelectionChange
-          ) {
-            const browserSelection = getDOMSelection(editor._window);
+          if (dirtyLeaves.size === 0 && dirtyElements.size === 0 && !skipNextSelectionChange) {
+            const browserSelection = getDOMSelection(editor._window)
             if (
               browserSelection &&
-              (browserSelection.anchorNode == null ||
-                browserSelection.focusNode == null)
+              (browserSelection.anchorNode == null || browserSelection.focusNode == null)
             ) {
-              return;
+              return
             }
           }
-          previousSelectionRef.current = currentSelection;
+          previousSelectionRef.current = currentSelection
         }
-        skipNextSelectionChangeRef.current = false;
-        const testContent = generateTestContent();
+        skipNextSelectionChangeRef.current = false
+        const testContent = generateTestContent()
         if (testContent !== null) {
-          setTemplatedTest(testContent);
+          setTemplatedTest(testContent)
         }
-      },
-    );
-    return removeUpdateListener;
-  }, [editor, generateTestContent, isRecording, pushStep]);
+      }
+    )
+    return removeUpdateListener
+  }, [editor, generateTestContent, isRecording, pushStep])
 
   // save innerHTML
   useEffect(() => {
     if (!isRecording) {
-      return;
+      return
     }
     const removeUpdateListener = editor.registerUpdateListener(() => {
-      const rootElement = editor.getRootElement();
+      const rootElement = editor.getRootElement()
       if (rootElement !== null) {
-        setCurrentInnerHTML(rootElement?.innerHTML);
+        setCurrentInnerHTML(rootElement?.innerHTML)
       }
-    });
-    return removeUpdateListener;
-  }, [editor, isRecording]);
+    })
+    return removeUpdateListener
+  }, [editor, isRecording])
 
   // clear editor and start recording
   const toggleEditorSelection = useCallback(
     (currentEditor: LexicalEditor) => {
       if (!isRecording) {
         currentEditor.update(() => {
-          const root = $getRoot();
-          root.clear();
-          const text = $createTextNode();
-          root.append($createParagraphNode().append(text));
-          text.select();
-        });
-        setSteps([]);
+          const root = $getRoot()
+          root.clear()
+          const text = $createTextNode()
+          root.append($createParagraphNode().append(text))
+          text.select()
+        })
+        setSteps([])
       }
-      setIsRecording((currentIsRecording) => !currentIsRecording);
+      setIsRecording((currentIsRecording) => !currentIsRecording)
     },
-    [isRecording],
-  );
+    [isRecording]
+  )
 
   const onSnapshotClick = useCallback(() => {
     if (!isRecording) {
-      return;
+      return
     }
-    const browserSelection = getDOMSelection(getCurrentEditor()._window);
+    const browserSelection = getDOMSelection(getCurrentEditor()._window)
     if (
       browserSelection === null ||
       browserSelection.anchorNode == null ||
       browserSelection.focusNode == null
     ) {
-      return;
+      return
     }
-    const {anchorNode, anchorOffset, focusNode, focusOffset} =
-      sanitizeSelection(browserSelection);
-    const rootElement = getCurrentEditor().getRootElement();
-    let anchorPath;
+    const { anchorNode, anchorOffset, focusNode, focusOffset } = sanitizeSelection(browserSelection)
+    const rootElement = getCurrentEditor().getRootElement()
+    let anchorPath
     if (anchorNode !== null) {
-      anchorPath = getPathFromNodeToEditor(anchorNode, rootElement);
+      anchorPath = getPathFromNodeToEditor(anchorNode, rootElement)
     }
-    let focusPath;
+    let focusPath
     if (focusNode !== null) {
-      focusPath = getPathFromNodeToEditor(focusNode, rootElement);
+      focusPath = getPathFromNodeToEditor(focusNode, rootElement)
     }
     pushStep('snapshot', {
       anchorNode,
@@ -404,17 +380,17 @@ ${steps.map(formatStep).join(`\n`)}
       anchorPath,
       focusNode,
       focusOffset,
-      focusPath,
-    });
-  }, [pushStep, isRecording, getCurrentEditor]);
+      focusPath
+    })
+  }, [pushStep, isRecording, getCurrentEditor])
 
   const onCopyClick = useCallback(() => {
-    copy(generateTestContent());
-  }, [generateTestContent]);
+    copy(generateTestContent())
+  }, [generateTestContent])
 
   const onDownloadClick = useCallback(() => {
-    download('test.js', generateTestContent());
-  }, [generateTestContent]);
+    download('test.js', generateTestContent())
+  }, [generateTestContent])
 
   const button = (
     <button
@@ -423,7 +399,7 @@ ${steps.map(formatStep).join(`\n`)}
       onClick={() => toggleEditorSelection(getCurrentEditor())}
       title={isRecording ? 'Disable test recorder' : 'Enable test recorder'}
     />
-  );
+  )
   const output = isRecording ? (
     <div className="test-recorder-output">
       <div className="test-recorder-toolbar">
@@ -450,19 +426,19 @@ ${steps.map(formatStep).join(`\n`)}
         {templatedTest}
       </pre>
     </div>
-  ) : null;
+  ) : null
 
-  return [button, output];
+  return [button, output]
 }
 
 export default function TestRecorderPlugin(): JSX.Element {
-  const [editor] = useLexicalComposerContext();
-  const [testRecorderButton, testRecorderOutput] = useTestRecorder(editor);
+  const [editor] = useLexicalComposerContext()
+  const [testRecorderButton, testRecorderOutput] = useTestRecorder(editor)
 
   return (
     <>
       {testRecorderButton}
       {testRecorderOutput}
     </>
-  );
+  )
 }

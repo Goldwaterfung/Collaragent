@@ -6,19 +6,10 @@
  *
  */
 
-import type {JSX} from 'react';
+import type { JSX } from 'react'
 
-import {
-  $isAutoLinkNode,
-  $isLinkNode,
-  LinkNode,
-  TOGGLE_LINK_COMMAND,
-} from '@lexical/link';
-import {
-  $findMatchingParent,
-  $wrapNodeInElement,
-  mergeRegister,
-} from '@lexical/utils';
+import { $isAutoLinkNode, $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link'
+import { $findMatchingParent, $wrapNodeInElement, mergeRegister } from '@lexical/utils'
 import {
   $createParagraphNode,
   $createRangeSelection,
@@ -38,37 +29,32 @@ import {
   getDOMSelectionFromTarget,
   isHTMLElement,
   LexicalCommand,
-  LexicalEditor,
-} from 'lexical';
-import {useEffect, useRef, useState} from 'react';
+  LexicalEditor
+} from 'lexical'
+import { useEffect, useRef, useState } from 'react'
 
-import landscapeImage from '../../images/landscape.jpg';
-import yellowFlowerImage from '../../images/yellow-flower.jpg';
-import {
-  $createImageNode,
-  $isImageNode,
-  ImageNode,
-  ImagePayload,
-} from '../../nodes/ImageNode';
-import Button from '../../ui/Button';
-import {DialogActions, DialogButtonsList} from '../../ui/Dialog';
-import FileInput from '../../ui/FileInput';
-import TextInput from '../../ui/TextInput';
+import landscapeImage from '../../images/landscape.jpg'
+import yellowFlowerImage from '../../images/yellow-flower.jpg'
+import { $createImageNode, $isImageNode, ImageNode, ImagePayload } from '../../nodes/ImageNode'
+import Button from '../../ui/Button'
+import { DialogActions, DialogButtonsList } from '../../ui/Dialog'
+import FileInput from '../../ui/FileInput'
+import TextInput from '../../ui/TextInput'
 
-export type InsertImagePayload = Readonly<ImagePayload>;
+export type InsertImagePayload = Readonly<ImagePayload>
 
 export const INSERT_IMAGE_COMMAND: LexicalCommand<InsertImagePayload> =
-  createCommand('INSERT_IMAGE_COMMAND');
+  createCommand('INSERT_IMAGE_COMMAND')
 
 export function InsertImageUriDialogBody({
-  onClick,
+  onClick
 }: {
-  onClick: (payload: InsertImagePayload) => void;
+  onClick: (payload: InsertImagePayload) => void
 }) {
-  const [src, setSrc] = useState('');
-  const [altText, setAltText] = useState('');
+  const [src, setSrc] = useState('')
+  const [altText, setAltText] = useState('')
 
-  const isDisabled = src === '';
+  const isDisabled = src === ''
 
   return (
     <>
@@ -90,36 +76,37 @@ export function InsertImageUriDialogBody({
         <Button
           data-test-id="image-modal-confirm-btn"
           disabled={isDisabled}
-          onClick={() => onClick({altText, src})}>
+          onClick={() => onClick({ altText, src })}
+        >
           Confirm
         </Button>
       </DialogActions>
     </>
-  );
+  )
 }
 
 export function InsertImageUploadedDialogBody({
-  onClick,
+  onClick
 }: {
-  onClick: (payload: InsertImagePayload) => void;
+  onClick: (payload: InsertImagePayload) => void
 }) {
-  const [src, setSrc] = useState('');
-  const [altText, setAltText] = useState('');
+  const [src, setSrc] = useState('')
+  const [altText, setAltText] = useState('')
 
-  const isDisabled = src === '';
+  const isDisabled = src === ''
 
   const loadImage = (files: FileList | null) => {
-    const reader = new FileReader();
+    const reader = new FileReader()
     reader.onload = function () {
       if (typeof reader.result === 'string') {
-        setSrc(reader.result);
+        setSrc(reader.result)
       }
-      return '';
-    };
-    if (files !== null) {
-      reader.readAsDataURL(files[0]);
+      return ''
     }
-  };
+    if (files !== null) {
+      reader.readAsDataURL(files[0])
+    }
+  }
 
   return (
     <>
@@ -140,39 +127,40 @@ export function InsertImageUploadedDialogBody({
         <Button
           data-test-id="image-modal-file-upload-btn"
           disabled={isDisabled}
-          onClick={() => onClick({altText, src})}>
+          onClick={() => onClick({ altText, src })}
+        >
           Confirm
         </Button>
       </DialogActions>
     </>
-  );
+  )
 }
 
 export function InsertImageDialog({
   activeEditor,
-  onClose,
+  onClose
 }: {
-  activeEditor: LexicalEditor;
-  onClose: () => void;
+  activeEditor: LexicalEditor
+  onClose: () => void
 }): JSX.Element {
-  const [mode, setMode] = useState<null | 'url' | 'file'>(null);
-  const hasModifier = useRef(false);
+  const [mode, setMode] = useState<null | 'url' | 'file'>(null)
+  const hasModifier = useRef(false)
 
   useEffect(() => {
-    hasModifier.current = false;
+    hasModifier.current = false
     const handler = (e: KeyboardEvent) => {
-      hasModifier.current = e.altKey;
-    };
-    document.addEventListener('keydown', handler);
+      hasModifier.current = e.altKey
+    }
+    document.addEventListener('keydown', handler)
     return () => {
-      document.removeEventListener('keydown', handler);
-    };
-  }, [activeEditor]);
+      document.removeEventListener('keydown', handler)
+    }
+  }, [activeEditor])
 
   const onClick = (payload: InsertImagePayload) => {
-    activeEditor.dispatchCommand(INSERT_IMAGE_COMMAND, payload);
-    onClose();
-  };
+    activeEditor.dispatchCommand(INSERT_IMAGE_COMMAND, payload)
+    onClose()
+  }
 
   return (
     <>
@@ -184,26 +172,22 @@ export function InsertImageDialog({
               onClick(
                 hasModifier.current
                   ? {
-                      altText:
-                        'Daylight fir trees forest glacier green high ice landscape',
-                      src: landscapeImage,
+                      altText: 'Daylight fir trees forest glacier green high ice landscape',
+                      src: landscapeImage
                     }
                   : {
                       altText: 'Yellow flower in tilt shift lens',
-                      src: yellowFlowerImage,
-                    },
+                      src: yellowFlowerImage
+                    }
               )
-            }>
+            }
+          >
             Sample
           </Button>
-          <Button
-            data-test-id="image-modal-option-url"
-            onClick={() => setMode('url')}>
+          <Button data-test-id="image-modal-option-url" onClick={() => setMode('url')}>
             URL
           </Button>
-          <Button
-            data-test-id="image-modal-option-file"
-            onClick={() => setMode('file')}>
+          <Button data-test-id="image-modal-option-file" onClick={() => setMode('file')}>
             File
           </Button>
         </DialogButtonsList>
@@ -211,7 +195,7 @@ export function InsertImageDialog({
       {mode === 'url' && <InsertImageUriDialogBody onClick={onClick} />}
       {mode === 'file' && <InsertImageUploadedDialogBody onClick={onClick} />}
     </>
-  );
+  )
 }
 
 export const ImagesExtension = defineExtension({
@@ -222,50 +206,50 @@ export const ImagesExtension = defineExtension({
       editor.registerCommand<InsertImagePayload>(
         INSERT_IMAGE_COMMAND,
         (payload) => {
-          const imageNode = $createImageNode(payload);
-          $insertNodes([imageNode]);
+          const imageNode = $createImageNode(payload)
+          $insertNodes([imageNode])
           if ($isRootOrShadowRoot(imageNode.getParentOrThrow())) {
-            $wrapNodeInElement(imageNode, $createParagraphNode).selectEnd();
+            $wrapNodeInElement(imageNode, $createParagraphNode).selectEnd()
           }
 
-          return true;
+          return true
         },
-        COMMAND_PRIORITY_EDITOR,
+        COMMAND_PRIORITY_EDITOR
       ),
       editor.registerCommand<DragEvent>(
         DRAGSTART_COMMAND,
         (event) => $onDragStart(event),
-        COMMAND_PRIORITY_HIGH,
+        COMMAND_PRIORITY_HIGH
       ),
       editor.registerCommand<DragEvent>(
         DRAGOVER_COMMAND,
         (event) => $onDragover(event),
-        COMMAND_PRIORITY_LOW,
+        COMMAND_PRIORITY_LOW
       ),
       editor.registerCommand<DragEvent>(
         DROP_COMMAND,
         (event) => $onDrop(event, editor),
-        COMMAND_PRIORITY_HIGH,
-      ),
-    ),
-});
+        COMMAND_PRIORITY_HIGH
+      )
+    )
+})
 
 const TRANSPARENT_IMAGE =
-  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-const img = document.createElement('img');
-img.src = TRANSPARENT_IMAGE;
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+const img = document.createElement('img')
+img.src = TRANSPARENT_IMAGE
 
 function $onDragStart(event: DragEvent): boolean {
-  const node = $getImageNodeInSelection();
+  const node = $getImageNodeInSelection()
   if (!node) {
-    return false;
+    return false
   }
-  const dataTransfer = event.dataTransfer;
+  const dataTransfer = event.dataTransfer
   if (!dataTransfer) {
-    return false;
+    return false
   }
-  dataTransfer.setData('text/plain', '_');
-  dataTransfer.setDragImage(img, 0, 0);
+  dataTransfer.setData('text/plain', '_')
+  dataTransfer.setDragImage(img, 0, 0)
   dataTransfer.setData(
     'application/x-lexical-drag',
     JSON.stringify({
@@ -277,108 +261,107 @@ function $onDragStart(event: DragEvent): boolean {
         maxWidth: node.__maxWidth,
         showCaption: node.__showCaption,
         src: node.__src,
-        width: node.__width,
+        width: node.__width
       },
-      type: 'image',
-    }),
-  );
+      type: 'image'
+    })
+  )
 
-  return true;
+  return true
 }
 
 function $onDragover(event: DragEvent): boolean {
-  const node = $getImageNodeInSelection();
+  const node = $getImageNodeInSelection()
   if (!node) {
-    return false;
+    return false
   }
   if (!canDropImage(event)) {
-    event.preventDefault();
+    event.preventDefault()
   }
-  return false;
+  return false
 }
 
 function $onDrop(event: DragEvent, editor: LexicalEditor): boolean {
-  const node = $getImageNodeInSelection();
+  const node = $getImageNodeInSelection()
   if (!node) {
-    return false;
+    return false
   }
-  const data = getDragImageData(event);
+  const data = getDragImageData(event)
   if (!data) {
-    return false;
+    return false
   }
   const existingLink = $findMatchingParent(
     node,
-    (parent): parent is LinkNode =>
-      !$isAutoLinkNode(parent) && $isLinkNode(parent),
-  );
-  event.preventDefault();
+    (parent): parent is LinkNode => !$isAutoLinkNode(parent) && $isLinkNode(parent)
+  )
+  event.preventDefault()
   if (canDropImage(event)) {
-    const range = getDragSelection(event);
-    node.remove();
-    const rangeSelection = $createRangeSelection();
+    const range = getDragSelection(event)
+    node.remove()
+    const rangeSelection = $createRangeSelection()
     if (range !== null && range !== undefined) {
-      rangeSelection.applyDOMRange(range);
+      rangeSelection.applyDOMRange(range)
     }
-    $setSelection(rangeSelection);
-    editor.dispatchCommand(INSERT_IMAGE_COMMAND, data);
+    $setSelection(rangeSelection)
+    editor.dispatchCommand(INSERT_IMAGE_COMMAND, data)
     if (existingLink) {
-      editor.dispatchCommand(TOGGLE_LINK_COMMAND, existingLink.getURL());
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, existingLink.getURL())
     }
   }
-  return true;
+  return true
 }
 
 function $getImageNodeInSelection(): ImageNode | null {
-  const selection = $getSelection();
+  const selection = $getSelection()
   if (!$isNodeSelection(selection)) {
-    return null;
+    return null
   }
-  const nodes = selection.getNodes();
-  const node = nodes[0];
-  return $isImageNode(node) ? node : null;
+  const nodes = selection.getNodes()
+  const node = nodes[0]
+  return $isImageNode(node) ? node : null
 }
 
 function getDragImageData(event: DragEvent): null | InsertImagePayload {
-  const dragData = event.dataTransfer?.getData('application/x-lexical-drag');
+  const dragData = event.dataTransfer?.getData('application/x-lexical-drag')
   if (!dragData) {
-    return null;
+    return null
   }
-  const {type, data} = JSON.parse(dragData);
+  const { type, data } = JSON.parse(dragData)
   if (type !== 'image') {
-    return null;
+    return null
   }
 
-  return data;
+  return data
 }
 
 declare global {
   interface DragEvent {
-    rangeOffset?: number;
-    rangeParent?: Node;
+    rangeOffset?: number
+    rangeParent?: Node
   }
 }
 
 function canDropImage(event: DragEvent): boolean {
-  const target = event.target;
+  const target = event.target
   return !!(
     isHTMLElement(target) &&
     !target.closest('code, span.editor-image') &&
     isHTMLElement(target.parentElement) &&
     target.parentElement.closest('div.ContentEditable__root')
-  );
+  )
 }
 
 function getDragSelection(event: DragEvent): Range | null | undefined {
-  let range;
-  const domSelection = getDOMSelectionFromTarget(event.target);
+  let range
+  const domSelection = getDOMSelectionFromTarget(event.target)
   if (document.caretRangeFromPoint) {
-    range = document.caretRangeFromPoint(event.clientX, event.clientY);
+    range = document.caretRangeFromPoint(event.clientX, event.clientY)
   } else if (event.rangeParent && domSelection !== null) {
-    domSelection.collapse(event.rangeParent, event.rangeOffset || 0);
-    range = domSelection.getRangeAt(0);
+    domSelection.collapse(event.rangeParent, event.rangeOffset || 0)
+    range = domSelection.getRangeAt(0)
   } else {
-    throw Error(`Cannot get the selection when dragging`);
+    throw Error(`Cannot get the selection when dragging`)
   }
 
-  return range;
+  return range
 }

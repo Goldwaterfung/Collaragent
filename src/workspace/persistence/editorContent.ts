@@ -1,1 +1,1 @@
-export * from "@shared/schemas/instances";
+export * from '@shared/schemas/instances'

@@ -233,15 +233,15 @@ Restores the complete project state, instance snapshots, and chat history to a d
   ```
 - **Behavioral Guarantees**:
   1. **Dual-Path Chat Restore**: If `bundle.chat.messageId === '__start__'` or matches `INITIAL_CHECKPOINT_LABEL`, the entire thread history is wiped via `clearChatSession(threadId)`. For conversational turns, messages after `messageId` are truncated via `truncateChatSession(threadId, messageId, blockIndex)`.
-  2. **Snapshot Hydration & Command Inversion**: Instance snapshots are loaded from content-addressed storage; uncommitted agent command log deltas beyond `targetCursor` are rolled back using `InverseCommandEngine.invert()`.
-  3. **LangGraph Head Synchronization**: Updates `LANGGRAPH_RESTORE_HEADS` so subsequent agent turns branch from the restored checkpoint tuple.
-  4. **WebSocket Broadcasts**: Emits `chat:restored`, `chat:sessionsUpdated`, and instance `update` payloads to synchronize all connected UI components.
+  2. **Fail-Closed CAS Snapshot Hydration**: Target instance snapshots are resolved from CAS `workspace_blobs` via `blob_hash`. If snapshot data cannot be resolved or is null, the restore operation aborts immediately and throws `StorageError(StorageErrorCode.STORAGE_CHECKPOINT_NOT_FOUND)`, ensuring live instances are never overwritten with empty state.
+  3. **DAG Lineage & LangGraph Head Synchronization**: Updates `LANGGRAPH_RESTORE_HEADS` and registers `AgentCheckpointRegistry.setPendingBranch()` and `setEffectiveBundleId()` so subsequent agent turns correctly branch in the DAG tree.
+  4. **WebSocket OCC Sequence & Proposal Realignment**: Emits a `system-checkpoint-restore` protocol update to the WebSocket server, resetting `commandSequences.set(instanceId, seq)` to the restore point's cursor and purging any pending proposals in `proposals[instanceId]`. Also emits `chat:restored` and `chat:sessionsUpdated`.
 
 #### 6. `POST /api/checkpoints/workspace/snapshots`
 
-Captures an idempotent, content-addressed binary MessagePack instance snapshot.
+Captures an idempotent, two-tier content-addressed binary MessagePack instance snapshot.
 
-- **Request Body**: Raw binary buffer (`application/octet-stream` containing MessagePack-encoded instance payload).
+- **Request Body**: Raw binary buffer (`application/octet-stream` containing MessagePack-encoded instance payload) or JSON payload with DTO.
 - **Query Parameters**:
   - `instanceId` _(required, string)_: Instance UUID.
   - `instanceType` _(required, string)_: `'graph-canvas' | 'document'`.
@@ -252,20 +252,21 @@ Captures an idempotent, content-addressed binary MessagePack instance snapshot.
   {
     "snapshotId": "snap-uuid-101",
     "snapshotRef": "3a7b9c...sha256.msgpack",
+    "blobHash": "3a7b9c...sha256",
     "size": 4096
   }
   ```
-- **Idempotency Guarantee**: If an identical MessagePack payload exists (`snapshot_ref` unique constraint), the endpoint immediately returns the existing record rather than failing with `SQLITE_CONSTRAINT_UNIQUE`.
+- **Two-Tier CAS Architecture & Idempotency Guarantee**: The payload is hashed (SHA-256) and upserted into `workspace_blobs (hash, content_msgpack, byte_size, created_at)`. A pointer record is then inserted into `workspace_snapshots (id, instance_id, project_id, snapshot_ref, snapshot_hash, blob_hash, snapshot_cursor_json)`. If an identical blob exists, the existing record is referenced, preventing data bloat and granting cascade-deletion immunity.
 
 #### 7. `GET /api/checkpoints/bundles` & `PUT /api/checkpoints/bundles`
 
-Lists and stores checkpoint bundles scoped by session, thread, and project.
+Lists and stores checkpoint bundles scoped by session, thread, and project with DAG tree lineage.
 
 - **`GET /api/checkpoints/bundles` Query Parameters**:
   - `threadId` _(optional, string)_
   - `sessionId` _(optional, string)_
   - `projectId` _(optional, string)_: Filters bundles to the active project, preventing cross-project metadata pollution.
-- **`PUT /api/checkpoints/bundles` Request Body**: Validated `CheckpointBundleSchema` payload.
+- **`PUT /api/checkpoints/bundles` Request Body**: Validated `CheckpointBundleSchema` payload including non-linear DAG properties (`parentBundleId?: string` and `branchName?: string`).
 
 ---
 
@@ -403,6 +404,16 @@ sequenceDiagram
     "type": "error",
     "code": "WORKSPACE_STALE_BASE_VERSION",
     "message": "Base version 2 is stale. Current instance sequence is 5."
+  }
+  ```
+- **`system-checkpoint-restore`**: Internal system message dispatched by the Storage Daemon upon point-in-time restoration. Resets `commandSequences.set(instanceId, sequenceNumber ?? 0)` to prevent OCC collisions and evicts uncommitted thread proposals from memory.
+  ```json
+  {
+    "type": "update",
+    "instanceId": "doc-uuid-1",
+    "payload": { "blocks": [ ... ] },
+    "clientId": "system-checkpoint-restore",
+    "sequenceNumber": 5
   }
   ```
 

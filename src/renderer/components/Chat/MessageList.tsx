@@ -4,6 +4,7 @@ import { ChatMessage } from '../../types/ui'
 import ToolCallCard from './ToolCallCard'
 import ReasoningCard from './ReasoningCard'
 import { CheckpointMarker } from './CheckpointMarker'
+import { CHECKPOINT_START_SENTINEL } from '@shared/checkpoints/types'
 import type { CheckpointBundleSummary } from '@shared/ipc/checkpoints/types'
 import ProgressContainer from './ProgressContainer'
 import { groupBlocksByTodos } from './groupBlocks'
@@ -48,21 +49,29 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     )
   }
 
-  const bundleByMessageId = new Map<string, CheckpointBundleSummary>()
+  const messageIds = new Set(messages.map((m) => m.id))
+
   let startBundle: CheckpointBundleSummary | undefined = undefined
+  const bundleByMessageId = new Map<string, CheckpointBundleSummary>()
 
   const sortedBundles = [...checkpointBundles].sort((a, b) =>
     a.createdAt.localeCompare(b.createdAt)
   )
+
   for (const bundle of sortedBundles) {
+    if (bundle.reason === 'restore') {
+      // Internal auto-restore snapshots are never rendered as chat timeline markers
+      continue
+    }
+
     const messageId = bundle.chatMessageId
-    if (!messageId || messageId === '__start__') {
-      if (!startBundle) {
-        startBundle = bundle
-      }
-    } else {
+    if (!messageId || messageId === '__start__' || messageId === CHECKPOINT_START_SENTINEL) {
+      startBundle = bundle
+    } else if (messageIds.has(messageId)) {
       bundleByMessageId.set(messageId, bundle)
     }
+    // Checkpoints referencing messages that are no longer in `messages` belonged
+    // to rolled-back branches and must not be anchored to earlier remaining messages.
   }
 
   const findNextUserMessage = (fromIndex: number): ChatMessage | undefined => {

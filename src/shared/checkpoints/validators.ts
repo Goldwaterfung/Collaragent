@@ -13,7 +13,9 @@ export const InstanceRestorePointSchema = z.object({
   projectId: z.string().min(1),
   snapshotId: z.string().min(1),
   targetCursor: InstanceLogPositionSchema,
-  agentSeqs: z.array(z.number()).optional()
+  agentSeqs: z.array(z.number()).optional(),
+  blobHash: z.string().min(1).optional(),
+  sequenceNumber: z.number().int().nonnegative().optional()
 })
 
 export const CheckpointBundleSchema = z.object({
@@ -21,6 +23,7 @@ export const CheckpointBundleSchema = z.object({
   createdAt: z.string().min(1),
   sessionId: z.string().min(1),
   threadId: z.string().min(1),
+  parentBundleId: z.string().min(1).optional(),
   agentCheckpointId: z.string().min(1).optional(),
   chat: z
     .object({
@@ -53,6 +56,8 @@ export const WorkspaceSnapshotSchema = z.object({
   projectId: z.string().min(1),
   snapshotRef: z.string().min(1),
   snapshotHash: z.string().min(1).optional(),
+  blobHash: z.string().min(1).optional(),
+  sequenceNumber: z.number().int().nonnegative().optional(),
   snapshotCursor: InstanceLogPositionSchema
 })
 

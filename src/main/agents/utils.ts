@@ -9,7 +9,18 @@ import { BaseLanguageModel } from '@langchain/core/language_models/base'
 import { toolFactoryMap } from '../tools'
 import { loadMCPTools } from './mcpLoader'
 
-export async function createModel(modelConfig: ModelConfig, apiKey?: string) {
+const COLLARAGENT_USER_AGENT = 'collaragent/1.0.0'
+const DEFAULT_OPENCODE_SESSION = 'collaragent-default-session'
+
+export interface CreateModelOptions {
+  threadId?: string
+}
+
+export async function createModel(
+  modelConfig: ModelConfig,
+  apiKey?: string,
+  options?: CreateModelOptions
+) {
   // Resolve actual model ID (apiModelId) if the ID is a UI-specific one
   const availableModels = new ModelManager().getAvailableModels()
   const modelInfo = availableModels.find(
@@ -17,26 +28,91 @@ export async function createModel(modelConfig: ModelConfig, apiKey?: string) {
   )
   const apiModelId = modelInfo?.apiModelId || modelConfig.modelId
 
+  // Determine if this model/request targets OpenCode Go
+  const isOpenCode =
+    modelConfig.provider === 'opencode-go' || Boolean(modelConfig.baseUrl?.includes('opencode.ai'))
+  const sessionId = options?.threadId || DEFAULT_OPENCODE_SESSION
+
+  const opencodeHeaders: Record<string, string> = {
+    'x-opencode-session': sessionId,
+    'User-Agent': COLLARAGENT_USER_AGENT
+  }
+
   // Generic factory logic
   switch (modelConfig.provider) {
-    case 'openai':
+    case 'opencode-go': {
+      // Look up wire protocol from catalog metadata
+      const wireProtocol = modelInfo?.api || 'openai-completions'
+      const isAnthropic = wireProtocol === 'anthropic-messages'
+      const defaultBaseUrl = isAnthropic
+        ? 'https://opencode.ai/zen/go'
+        : 'https://opencode.ai/zen/go/v1'
+      const effectiveBaseUrl = modelConfig.baseUrl || modelInfo?.baseUrl || defaultBaseUrl
+
+      if (isAnthropic) {
+        return new ChatAnthropic({
+          model: apiModelId,
+          apiKey: apiKey,
+          streaming: true,
+          anthropicApiUrl: effectiveBaseUrl,
+          clientOptions: {
+            baseURL: effectiveBaseUrl,
+            defaultHeaders: opencodeHeaders
+          },
+          ...modelConfig.parameters
+        })
+      }
+
       return new ChatOpenAI({
         model: apiModelId,
         apiKey: apiKey,
-        configuration: modelConfig.baseUrl ? { baseURL: modelConfig.baseUrl } : undefined,
+        configuration: {
+          baseURL: effectiveBaseUrl,
+          defaultHeaders: opencodeHeaders
+        },
         streaming: true,
         modelKwargs: {
           parallel_tool_calls: true
         },
         ...modelConfig.parameters
       })
-    case 'anthropic':
+    }
+    case 'openai': {
+      const defaultHeaders = isOpenCode ? opencodeHeaders : undefined
+      return new ChatOpenAI({
+        model: apiModelId,
+        apiKey: apiKey,
+        configuration:
+          modelConfig.baseUrl || defaultHeaders
+            ? {
+                baseURL: modelConfig.baseUrl,
+                defaultHeaders
+              }
+            : undefined,
+        streaming: true,
+        modelKwargs: {
+          parallel_tool_calls: true
+        },
+        ...modelConfig.parameters
+      })
+    }
+    case 'anthropic': {
+      const defaultHeaders = isOpenCode ? opencodeHeaders : undefined
       return new ChatAnthropic({
         model: apiModelId,
         apiKey: apiKey,
         streaming: true,
+        anthropicApiUrl: modelConfig.baseUrl,
+        clientOptions:
+          modelConfig.baseUrl || defaultHeaders
+            ? {
+                baseURL: modelConfig.baseUrl,
+                defaultHeaders
+              }
+            : undefined,
         ...modelConfig.parameters
       })
+    }
     case 'google':
       return new ChatGoogle({
         model: apiModelId,
@@ -94,13 +170,14 @@ export async function createSubAgent(
   allToolConfigs: ToolConfig[],
   allMCPServerConfigs: MCPServerConfig[],
   resolveApiKey: (provider: string) => string | undefined,
-  defaultModel?: BaseLanguageModel | string
+  defaultModel?: BaseLanguageModel | string,
+  options?: CreateModelOptions
 ): Promise<SubAgent> {
   // 1. Resolve Model
   let model = defaultModel
   if (subAgentConfig.model) {
     const apiKey = resolveApiKey(subAgentConfig.model.provider)
-    model = await createModel(subAgentConfig.model, apiKey)
+    model = await createModel(subAgentConfig.model, apiKey, options)
   }
 
   // 2. Resolve Tools
@@ -126,7 +203,8 @@ export async function createSubAgents(
   allToolConfigs: ToolConfig[],
   allMCPServerConfigs: MCPServerConfig[],
   resolveApiKey: (provider: string) => string | undefined,
-  defaultModel?: BaseLanguageModel | string
+  defaultModel?: BaseLanguageModel | string,
+  options?: CreateModelOptions
 ): Promise<SubAgent[]> {
   if (!subAgentConfigs) return []
 
@@ -139,7 +217,8 @@ export async function createSubAgents(
       allToolConfigs,
       allMCPServerConfigs,
       resolveApiKey,
-      defaultModel
+      defaultModel,
+      options
     )
     subagents.push(subAgent)
   }

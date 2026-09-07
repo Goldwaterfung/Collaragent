@@ -6,24 +6,24 @@
  *
  */
 
-import type {JSX} from 'react';
+import type { JSX } from 'react'
 
-import katex from 'katex';
-import {useEffect, useRef} from 'react';
+import katex from 'katex'
+import { useEffect, useRef } from 'react'
 
 export default function KatexRenderer({
   equation,
   inline,
-  onDoubleClick,
+  onDoubleClick
 }: Readonly<{
-  equation: string;
-  inline: boolean;
-  onDoubleClick: () => void;
+  equation: string
+  inline: boolean
+  onDoubleClick: () => void
 }>): JSX.Element {
-  const katexElementRef = useRef(null);
+  const katexElementRef = useRef(null)
 
   useEffect(() => {
-    const katexElement = katexElementRef.current;
+    const katexElement = katexElementRef.current
 
     if (katexElement !== null) {
       katex.render(equation, katexElement, {
@@ -32,10 +32,10 @@ export default function KatexRenderer({
         output: 'html',
         strict: 'warn',
         throwOnError: false,
-        trust: false,
-      });
+        trust: false
+      })
     }
-  }, [equation, inline]);
+  }, [equation, inline])
 
   return (
     // We use an empty image tag either side to ensure Android doesn't try and compose from the
@@ -48,12 +48,7 @@ export default function KatexRenderer({
         height="0"
         alt=""
       />
-      <span
-        role="button"
-        tabIndex={-1}
-        onDoubleClick={onDoubleClick}
-        ref={katexElementRef}
-      />
+      <span role="button" tabIndex={-1} onDoubleClick={onDoubleClick} ref={katexElementRef} />
       <img
         src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
         width="0"
@@ -61,5 +56,5 @@ export default function KatexRenderer({
         alt=""
       />
     </>
-  );
+  )
 }

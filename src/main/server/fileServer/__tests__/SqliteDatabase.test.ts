@@ -25,11 +25,11 @@ describe('SqliteDatabase Integration & Migration Suite', () => {
     }
   })
 
-  it('initializes a fresh database and executes V4 migration setting user_version = 4', () => {
+  it('initializes a fresh database and executes V5 migration setting user_version = 5', () => {
     db = new SqliteDatabase(dbPath)
 
     expect(db.isOpen).toBe(true)
-    expect(db.getUserVersion()).toBe(4)
+    expect(db.getUserVersion()).toBe(5)
     expect(db.integrityCheck()).toBe(true)
     expect(db.foreignKeyCheck()).toBe(true)
 
@@ -50,6 +50,7 @@ describe('SqliteDatabase Integration & Migration Suite', () => {
       'langgraph_writes',
       'large_tool_outputs',
       'projects',
+      'workspace_blobs',
       'workspace_command_logs',
       'workspace_snapshots'
     ].sort()

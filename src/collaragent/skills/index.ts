@@ -13,7 +13,7 @@ export {
   parseSkillMetadata,
   MAX_SKILL_FILE_SIZE,
   MAX_SKILL_NAME_LENGTH,
-  MAX_SKILL_DESCRIPTION_LENGTH,
-} from "./loader.js";
+  MAX_SKILL_DESCRIPTION_LENGTH
+} from './loader.js'
 
-export type { SkillMetadata, ListSkillsOptions } from "./loader.js";
+export type { SkillMetadata, ListSkillsOptions } from './loader.js'

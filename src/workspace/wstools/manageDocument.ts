@@ -1,6 +1,7 @@
 import { connectToEditor } from '@workspace/sync/ClientConnection'
 import { DocumentDiffEngine } from '@collaragent/runtime'
 import { DocumentPayload } from '@workspace/persistence/editorContent'
+import type { EditorCommand } from '@shared/commands'
 import { z } from 'zod'
 
 /**
@@ -8,9 +9,13 @@ import { z } from 'zod'
  */
 export const WriteDocumentSpecSchema = z.object({
   instanceId: z.string().describe('The ID of the document instance to write to.'),
-  payload: z.any().describe('The target DocumentPayload structure.'),
+  payload: z.custom<DocumentPayload>().describe('The target DocumentPayload structure.'),
   wsPort: z.number().optional().describe('Optional WebSocket port for connection.'),
-  staged: z.boolean().optional().default(true).describe('Whether to stage the changes for review.'),
+  staged: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Whether to stage the changes for review.'),
   threadId: z.string().optional().describe('The thread/session ID of the executing agent.')
 })
 
@@ -18,9 +23,13 @@ export type WriteDocumentSpec = z.input<typeof WriteDocumentSpecSchema>
 
 export const ExecuteDocumentCommandsSpecSchema = z.object({
   instanceId: z.string().describe('The ID of the document instance.'),
-  commands: z.array(z.any()).describe('Array of EditorCommand to execute.'),
+  commands: z.array(z.custom<EditorCommand>()).describe('Array of EditorCommand to execute.'),
   wsPort: z.number().optional().describe('Optional WebSocket port for connection.'),
-  staged: z.boolean().optional().default(true).describe('Whether to stage the changes for review.'),
+  staged: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Whether to stage the changes for review.'),
   threadId: z.string().optional().describe('The thread/session ID of the executing agent.')
 })
 

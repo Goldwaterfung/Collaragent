@@ -1,6 +1,7 @@
 import { WorkspaceCommandLogEntry } from '@shared/checkpoints/types'
 import { Command } from '@shared/commands'
 import { NodeEntity, RelationshipEntity } from '@shared/canvas'
+import { Block, Comment, DocumentPayload } from '@shared/schemas/instances'
 
 export class InverseCommandEngine {
   /**
@@ -94,7 +95,7 @@ export class InverseCommandEngine {
           return {
             type: 'editor:insert_block',
             index: previousState.index,
-            block: previousState.block
+            block: previousState.block as Block
           }
         }
         return null
@@ -116,7 +117,7 @@ export class InverseCommandEngine {
         if (previousState?.documentPayload) {
           return {
             type: 'editor:replace_document',
-            payload: previousState.documentPayload
+            payload: previousState.documentPayload as DocumentPayload
           }
         }
         return null
@@ -127,7 +128,7 @@ export class InverseCommandEngine {
         if (docPayload?.comments) {
           return {
             type: 'editor:update_comments',
-            comments: docPayload.comments
+            comments: docPayload.comments as Record<string, Comment>
           }
         }
         return null

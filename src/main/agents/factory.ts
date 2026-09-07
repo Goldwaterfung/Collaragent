@@ -30,7 +30,7 @@ export class AgentFactory {
     this.persistenceManager = persistenceManager
   }
 
-  private buildCacheKey(config: any, apiKey?: string): string {
+  private buildCacheKey(config: any, apiKey?: string, threadId?: string): string {
     const enabledTools = (config.tools || [])
       .filter((t: any) => t.enabled)
       .map((t: any) => ({ id: t.id }))
@@ -48,6 +48,10 @@ export class AgentFactory {
       }))
       .sort((a: any, b: any) => a.id.localeCompare(b.id))
 
+    const isOpenCode =
+      config.model?.provider === 'opencode-go' ||
+      Boolean(config.model?.baseUrl?.includes('opencode.ai'))
+
     const keyPayload = {
       model: config.model,
       tools: enabledTools,
@@ -57,7 +61,8 @@ export class AgentFactory {
         .filter((s: any) => s.enabled)
         .map((s: any) => ({ id: s.id, transport: s.transport }))
         .sort((a: any, b: any) => a.id.localeCompare(b.id)),
-      apiKeyHash: apiKey ? crypto.createHash('sha256').update(apiKey).digest('hex') : ''
+      apiKeyHash: apiKey ? crypto.createHash('sha256').update(apiKey).digest('hex') : '',
+      sessionId: isOpenCode ? threadId || '' : ''
     }
 
     return crypto.createHash('sha256').update(JSON.stringify(keyPayload)).digest('hex')
@@ -69,11 +74,11 @@ export class AgentFactory {
     // 1. Create LLM
     const resolveApiKey = (provider: string) => this.configLoader.getApiKey(provider)
     const apiKey = resolveApiKey(config.model.provider)
-    const cacheKey = this.buildCacheKey(config, apiKey)
+    const cacheKey = this.buildCacheKey(config, apiKey, runConfig?.threadId)
     let cached = this.sharedCache.get(cacheKey)
 
     if (!cached) {
-      const model = await createModel(config.model, apiKey)
+      const model = await createModel(config.model, apiKey, { threadId: runConfig?.threadId })
       const tools = await createTools(config.tools, resolveApiKey, config.mcpServers ?? [])
       //For dynamic subagents, we need to pass all available tools
       const allAvailableTools = await createTools(
@@ -87,7 +92,8 @@ export class AgentFactory {
         config.tools,
         config.mcpServers ?? [],
         resolveApiKey,
-        model
+        model,
+        { threadId: runConfig?.threadId }
       )
       cached = { model, tools, allAvailableTools, subagents }
       this.sharedCache.set(cacheKey, cached)

@@ -208,7 +208,9 @@ describe('HTML Table Conversion & PatchView Pipeline', () => {
       if (updateCmd.type === 'editor:update_block') {
         expect(updateCmd.blockId).toBe('tbl1')
         expect(updateCmd.changes.type).toBe('table')
-        expect(updateCmd.changes.tableRows[0].cells[0].children[0].text).toBe('New Updated Value')
+        expect(updateCmd.changes.tableRows?.[0]?.cells?.[0]?.children?.[0]?.text).toBe(
+          'New Updated Value'
+        )
       }
     })
 

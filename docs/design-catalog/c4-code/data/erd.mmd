@@ -21,13 +21,14 @@ erDiagram
     WORKSPACE_SNAPSHOT ||--|| INSTANCE_RESTORE_POINT : targets
     WORKSPACE_COMMAND_LOG ||--|| INSTANCE_LOG_POSITION : indexed_at
 
-    %% Physical SQLite V4 Persistence Schema
+    %% Physical SQLite V5 CAS Persistence Schema
     PROJECTS ||--o{ INSTANCES : owns
     PROJECTS ||--o{ CHAT_SESSIONS : contains
     CHAT_SESSIONS ||--o{ CHAT_MESSAGES : logs
     CHAT_SESSIONS ||--o{ LARGE_TOOL_OUTPUTS : attaches
     INSTANCES ||--o{ WORKSPACE_SNAPSHOTS : captures
     INSTANCES ||--o{ WORKSPACE_COMMAND_LOGS : records
+    WORKSPACE_BLOBS ||--o{ WORKSPACE_SNAPSHOTS : stores
     LANGGRAPH_CHECKPOINTS ||--o{ LANGGRAPH_WRITES : produces
 
     %% Entity Definitions
@@ -94,6 +95,8 @@ erDiagram
         string sessionId FK
         string threadId FK
         string projectId FK
+        string parentBundleId FK
+        string branchName
         string agentCheckpointId FK
         string chatMessageId FK
         string createdAt
@@ -105,6 +108,9 @@ erDiagram
         string instanceId PK
         string instanceType "graph-canvas | document"
         string snapshotId FK
+        string blobHash FK
+        integer sequenceNumber
+        int[] agentSeqs
         InstanceLogPosition targetCursor
     }
 
@@ -195,15 +201,23 @@ erDiagram
         integer updated_at
     }
 
+    WORKSPACE_BLOBS {
+        string hash PK
+        blob content_msgpack "Immutable MessagePack payload"
+        integer byte_size
+        string created_at
+    }
+
     WORKSPACE_SNAPSHOTS {
         string id PK
         string instance_id FK
         string project_id FK
         string instance_type
-        string snapshot_ref UK
+        string snapshot_ref
         string snapshot_hash
+        string blob_hash FK
         string snapshot_cursor_json
-        blob snapshot_msgpack "Content-addressed binary"
+        blob snapshot_msgpack "Legacy fallback payload"
         string created_at
     }
 

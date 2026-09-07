@@ -6,26 +6,26 @@
  *
  */
 
-import type {JSX, Ref, RefObject} from 'react';
+import type { JSX, Ref, RefObject } from 'react'
 
-import './EquationEditor.css';
+import './EquationEditor.css'
 
-import {isHTMLElement} from 'lexical';
-import {ChangeEvent, forwardRef} from 'react';
+import { isHTMLElement } from 'lexical'
+import { ChangeEvent, forwardRef } from 'react'
 
 type BaseEquationEditorProps = {
-  equation: string;
-  inline: boolean;
-  setEquation: (equation: string) => void;
-};
+  equation: string
+  inline: boolean
+  setEquation: (equation: string) => void
+}
 
 function EquationEditor(
-  {equation, setEquation, inline}: BaseEquationEditorProps,
-  forwardedRef: Ref<HTMLInputElement | HTMLTextAreaElement>,
+  { equation, setEquation, inline }: BaseEquationEditorProps,
+  forwardedRef: Ref<HTMLInputElement | HTMLTextAreaElement>
 ): JSX.Element {
   const onChange = (event: ChangeEvent) => {
-    setEquation((event.target as HTMLInputElement).value);
-  };
+    setEquation((event.target as HTMLInputElement).value)
+  }
 
   return inline && isHTMLElement(forwardedRef) ? (
     <span className="EquationEditor_inputBackground">
@@ -50,7 +50,7 @@ function EquationEditor(
       />
       <span className="EquationEditor_dollarSign">{'\n$$'}</span>
     </div>
-  );
+  )
 }
 
-export default forwardRef(EquationEditor);
+export default forwardRef(EquationEditor)

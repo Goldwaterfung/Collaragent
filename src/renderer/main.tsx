@@ -12,9 +12,9 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 30, // 30s
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
-      retry: 1,
-    },
-  },
+      retry: 1
+    }
+  }
 })
 
 createRoot(document.getElementById('root')!).render(

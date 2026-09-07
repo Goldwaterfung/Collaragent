@@ -278,9 +278,14 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
   private stmtUpdateInstanceContent!: Statement
   private stmtDeleteInstance!: Statement
 
+  // Prepared Statements: CAS Blobs
+  private stmtPutBlob!: Statement
+  private stmtGetBlob!: Statement
+
   // Prepared Statements: Snapshots
   private stmtCreateSnapshot!: Statement
   private stmtGetSnapshot!: Statement
+  private stmtGetSnapshotByInstanceAndRef!: Statement
   private stmtGetWorkspaceSnapshotById!: Statement
   private stmtGetWorkspaceSnapshotContentById!: Statement
 
@@ -435,31 +440,54 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       WHERE id = ?
     `)
 
+    // CAS Blobs
+    this.stmtPutBlob = this.db.prepare(`
+      INSERT OR IGNORE INTO workspace_blobs
+      (hash, content_msgpack, byte_size, created_at)
+      VALUES (?, ?, ?, ?)
+    `)
+
+    this.stmtGetBlob = this.db.prepare(`
+      SELECT content_msgpack
+      FROM workspace_blobs
+      WHERE hash = ?
+      LIMIT 1
+    `)
+
     // Snapshots
     this.stmtCreateSnapshot = this.db.prepare(`
       INSERT OR IGNORE INTO workspace_snapshots
-      (id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, snapshot_cursor_json, snapshot_msgpack, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, blob_hash, snapshot_cursor_json, snapshot_msgpack, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     this.stmtGetSnapshot = this.db.prepare(`
-      SELECT snapshot_msgpack
-      FROM workspace_snapshots
-      WHERE snapshot_ref = ?
+      SELECT COALESCE(b.content_msgpack, s.snapshot_msgpack) AS snapshot_msgpack
+      FROM workspace_snapshots s
+      LEFT JOIN workspace_blobs b ON (s.blob_hash = b.hash OR s.snapshot_hash = b.hash)
+      WHERE s.snapshot_ref = ?
+      LIMIT 1
+    `)
+
+    this.stmtGetSnapshotByInstanceAndRef = this.db.prepare(`
+      SELECT s.id, s.instance_id, s.project_id, s.instance_type, s.snapshot_ref, s.snapshot_hash, s.blob_hash, s.snapshot_cursor_json, s.created_at
+      FROM workspace_snapshots s
+      WHERE (s.instance_id = ? AND s.snapshot_ref = ?) OR (s.instance_id IS NULL AND s.snapshot_ref = ?)
       LIMIT 1
     `)
 
     this.stmtGetWorkspaceSnapshotById = this.db.prepare(`
-      SELECT id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, snapshot_cursor_json, created_at
+      SELECT id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, blob_hash, snapshot_cursor_json, created_at
       FROM workspace_snapshots
       WHERE id = ? OR snapshot_ref = ?
       LIMIT 1
     `)
 
     this.stmtGetWorkspaceSnapshotContentById = this.db.prepare(`
-      SELECT snapshot_msgpack
-      FROM workspace_snapshots
-      WHERE id = ? OR snapshot_ref = ?
+      SELECT COALESCE(b.content_msgpack, s.snapshot_msgpack) AS snapshot_msgpack
+      FROM workspace_snapshots s
+      LEFT JOIN workspace_blobs b ON (s.blob_hash = b.hash OR s.snapshot_hash = b.hash)
+      WHERE s.id = ? OR s.snapshot_ref = ?
       LIMIT 1
     `)
 
@@ -941,7 +969,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     return {
       id: String(raw.id),
       createdAt: String(raw.created_at),
-      instanceId: String(raw.instance_id),
+      instanceId: raw.instance_id ? String(raw.instance_id) : '',
       instanceType:
         raw.instance_type === 'canvas' || raw.instance_type === 'graph-canvas'
           ? 'graph-canvas'
@@ -949,6 +977,12 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       projectId: String(raw.project_id),
       snapshotRef: String(raw.snapshot_ref),
       snapshotHash: typeof raw.snapshot_hash === 'string' ? raw.snapshot_hash : undefined,
+      blobHash:
+        typeof raw.blob_hash === 'string'
+          ? raw.blob_hash
+          : typeof raw.snapshot_hash === 'string'
+            ? raw.snapshot_hash
+            : undefined,
       snapshotCursor: normalizedCursor
     }
   }
@@ -956,28 +990,36 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
   public createSnapshot(snapshot: CreateSnapshotInput): WorkspaceSnapshot {
     this.getDb()
 
-    // 1. Check if snapshot with snapshotRef already exists (content-addressed idempotency)
-    const existingRaw = this.stmtGetWorkspaceSnapshotById.get(
-      snapshot.snapshotRef,
-      snapshot.snapshotRef
+    const id = snapshot.id ?? crypto.randomUUID()
+    const createdAt = snapshot.createdAt ?? new Date().toISOString()
+    const snapshotBuffer = toBuffer(snapshot.snapshotPayload)
+    const snapshotHash =
+      snapshot.snapshotHash ?? crypto.createHash('sha256').update(snapshotBuffer).digest('hex')
+    const snapshotRef = snapshot.snapshotRef ?? `${snapshotHash}.msgpack`
+    const cursor = snapshot.snapshotCursor ?? { seq: 0, at: createdAt }
+    const cursorJson = JSON.stringify(cursor)
+
+    // 1. Put into workspace_blobs (CAS store - immune to instance deletion)
+    this.stmtPutBlob.run(snapshotHash, snapshotBuffer, snapshotBuffer.byteLength, createdAt)
+
+    // 2. Check if snapshot with snapshotRef already exists for this instance (idempotency)
+    const existingRaw = this.stmtGetSnapshotByInstanceAndRef.get(
+      snapshot.instanceId,
+      snapshotRef,
+      snapshotRef
     )
     if (existingRaw && isRecord(existingRaw)) {
       return this.mapRowToWorkspaceSnapshot(existingRaw)
     }
-
-    const id = snapshot.id ?? crypto.randomUUID()
-    const createdAt = snapshot.createdAt ?? new Date().toISOString()
-    const snapshotBuffer = toBuffer(snapshot.snapshotPayload)
-    const cursor = snapshot.snapshotCursor ?? { seq: 0, at: createdAt }
-    const cursorJson = JSON.stringify(cursor)
 
     const result = this.stmtCreateSnapshot.run(
       id,
       snapshot.instanceId,
       snapshot.projectId,
       snapshot.instanceType,
-      snapshot.snapshotRef,
-      snapshot.snapshotHash,
+      snapshotRef,
+      snapshotHash,
+      snapshotHash,
       cursorJson,
       snapshotBuffer,
       createdAt
@@ -986,10 +1028,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
 
     // Defense-in-depth under concurrent race conditions
     if (result.changes === 0) {
-      const racedRaw = this.stmtGetWorkspaceSnapshotById.get(
-        snapshot.snapshotRef,
-        snapshot.snapshotRef
-      )
+      const racedRaw = this.stmtGetWorkspaceSnapshotById.get(snapshotRef, snapshotRef)
       if (racedRaw && isRecord(racedRaw)) {
         return this.mapRowToWorkspaceSnapshot(racedRaw)
       }
@@ -1006,10 +1045,27 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       instanceId: snapshot.instanceId,
       instanceType: snapshot.instanceType,
       projectId: snapshot.projectId,
-      snapshotRef: snapshot.snapshotRef,
-      snapshotHash: snapshot.snapshotHash,
+      snapshotRef,
+      snapshotHash,
+      blobHash: snapshotHash,
       snapshotCursor: normalizedCursor
     }
+  }
+
+  public getBlob(hash: string): Buffer | null {
+    this.getDb()
+    const cleanHash = hash.endsWith('.msgpack') ? hash.slice(0, -8) : hash
+    const raw = this.stmtGetBlob.get(cleanHash)
+    if (raw && typeof raw === 'object' && 'content_msgpack' in raw) {
+      const blob = raw as { content_msgpack: unknown }
+      if (
+        blob.content_msgpack !== null &&
+        (Buffer.isBuffer(blob.content_msgpack) || blob.content_msgpack instanceof Uint8Array)
+      ) {
+        return toBuffer(blob.content_msgpack)
+      }
+    }
+    return null
   }
 
   public getSnapshot(snapshotRef: string): Buffer | null {
@@ -1458,12 +1514,15 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     const snapshotId = crypto.randomUUID()
     const cursorJson = JSON.stringify({ seq: 0, at: createdAt })
 
+    this.stmtPutBlob.run(snapshotHash, snapshotBuffer, snapshotBuffer.byteLength, createdAt)
+
     this.stmtCreateSnapshot.run(
       snapshotId,
       targetInstance ? targetInstance.id : null,
       targetProject ? targetProject.id : null,
       targetInstance ? (targetInstance.type === 'canvas' ? 'graph-canvas' : 'document') : null,
       snapshotRef,
+      snapshotHash,
       snapshotHash,
       cursorJson,
       snapshotBuffer,

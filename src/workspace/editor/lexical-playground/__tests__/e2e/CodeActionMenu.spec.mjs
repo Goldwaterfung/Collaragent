@@ -6,7 +6,7 @@
  *
  */
 
-import {paste} from '../keyboardShortcuts/index.mjs';
+import { paste } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   click,
@@ -18,30 +18,30 @@ import {
   pasteFromClipboard,
   test,
   waitForSelector,
-  withExclusiveClipboardAccess,
-} from '../utils/index.mjs';
+  withExclusiveClipboardAccess
+} from '../utils/index.mjs'
 
 test.describe('CodeActionMenu', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
   test('Can copy code, when click `Copy` button', async ({
     page,
     context,
     isPlainText,
-    browserName,
+    browserName
   }) => {
-    test.skip(true);
+    test.skip(true)
 
-    await focusEditor(page);
-    await page.keyboard.type('``` ');
-    await page.keyboard.press('Space');
-    await page.keyboard.type(`const a = 'Hello'`);
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Space');
-    await page.keyboard.press('Space');
-    await page.keyboard.type(`const b = 'World'`);
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Backspace');
-    await page.keyboard.press('Backspace');
+    await focusEditor(page)
+    await page.keyboard.type('``` ')
+    await page.keyboard.press('Space')
+    await page.keyboard.type(`const a = 'Hello'`)
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Space')
+    await page.keyboard.press('Space')
+    await page.keyboard.type(`const b = 'World'`)
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.press('Backspace')
 
     await assertHTML(
       page,
@@ -80,38 +80,38 @@ test.describe('CodeActionMenu', () => {
           <br />
           <span data-lexical-text=\"true\"></span>
         </code>
-      `,
-    );
+      `
+    )
 
-    await mouseMoveToSelector(page, 'code.PlaygroundEditorTheme__code');
+    await mouseMoveToSelector(page, 'code.PlaygroundEditorTheme__code')
 
     await withExclusiveClipboardAccess(async () => {
       if (browserName === 'chromium') {
-        await context.grantPermissions(['clipboard-write']);
-        await click(page, 'button[aria-label=copy]');
-        await paste(page);
-        await context.clearPermissions();
+        await context.grantPermissions(['clipboard-write'])
+        await click(page, 'button[aria-label=copy]')
+        await paste(page)
+        await context.clearPermissions()
       } else {
-        await waitForSelector(page, 'button[aria-label=copy]');
+        await waitForSelector(page, 'button[aria-label=copy]')
 
         const copiedText = await evaluate(page, () => {
-          let text = null;
+          let text = null
 
-          navigator.clipboard._writeText = navigator.clipboard.writeText;
+          navigator.clipboard._writeText = navigator.clipboard.writeText
           navigator.clipboard.writeText = function (data) {
-            text = data;
-            this._writeText(data);
-          };
-          document.querySelector('button[aria-label=copy]').click();
+            text = data
+            this._writeText(data)
+          }
+          document.querySelector('button[aria-label=copy]').click()
 
-          return text;
-        });
+          return text
+        })
 
         await pasteFromClipboard(page, {
-          'text/plain': copiedText,
-        });
+          'text/plain': copiedText
+        })
       }
-    });
+    })
 
     await assertHTML(
       page,
@@ -176,21 +176,21 @@ test.describe('CodeActionMenu', () => {
           <br />
           <span data-lexical-text=\"true\"></span>
         </code>
-      `,
-    );
-  });
+      `
+    )
+  })
 
   test('In the case of syntactically correct code, when the `prettier` button is clicked, the code needs to be properly formatted', async ({
     page,
     isCollab,
-    isPlainText,
+    isPlainText
   }) => {
-    test.skip(isCollab);
-    test.skip(isPlainText);
-    await focusEditor(page);
-    await page.keyboard.type('``` ');
-    await page.keyboard.press('Space');
-    await page.keyboard.type(`const  luci  =  'Hello World'`);
+    test.skip(isCollab)
+    test.skip(isPlainText)
+    await focusEditor(page)
+    await page.keyboard.type('``` ')
+    await page.keyboard.press('Space')
+    await page.keyboard.type(`const  luci  =  'Hello World'`)
 
     await assertHTML(
       page,
@@ -215,13 +215,13 @@ test.describe('CodeActionMenu', () => {
             'Hello World'
           </span>
         </code>
-      `,
-    );
+      `
+    )
 
-    await mouseMoveToSelector(page, 'code.PlaygroundEditorTheme__code');
-    await click(page, 'button[aria-label=prettier]');
+    await mouseMoveToSelector(page, 'code.PlaygroundEditorTheme__code')
+    await click(page, 'button[aria-label=prettier]')
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(3000)
 
     await assertHTML(
       page,
@@ -252,21 +252,21 @@ test.describe('CodeActionMenu', () => {
           <br />
           <br />
         </code>
-      `,
-    );
-  });
+      `
+    )
+  })
 
   test('If the code syntax is incorrect, an error message should be displayed', async ({
     page,
     isCollab,
-    isPlainText,
+    isPlainText
   }) => {
-    test.skip(isCollab);
-    test.skip(isPlainText);
-    await focusEditor(page);
-    await page.keyboard.type('``` ');
-    await page.keyboard.press('Space');
-    await page.keyboard.type(`cons  luci  =  'Hello World'`);
+    test.skip(isCollab)
+    test.skip(isPlainText)
+    await focusEditor(page)
+    await page.keyboard.type('``` ')
+    await page.keyboard.press('Space')
+    await page.keyboard.type(`cons  luci  =  'Hello World'`)
 
     await assertHTML(
       page,
@@ -287,28 +287,26 @@ test.describe('CodeActionMenu', () => {
             'Hello World'
           </span>
         </code>
-      `,
-    );
+      `
+    )
 
-    await mouseMoveToSelector(page, 'code.PlaygroundEditorTheme__code');
-    await click(page, 'button[aria-label=prettier]');
+    await mouseMoveToSelector(page, 'code.PlaygroundEditorTheme__code')
+    await click(page, 'button[aria-label=prettier]')
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(3000)
 
-    expect(await page.$('i.format.prettier-error')).toBeTruthy();
+    expect(await page.$('i.format.prettier-error')).toBeTruthy()
 
-    const errorTips = await page.$('pre.code-error-tips');
+    const errorTips = await page.$('pre.code-error-tips')
 
-    expect(errorTips).toBeTruthy();
+    expect(errorTips).toBeTruthy()
 
     const tips = await evaluate(page, () => {
-      return document.querySelector('pre.code-error-tips').innerText;
-    });
+      return document.querySelector('pre.code-error-tips').innerText
+    })
 
     expect(tips).toBe(
-      'Missing semicolon. (1:6)\n' +
-        "> 1 |  cons  luci  =  'Hello World'\n" +
-        '    |      ^',
-    );
-  });
-});
+      'Missing semicolon. (1:6)\n' + "> 1 |  cons  luci  =  'Hello World'\n" + '    |      ^'
+    )
+  })
+})

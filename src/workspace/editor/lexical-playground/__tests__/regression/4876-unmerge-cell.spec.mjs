@@ -15,40 +15,34 @@ import {
   mergeTableCells,
   selectCellsFromTableCords,
   test,
-  unmergeTableCell,
-} from '../utils/index.mjs';
+  unmergeTableCell
+} from '../utils/index.mjs'
 
 test.describe('Regression test #4876', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
   test('unmerging cells should add cells to correct rows', async ({
     page,
     isPlainText,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isPlainText);
+    test.skip(isPlainText)
 
-    await focusEditor(page);
+    await focusEditor(page)
 
-    await insertTable(page, 4, 4);
+    await insertTable(page, 4, 4)
 
-    await click(page, '.PlaygroundEditorTheme__tableCell');
-    await selectCellsFromTableCords(
-      page,
-      {x: 0, y: 1},
-      {x: 1, y: 3},
-      true,
-      false,
-    );
+    await click(page, '.PlaygroundEditorTheme__tableCell')
+    await selectCellsFromTableCords(page, { x: 0, y: 1 }, { x: 1, y: 3 }, true, false)
 
-    await mergeTableCells(page);
+    await mergeTableCells(page)
 
-    await unmergeTableCell(page);
+    await unmergeTableCell(page)
 
-    const tableRow = await locate(page, 'tr');
-    expect(await tableRow.count()).toBe(4);
+    const tableRow = await locate(page, 'tr')
+    expect(await tableRow.count()).toBe(4)
     for (let i = 0; i < 4; i++) {
-      const tableCells = tableRow.nth(i).locator('th, td');
-      expect(await tableCells.count()).toBe(4);
+      const tableCells = tableRow.nth(i).locator('th, td')
+      expect(await tableCells.count()).toBe(4)
     }
-  });
-});
+  })
+})

@@ -13,32 +13,30 @@ import {
   html,
   initialize,
   IS_MAC,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
-const supportsTranspose = IS_MAC && E2E_BROWSER !== 'firefox';
+const supportsTranspose = IS_MAC && E2E_BROWSER !== 'firefox'
 
 test.describe('Keyboard shortcuts', () => {
-  test.beforeEach(
-    ({isCollab, page}) => supportsTranspose && initialize({isCollab, page}),
-  );
+  test.beforeEach(({ isCollab, page }) => supportsTranspose && initialize({ isCollab, page }))
 
   test('handles "insertTranspose" event from Control+T on MAC', async ({
     page,
     context,
     isPlainText,
-    browserName,
+    browserName
   }) => {
-    test.skip(!supportsTranspose);
+    test.skip(!supportsTranspose)
 
-    await focusEditor(page);
-    await page.keyboard.type('abc');
-    await page.keyboard.press('ArrowLeft');
-    await page.keyboard.press('ArrowLeft');
-    await page.keyboard.down('Control');
-    await page.keyboard.press('T');
-    await page.keyboard.press('T');
-    await page.keyboard.up('Control');
+    await focusEditor(page)
+    await page.keyboard.type('abc')
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.down('Control')
+    await page.keyboard.press('T')
+    await page.keyboard.press('T')
+    await page.keyboard.up('Control')
 
     await assertHTML(
       page,
@@ -46,7 +44,7 @@ test.describe('Keyboard shortcuts', () => {
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">bca</span>
         </p>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

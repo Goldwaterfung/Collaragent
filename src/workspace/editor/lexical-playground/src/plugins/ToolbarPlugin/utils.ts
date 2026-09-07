@@ -5,23 +5,23 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
-import {$createCodeNode} from '@lexical/code';
+import { $createCodeNode } from '@lexical/code'
 import {
   INSERT_CHECK_LIST_COMMAND,
   INSERT_ORDERED_LIST_COMMAND,
-  INSERT_UNORDERED_LIST_COMMAND,
-} from '@lexical/list';
-import {$isDecoratorBlockNode} from '@lexical/react/LexicalDecoratorBlockNode';
+  INSERT_UNORDERED_LIST_COMMAND
+} from '@lexical/list'
+import { $isDecoratorBlockNode } from '@lexical/react/LexicalDecoratorBlockNode'
 import {
   $createHeadingNode,
   $createQuoteNode,
   $isHeadingNode,
   $isQuoteNode,
-  HeadingTagType,
-} from '@lexical/rich-text';
-import {$patchStyleText, $setBlocksType} from '@lexical/selection';
-import {$isTableSelection} from '@lexical/table';
-import {$getNearestBlockElementAncestorOrThrow} from '@lexical/utils';
+  HeadingTagType
+} from '@lexical/rich-text'
+import { $patchStyleText, $setBlocksType } from '@lexical/selection'
+import { $isTableSelection } from '@lexical/table'
+import { $getNearestBlockElementAncestorOrThrow } from '@lexical/utils'
 import {
   $addUpdateTag,
   $createParagraphNode,
@@ -39,19 +39,19 @@ import {
   LexicalNode,
   RangeSelection,
   SKIP_DOM_SELECTION_TAG,
-  SKIP_SELECTION_FOCUS_TAG,
-} from 'lexical';
+  SKIP_SELECTION_FOCUS_TAG
+} from 'lexical'
 
 import {
   DEFAULT_FONT_SIZE,
   MAX_ALLOWED_FONT_SIZE,
-  MIN_ALLOWED_FONT_SIZE,
-} from '../../context/ToolbarContext';
+  MIN_ALLOWED_FONT_SIZE
+} from '../../context/ToolbarContext'
 
 // eslint-disable-next-line no-shadow
 export enum UpdateFontSizeType {
   increment = 1,
-  decrement,
+  decrement
 }
 
 /**
@@ -62,65 +62,65 @@ export enum UpdateFontSizeType {
  */
 export const calculateNextFontSize = (
   currentFontSize: number,
-  updateType: UpdateFontSizeType | null,
+  updateType: UpdateFontSizeType | null
 ) => {
   if (!updateType) {
-    return currentFontSize;
+    return currentFontSize
   }
 
-  let updatedFontSize: number = currentFontSize;
+  let updatedFontSize: number = currentFontSize
   switch (updateType) {
     case UpdateFontSizeType.decrement:
       switch (true) {
         case currentFontSize > MAX_ALLOWED_FONT_SIZE:
-          updatedFontSize = MAX_ALLOWED_FONT_SIZE;
-          break;
+          updatedFontSize = MAX_ALLOWED_FONT_SIZE
+          break
         case currentFontSize >= 48:
-          updatedFontSize -= 12;
-          break;
+          updatedFontSize -= 12
+          break
         case currentFontSize >= 24:
-          updatedFontSize -= 4;
-          break;
+          updatedFontSize -= 4
+          break
         case currentFontSize >= 14:
-          updatedFontSize -= 2;
-          break;
+          updatedFontSize -= 2
+          break
         case currentFontSize >= 9:
-          updatedFontSize -= 1;
-          break;
+          updatedFontSize -= 1
+          break
         default:
-          updatedFontSize = MIN_ALLOWED_FONT_SIZE;
-          break;
+          updatedFontSize = MIN_ALLOWED_FONT_SIZE
+          break
       }
-      break;
+      break
 
     case UpdateFontSizeType.increment:
       switch (true) {
         case currentFontSize < MIN_ALLOWED_FONT_SIZE:
-          updatedFontSize = MIN_ALLOWED_FONT_SIZE;
-          break;
+          updatedFontSize = MIN_ALLOWED_FONT_SIZE
+          break
         case currentFontSize < 12:
-          updatedFontSize += 1;
-          break;
+          updatedFontSize += 1
+          break
         case currentFontSize < 20:
-          updatedFontSize += 2;
-          break;
+          updatedFontSize += 2
+          break
         case currentFontSize < 36:
-          updatedFontSize += 4;
-          break;
+          updatedFontSize += 4
+          break
         case currentFontSize <= 60:
-          updatedFontSize += 12;
-          break;
+          updatedFontSize += 12
+          break
         default:
-          updatedFontSize = MAX_ALLOWED_FONT_SIZE;
-          break;
+          updatedFontSize = MAX_ALLOWED_FONT_SIZE
+          break
       }
-      break;
+      break
 
     default:
-      break;
+      break
   }
-  return updatedFontSize;
-};
+  return updatedFontSize
+}
 
 /**
  * Patches the selection with the updated font size.
@@ -129,246 +129,231 @@ export const updateFontSizeInSelection = (
   editor: LexicalEditor,
   newFontSize: string | null,
   updateType: UpdateFontSizeType | null,
-  skipRefocus: boolean,
+  skipRefocus: boolean
 ) => {
   const getNextFontSize = (prevFontSize: string | null): string => {
     if (!prevFontSize) {
-      prevFontSize = `${DEFAULT_FONT_SIZE}px`;
+      prevFontSize = `${DEFAULT_FONT_SIZE}px`
     }
-    prevFontSize = prevFontSize.slice(0, -2);
-    const nextFontSize = calculateNextFontSize(
-      Number(prevFontSize),
-      updateType,
-    );
-    return `${nextFontSize}px`;
-  };
+    prevFontSize = prevFontSize.slice(0, -2)
+    const nextFontSize = calculateNextFontSize(Number(prevFontSize), updateType)
+    return `${nextFontSize}px`
+  }
 
   editor.update(() => {
     if (skipRefocus) {
-      $addUpdateTag(SKIP_DOM_SELECTION_TAG);
+      $addUpdateTag(SKIP_DOM_SELECTION_TAG)
     }
     if (editor.isEditable()) {
-      const selection = $getSelection();
+      const selection = $getSelection()
       if (selection !== null) {
         $patchStyleText(selection, {
-          'font-size': newFontSize || getNextFontSize,
-        });
+          'font-size': newFontSize || getNextFontSize
+        })
       }
     }
-  });
-};
+  })
+}
 
 export const updateFontSize = (
   editor: LexicalEditor,
   updateType: UpdateFontSizeType,
   inputValue: string,
-  skipRefocus: boolean = false,
+  skipRefocus: boolean = false
 ) => {
   if (inputValue !== '') {
-    const nextFontSize = calculateNextFontSize(Number(inputValue), updateType);
-    updateFontSizeInSelection(
-      editor,
-      String(nextFontSize) + 'px',
-      null,
-      skipRefocus,
-    );
+    const nextFontSize = calculateNextFontSize(Number(inputValue), updateType)
+    updateFontSizeInSelection(editor, String(nextFontSize) + 'px', null, skipRefocus)
   } else {
-    updateFontSizeInSelection(editor, null, updateType, skipRefocus);
+    updateFontSizeInSelection(editor, null, updateType, skipRefocus)
   }
-};
+}
 
 export const formatParagraph = (editor: LexicalEditor) => {
   editor.update(() => {
-    $addUpdateTag(SKIP_SELECTION_FOCUS_TAG);
-    const selection = $getSelection();
-    $setBlocksType(selection, () => $createParagraphNode());
-  });
-};
+    $addUpdateTag(SKIP_SELECTION_FOCUS_TAG)
+    const selection = $getSelection()
+    $setBlocksType(selection, () => $createParagraphNode())
+  })
+}
 
 export const formatHeading = (
   editor: LexicalEditor,
   blockType: string,
-  headingSize: HeadingTagType,
+  headingSize: HeadingTagType
 ) => {
   if (blockType !== headingSize) {
     editor.update(() => {
-      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG);
-      const selection = $getSelection();
-      $setBlocksType(selection, () => $createHeadingNode(headingSize));
-    });
+      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG)
+      const selection = $getSelection()
+      $setBlocksType(selection, () => $createHeadingNode(headingSize))
+    })
   }
-};
+}
 
 export const formatBulletList = (editor: LexicalEditor, blockType: string) => {
   if (blockType !== 'bullet') {
     editor.update(() => {
-      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG);
-      editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-    });
+      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG)
+      editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
+    })
   } else {
-    formatParagraph(editor);
+    formatParagraph(editor)
   }
-};
+}
 
 export const formatCheckList = (editor: LexicalEditor, blockType: string) => {
   if (blockType !== 'check') {
     editor.update(() => {
-      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG);
-      editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
-    });
+      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG)
+      editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)
+    })
   } else {
-    formatParagraph(editor);
+    formatParagraph(editor)
   }
-};
+}
 
-export const formatNumberedList = (
-  editor: LexicalEditor,
-  blockType: string,
-) => {
+export const formatNumberedList = (editor: LexicalEditor, blockType: string) => {
   if (blockType !== 'number') {
     editor.update(() => {
-      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG);
-      editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
-    });
+      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG)
+      editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
+    })
   } else {
-    formatParagraph(editor);
+    formatParagraph(editor)
   }
-};
+}
 
 export const formatQuote = (editor: LexicalEditor, blockType: string) => {
   if (blockType !== 'quote') {
     editor.update(() => {
-      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG);
-      const selection = $getSelection();
-      $setBlocksType(selection, () => $createQuoteNode());
-    });
+      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG)
+      const selection = $getSelection()
+      $setBlocksType(selection, () => $createQuoteNode())
+    })
   }
-};
+}
 
 function $splitParagraphsByLineBreaks(selection: RangeSelection): void {
-  const blocks: Set<ElementNode> = new Set();
+  const blocks: Set<ElementNode> = new Set()
   for (const node of selection.getNodes()) {
-    const block = $isParagraphNode(node) ? node : $findParagraphParent(node);
+    const block = $isParagraphNode(node) ? node : $findParagraphParent(node)
     if (block !== null) {
-      blocks.add(block);
+      blocks.add(block)
     }
   }
   for (const point of [selection.anchor, selection.focus]) {
-    const block = $findParagraphParent(point.getNode());
+    const block = $findParagraphParent(point.getNode())
     if (block !== null) {
-      blocks.add(block);
+      blocks.add(block)
     }
   }
 
-  const anchorKey = selection.anchor.key;
-  const anchorOffset = selection.anchor.offset;
-  const anchorType = selection.anchor.type;
-  const focusKey = selection.focus.key;
-  const focusOffset = selection.focus.offset;
-  const focusType = selection.focus.type;
+  const anchorKey = selection.anchor.key
+  const anchorOffset = selection.anchor.offset
+  const anchorType = selection.anchor.type
+  const focusKey = selection.focus.key
+  const focusOffset = selection.focus.offset
+  const focusType = selection.focus.type
 
   for (const block of blocks) {
-    const children = block.getChildren();
-    const lbIndices: number[] = [];
+    const children = block.getChildren()
+    const lbIndices: number[] = []
     for (let i = 0; i < children.length; i++) {
       if ($isLineBreakNode(children[i])) {
-        lbIndices.push(i);
+        lbIndices.push(i)
       }
     }
     if (lbIndices.length === 0) {
-      continue;
+      continue
     }
     for (let j = lbIndices.length - 1; j >= 0; j--) {
-      const [, rightBlock] = $splitNode(block, lbIndices[j]);
-      const firstChild = rightBlock.getFirstChild();
+      const [, rightBlock] = $splitNode(block, lbIndices[j])
+      const firstChild = rightBlock.getFirstChild()
       if ($isLineBreakNode(firstChild)) {
-        firstChild.remove();
+        firstChild.remove()
       }
     }
   }
 
-  const newSelection = $createRangeSelection();
-  newSelection.anchor.set(anchorKey, anchorOffset, anchorType);
-  newSelection.focus.set(focusKey, focusOffset, focusType);
-  $setSelection(newSelection);
+  const newSelection = $createRangeSelection()
+  newSelection.anchor.set(anchorKey, anchorOffset, anchorType)
+  newSelection.focus.set(focusKey, focusOffset, focusType)
+  $setSelection(newSelection)
 }
 
 function $findParagraphParent(node: LexicalNode): ElementNode | null {
   if ($isParagraphNode(node)) {
-    return node;
+    return node
   }
-  const parent = node.getParent();
-  return $isElementNode(parent) && $isParagraphNode(parent) ? parent : null;
+  const parent = node.getParent()
+  return $isElementNode(parent) && $isParagraphNode(parent) ? parent : null
 }
 
 export const formatCode = (editor: LexicalEditor, blockType: string) => {
   if (blockType !== 'code') {
     editor.update(() => {
-      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG);
-      let selection = $getSelection();
+      $addUpdateTag(SKIP_SELECTION_FOCUS_TAG)
+      let selection = $getSelection()
       if (!selection) {
-        return;
+        return
       }
       if (!$isRangeSelection(selection) || selection.isCollapsed()) {
-        $setBlocksType(selection, () => $createCodeNode());
+        $setBlocksType(selection, () => $createCodeNode())
       } else {
-        $splitParagraphsByLineBreaks(selection);
-        selection = $getSelection();
+        $splitParagraphsByLineBreaks(selection)
+        selection = $getSelection()
         if (!$isRangeSelection(selection)) {
-          return;
+          return
         }
-        const textContent = selection.getTextContent();
-        const codeNode = $createCodeNode();
-        selection.insertNodes([codeNode]);
-        selection = $getSelection();
+        const textContent = selection.getTextContent()
+        const codeNode = $createCodeNode()
+        selection.insertNodes([codeNode])
+        selection = $getSelection()
         if ($isRangeSelection(selection)) {
-          selection.insertRawText(textContent);
+          selection.insertRawText(textContent)
         }
       }
-    });
+    })
   }
-};
+}
 
-export const clearFormatting = (
-  editor: LexicalEditor,
-  skipRefocus: boolean = false,
-) => {
+export const clearFormatting = (editor: LexicalEditor, skipRefocus: boolean = false) => {
   editor.update(() => {
     if (skipRefocus) {
-      $addUpdateTag(SKIP_DOM_SELECTION_TAG);
+      $addUpdateTag(SKIP_DOM_SELECTION_TAG)
     }
-    const selection = $getSelection();
+    const selection = $getSelection()
     if ($isRangeSelection(selection) || $isTableSelection(selection)) {
-      const anchor = selection.anchor;
-      const focus = selection.focus;
-      const extractedNodes = selection.extract();
+      const anchor = selection.anchor
+      const focus = selection.focus
+      const extractedNodes = selection.extract()
 
       if (anchor.key === focus.key && anchor.offset === focus.offset) {
-        return;
+        return
       }
 
       extractedNodes.forEach((node) => {
         if ($isTextNode(node)) {
           if (node.getStyle() !== '') {
-            node.setStyle('');
+            node.setStyle('')
           }
           if (node.getFormat() !== 0) {
-            node.setFormat(0);
+            node.setFormat(0)
           }
-          const nearestBlockElement =
-            $getNearestBlockElementAncestorOrThrow(node);
+          const nearestBlockElement = $getNearestBlockElementAncestorOrThrow(node)
           if (nearestBlockElement.getFormat() !== 0) {
-            nearestBlockElement.setFormat('');
+            nearestBlockElement.setFormat('')
           }
           if (nearestBlockElement.getIndent() !== 0) {
-            nearestBlockElement.setIndent(0);
+            nearestBlockElement.setIndent(0)
           }
         } else if ($isHeadingNode(node) || $isQuoteNode(node)) {
-          node.replace($createParagraphNode(), true);
+          node.replace($createParagraphNode(), true)
         } else if ($isDecoratorBlockNode(node)) {
-          node.setFormat('');
+          node.setFormat('')
         }
-      });
+      })
     }
-  });
-};
+  })
+}

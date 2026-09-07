@@ -6,35 +6,24 @@
  *
  */
 
-import {
-  deleteBackward,
-  moveToLineBeginning,
-} from '../keyboardShortcuts/index.mjs';
-import {
-  assertHTML,
-  focusEditor,
-  html,
-  initialize,
-  test,
-} from '../utils/index.mjs';
+import { deleteBackward, moveToLineBeginning } from '../keyboardShortcuts/index.mjs'
+import { assertHTML, focusEditor, html, initialize, test } from '../utils/index.mjs'
 
 test.describe('Regression tests for #6974', () => {
-  test.beforeEach(({isPlainText, isCollab, page}) =>
-    initialize({isCollab, isPlainText, page}),
-  );
+  test.beforeEach(({ isPlainText, isCollab, page }) => initialize({ isCollab, isPlainText, page }))
 
   test(`deleteCharacter merges children from adjacent blocks even if the previous leaf is an inline decorator`, async ({
     page,
     isCollab,
-    isPlainText,
+    isPlainText
   }) => {
-    test.skip(isCollab || isPlainText);
-    await focusEditor(page);
-    const testEquation = '$x$';
-    const testString = 'test';
-    await page.keyboard.type(testEquation);
-    await page.keyboard.press('Enter');
-    await page.keyboard.type(testString);
+    test.skip(isCollab || isPlainText)
+    await focusEditor(page)
+    const testEquation = '$x$'
+    const testString = 'test'
+    await page.keyboard.type(testEquation)
+    await page.keyboard.press('Enter')
+    await page.keyboard.type(testString)
     const beforeHtml = html`
       <p dir="auto">
         <span contenteditable="false" data-lexical-decorator="true">
@@ -42,7 +31,8 @@ test.describe('Regression tests for #6974', () => {
             alt=""
             height="0"
             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-            width="0" />
+            width="0"
+          />
           <span role="button" tabindex="-1">
             <span>
               <span aria-hidden="true">
@@ -57,18 +47,19 @@ test.describe('Regression tests for #6974', () => {
             alt=""
             height="0"
             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-            width="0" />
+            width="0"
+          />
         </span>
         <br />
       </p>
       <p dir="auto"><span data-lexical-text="true">test</span></p>
-    `;
+    `
     await assertHTML(page, beforeHtml, beforeHtml, {
       ignoreClasses: true,
-      ignoreInlineStyles: true,
-    });
-    await moveToLineBeginning(page);
-    await deleteBackward(page);
+      ignoreInlineStyles: true
+    })
+    await moveToLineBeginning(page)
+    await deleteBackward(page)
     const afterHtml = html`
       <p dir="auto">
         <span contenteditable="false" data-lexical-decorator="true">
@@ -76,7 +67,8 @@ test.describe('Regression tests for #6974', () => {
             alt=""
             height="0"
             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-            width="0" />
+            width="0"
+          />
           <span role="button" tabindex="-1">
             <span>
               <span aria-hidden="true">
@@ -91,14 +83,15 @@ test.describe('Regression tests for #6974', () => {
             alt=""
             height="0"
             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-            width="0" />
+            width="0"
+          />
         </span>
         <span data-lexical-text="true">test</span>
       </p>
-    `;
+    `
     await assertHTML(page, afterHtml, afterHtml, {
       ignoreClasses: true,
-      ignoreInlineStyles: true,
-    });
-  });
-});
+      ignoreInlineStyles: true
+    })
+  })
+})

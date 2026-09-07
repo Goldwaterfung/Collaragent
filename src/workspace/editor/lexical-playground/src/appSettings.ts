@@ -6,10 +6,9 @@
  *
  */
 
-const hostName = window.location.hostname;
+const hostName = window.location.hostname
 export const isDevPlayground: boolean =
-  hostName !== 'playground.lexical.dev' &&
-  hostName !== 'lexical-playground.vercel.app';
+  hostName !== 'playground.lexical.dev' && hostName !== 'lexical-playground.vercel.app'
 
 export const DEFAULT_SETTINGS = {
   emptyEditor: isDevPlayground,
@@ -37,14 +36,14 @@ export const DEFAULT_SETTINGS = {
   tableCellBackgroundColor: true,
   tableCellMerge: true,
   tableHorizontalScroll: true,
-  useCollabV2: false,
-} as const;
+  useCollabV2: false
+} as const
 
 // These are mutated in setupEnv
 export const INITIAL_SETTINGS: Record<SettingName, boolean> = {
-  ...DEFAULT_SETTINGS,
-};
+  ...DEFAULT_SETTINGS
+}
 
-export type SettingName = keyof typeof DEFAULT_SETTINGS;
+export type SettingName = keyof typeof DEFAULT_SETTINGS
 
-export type Settings = typeof INITIAL_SETTINGS;
+export type Settings = typeof INITIAL_SETTINGS

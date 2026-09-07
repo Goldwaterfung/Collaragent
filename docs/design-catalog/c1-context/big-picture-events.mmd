@@ -75,14 +75,18 @@ flowchart LR
     CmdAccept --> EvtPropCommitted
     EvtPropCommitted --> AggGraph
 
-    %% 7. Time-Travel Restore (Exclusive Quiesce)
+    %% 7. Time-Travel Restore (Exclusive Quiesce & Fail-Closed CAS Hydration)
     CmdRestore[Restore Checkpoint]:::command
     EvtQuiesced[Workspace Quiesced exclusively for restore]:::event
+    PolFailClosed[Whenever Restore -> Validate CAS Blobs Exist or Abort]:::policy
+    EvtCASResolved[Snapshots Reconstituted from CAS workspace_blobs]:::event
     EvtStateRestored[Workspace State & Chat Head Restored]:::event
-    PolResume[Whenever Restored -> Resume Sync & Refresh UI]:::policy
+    PolResume[Whenever Restored -> Emit system-checkpoint-restore & Resume Sync]:::policy
 
     User --> CmdRestore
     CmdRestore --> EvtQuiesced
-    EvtQuiesced --> EvtStateRestored
+    EvtQuiesced --> PolFailClosed
+    PolFailClosed --> EvtCASResolved
+    EvtCASResolved --> EvtStateRestored
     EvtStateRestored --> AggCheck
     EvtStateRestored --> PolResume

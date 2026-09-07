@@ -13,8 +13,8 @@ import {
   selectAll,
   selectCharacters,
   toggleUnderline,
-  undo,
-} from '../keyboardShortcuts/index.mjs';
+  undo
+} from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   assertSelection,
@@ -32,28 +32,23 @@ import {
   SAMPLE_IMAGE_URL,
   test,
   waitForSelector,
-  withExclusiveClipboardAccess,
-} from '../utils/index.mjs';
+  withExclusiveClipboardAccess
+} from '../utils/index.mjs'
 
-async function checkHTMLExpectationsIncludingUndoRedo(
-  page,
-  forwardHTML,
-  undoHTML,
-  isCollab,
-) {
-  await assertHTML(page, forwardHTML);
+async function checkHTMLExpectationsIncludingUndoRedo(page, forwardHTML, undoHTML, isCollab) {
+  await assertHTML(page, forwardHTML)
   if (isCollab || undoHTML === 'none') {
     // Collab uses its own undo/redo
-    return;
+    return
   }
-  await undo(page);
-  await assertHTML(page, undoHTML);
-  await redo(page);
-  await assertHTML(page, forwardHTML);
+  await undo(page)
+  await assertHTML(page, undoHTML)
+  await redo(page)
+  await assertHTML(page, forwardHTML)
 }
 
 test.describe.parallel('Markdown', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
   const triggersAndExpectations = [
     {
       expectation: '<h1 class="PlaygroundEditorTheme__h1" dir="auto"><br></h1>',
@@ -61,7 +56,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '# ',
-      undoHTML: '', // H1.
+      undoHTML: '' // H1.
     },
     {
       expectation: '<h2 class="PlaygroundEditorTheme__h2" dir="auto"><br></h2>',
@@ -69,7 +64,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '## ',
-      undoHTML: '', // H2.
+      undoHTML: '' // H2.
     },
     {
       expectation: '<h3 class="PlaygroundEditorTheme__h3" dir="auto"><br></h3>',
@@ -77,7 +72,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '### ',
-      undoHTML: '', // H3.
+      undoHTML: '' // H3.
     },
     {
       expectation: '<h4 class="PlaygroundEditorTheme__h4" dir="auto"><br></h4>',
@@ -85,7 +80,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '#### ',
-      undoHTML: '', // H4.
+      undoHTML: '' // H4.
     },
     {
       expectation: '<h5 class="PlaygroundEditorTheme__h5" dir="auto"><br></h5>',
@@ -93,7 +88,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '##### ',
-      undoHTML: '', // H5.
+      undoHTML: '' // H5.
     },
     {
       expectation: '<h6 class="PlaygroundEditorTheme__h6" dir="auto"><br></h6>',
@@ -101,7 +96,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '###### ',
-      undoHTML: '', // H6.
+      undoHTML: '' // H6.
     },
     {
       expectation:
@@ -110,17 +105,16 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '``` ',
-      undoHTML: '', // Code block.
+      undoHTML: '' // Code block.
     },
     {
-      expectation:
-        '<blockquote class="PlaygroundEditorTheme__quote" dir="auto"><br></blockquote>',
+      expectation: '<blockquote class="PlaygroundEditorTheme__quote" dir="auto"><br></blockquote>',
       importExpectation: '',
       isBlockTest: true,
       markdownImport: '',
       markdownText: '> ',
       undoHTML:
-        '<p class="PlaygroundEditorTheme__paragraph" dir="auto"><span data-lexical-text="true">&gt;</span></p>', // Block quote.
+        '<p class="PlaygroundEditorTheme__paragraph" dir="auto"><span data-lexical-text="true">&gt;</span></p>' // Block quote.
     },
     {
       expectation:
@@ -129,7 +123,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '* ',
-      undoHTML: '', // Unordered.
+      undoHTML: '' // Unordered.
     },
     {
       expectation:
@@ -139,7 +133,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '- hello',
       markdownText: '- ',
-      undoHTML: '', // Unordered.
+      undoHTML: '' // Unordered.
     },
     {
       expectation:
@@ -149,7 +143,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '', // '321. hello', Need to merge w/ Maksims changes first to get correct start number.
       markdownText: '321. ',
-      undoHTML: '', // Ordered.
+      undoHTML: '' // Ordered.
     },
     {
       expectation:
@@ -158,7 +152,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '*** ',
-      undoHTML: '', // HR rule.
+      undoHTML: '' // HR rule.
     },
     {
       expectation:
@@ -167,7 +161,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '--- ',
-      undoHTML: '', // HR Rule.
+      undoHTML: '' // HR Rule.
     },
     {
       expectation:
@@ -176,7 +170,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '~~_**test**_~~ ',
-      undoHTML: 'none', // strikethru, italic, bold
+      undoHTML: 'none' // strikethru, italic, bold
     },
     {
       expectation:
@@ -185,7 +179,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '~~_test_~~ ',
-      undoHTML: 'none', // strikethru, italic
+      undoHTML: 'none' // strikethru, italic
     },
     {
       expectation:
@@ -194,7 +188,7 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '',
       markdownText: '~~**test**~~ ',
-      undoHTML: 'none', // strikethru, bold
+      undoHTML: 'none' // strikethru, bold
     },
 
     {
@@ -205,196 +199,185 @@ test.describe.parallel('Markdown', () => {
       isBlockTest: true,
       markdownImport: '_**test**_',
       markdownText: '_**test**_ ',
-      undoHTML: 'none', // italic, bold
-    },
-  ];
+      undoHTML: 'none' // italic, bold
+    }
+  ]
   // forward case is the normal case.
   // undo case is when the user presses undo.
 
-  const count = triggersAndExpectations.length;
+  const count = triggersAndExpectations.length
   for (let i = 0; i < count; ++i) {
-    const markdownText = triggersAndExpectations[i].markdownText;
+    const markdownText = triggersAndExpectations[i].markdownText
 
     if (triggersAndExpectations[i].isBlockTest === false) {
       test(`Should create stylized (e.g. BIUS) text from plain text using a markdown shortcut e.g. ${markdownText}`, async ({
         page,
         isPlainText,
-        isCollab,
+        isCollab
       }) => {
-        test.skip(isPlainText);
-        const text = 'x' + markdownText + 'y';
+        test.skip(isPlainText)
+        const text = 'x' + markdownText + 'y'
 
-        await focusEditor(page);
-        await page.keyboard.type(text);
-        await moveLeft(page, text.length);
+        await focusEditor(page)
+        await page.keyboard.type(text)
+        await moveLeft(page, text.length)
         await assertSelection(page, {
           anchorOffset: 0,
           anchorPath: [0, 0, 0],
           focusOffset: 0,
-          focusPath: [0, 0, 0],
-        });
+          focusPath: [0, 0, 0]
+        })
 
-        await moveRight(page, 1 + markdownText.length);
+        await moveRight(page, 1 + markdownText.length)
 
         // Trigger markdown.
-        await page.keyboard.type(' ');
+        await page.keyboard.type(' ')
 
         await checkHTMLExpectationsIncludingUndoRedo(
           page,
           triggersAndExpectations[i].expectation,
           triggersAndExpectations[i].undoHTML,
-          isCollab,
-        );
-      });
+          isCollab
+        )
+      })
 
       test(`Should create stylized (e.g. BIUS) text from already stylized text using a markdown shortcut e.g. ${markdownText}`, async ({
         page,
         isPlainText,
-        isCollab,
+        isCollab
       }) => {
-        test.skip(isPlainText);
+        test.skip(isPlainText)
 
-        const text = 'x' + markdownText + 'y';
+        const text = 'x' + markdownText + 'y'
 
-        await focusEditor(page);
-        await page.keyboard.type(text);
-        await moveLeft(page, text.length);
+        await focusEditor(page)
+        await page.keyboard.type(text)
+        await moveLeft(page, text.length)
         await assertSelection(page, {
           anchorOffset: 0,
           anchorPath: [0, 0, 0],
           focusOffset: 0,
-          focusPath: [0, 0, 0],
-        });
+          focusPath: [0, 0, 0]
+        })
 
         // Select first 2 characters.
-        await selectCharacters(page, 'right', 2);
+        await selectCharacters(page, 'right', 2)
 
         // Make underline.
-        await toggleUnderline(page);
+        await toggleUnderline(page)
 
         // Back to beginning.
-        await moveLeft(page, 2);
+        await moveLeft(page, 2)
 
         // Move to end.
-        await moveRight(page, text.length);
+        await moveRight(page, text.length)
 
         // Select last two characters.
-        await selectCharacters(page, 'left', 2);
+        await selectCharacters(page, 'left', 2)
 
         // Make underline.
-        await toggleUnderline(page);
+        await toggleUnderline(page)
 
         // Back to beginning of text.
-        await moveLeft(page, text.length);
+        await moveLeft(page, text.length)
 
         // Move after markdown text.
-        await moveRight(page, 1 + markdownText.length);
+        await moveRight(page, 1 + markdownText.length)
 
         // Trigger markdown.
-        await page.keyboard.type(' ');
+        await page.keyboard.type(' ')
 
-        await assertHTML(page, triggersAndExpectations[i].stylizedExpectation);
+        await assertHTML(page, triggersAndExpectations[i].stylizedExpectation)
 
         await checkHTMLExpectationsIncludingUndoRedo(
           page,
           triggersAndExpectations[i].stylizedExpectation,
           triggersAndExpectations[i].stylizedUndoHTML,
-          isCollab,
-        );
-      });
+          isCollab
+        )
+      })
     }
 
     if (triggersAndExpectations[i].isBlockTest === true) {
       test(`Should test markdown with the (${markdownText}) trigger. Should include undo and redo.`, async ({
         page,
         isPlainText,
-        isCollab,
+        isCollab
       }) => {
-        test.skip(isPlainText);
+        test.skip(isPlainText)
 
-        await focusEditor(page);
+        await focusEditor(page)
 
-        await page.keyboard.type(markdownText);
+        await page.keyboard.type(markdownText)
 
-        const forwardHTML = triggersAndExpectations[i].expectation;
+        const forwardHTML = triggersAndExpectations[i].expectation
 
-        const undoHTML = `<p class="PlaygroundEditorTheme__paragraph" dir="auto"><span data-lexical-text="true">${markdownText}</span></p>`;
+        const undoHTML = `<p class="PlaygroundEditorTheme__paragraph" dir="auto"><span data-lexical-text="true">${markdownText}</span></p>`
 
         await checkHTMLExpectationsIncludingUndoRedo(
           page,
           forwardHTML,
           triggersAndExpectations[i].undoHTML || undoHTML,
-          isCollab,
-        );
-      });
+          isCollab
+        )
+      })
     }
 
     if (triggersAndExpectations[i].markdownImport.length > 0) {
       test(`Should test importing markdown (${markdownText}) trigger.`, async ({
         page,
         isPlainText,
-        isCollab,
+        isCollab
       }) => {
-        test.skip(isPlainText);
-        await focusEditor(page);
+        test.skip(isPlainText)
+        await focusEditor(page)
 
-        await page.keyboard.type(
-          '```markdown ' + triggersAndExpectations[i].markdownImport,
-        );
-        await click(page, 'i.markdown');
+        await page.keyboard.type('```markdown ' + triggersAndExpectations[i].markdownImport)
+        await click(page, 'i.markdown')
 
-        const htmlInner = triggersAndExpectations[i].importExpectation;
-        await assertHTML(page, htmlInner);
+        const htmlInner = triggersAndExpectations[i].importExpectation
+        await assertHTML(page, htmlInner)
 
         // Click on markdow toggle twice to run import -> export loop and then
         // validate that it's the same rich text after full cycle
-        await click(page, 'i.markdown');
-        await click(page, 'i.markdown');
-        await assertHTML(page, htmlInner);
-      });
+        await click(page, 'i.markdown')
+        await click(page, 'i.markdown')
+        await assertHTML(page, htmlInner)
+      })
     }
   }
-});
+})
 
-async function assertMarkdownImportExport(
-  page,
-  textToImport,
-  expectedHTML,
-  ignoreClasses,
-) {
+async function assertMarkdownImportExport(page, textToImport, expectedHTML, ignoreClasses) {
   // Clear the editor from previous content
-  await clearEditor(page);
+  await clearEditor(page)
 
   // Create code block that will be imported as a markdown into editor
-  await page.keyboard.type('```markdown ');
-  await page.keyboard.type(textToImport);
-  await click(page, '.action-button .markdown');
-  await assertHTML(page, expectedHTML, undefined, {ignoreClasses});
+  await page.keyboard.type('```markdown ')
+  await page.keyboard.type(textToImport)
+  await click(page, '.action-button .markdown')
+  await assertHTML(page, expectedHTML, undefined, { ignoreClasses })
 
   // Cycle through import-export to verify it produces the same result
-  await click(page, '.action-button .markdown');
-  await click(page, '.action-button .markdown');
-  await assertHTML(page, expectedHTML);
+  await click(page, '.action-button .markdown')
+  await click(page, '.action-button .markdown')
+  await assertHTML(page, expectedHTML)
 }
 
 test.describe.parallel('Markdown', () => {
-  test.beforeEach(({isCollab, isPlainText, page}) => {
-    test.skip(isPlainText);
-    return initialize({isCollab, page});
-  });
+  test.beforeEach(({ isCollab, isPlainText, page }) => {
+    test.skip(isPlainText)
+    return initialize({ isCollab, page })
+  })
 
   const BASE_BLOCK_SHORTCUTS = [
     {
-      html: html`
-        <h1 dir="auto"><br /></h1>
-      `,
-      text: '# ',
+      html: html` <h1 dir="auto"><br /></h1> `,
+      text: '# '
     },
     {
-      html: html`
-        <h2 dir="auto"><br /></h2>
-      `,
-      text: '## ',
+      html: html` <h2 dir="auto"><br /></h2> `,
+      text: '## '
     },
     {
       html: html`
@@ -402,7 +385,7 @@ test.describe.parallel('Markdown', () => {
           <li value="1"><br /></li>
         </ol>
       `,
-      text: '1. ',
+      text: '1. '
     },
     {
       html: html`
@@ -410,7 +393,7 @@ test.describe.parallel('Markdown', () => {
           <li value="25"><br /></li>
         </ol>
       `,
-      text: '25. ',
+      text: '25. '
     },
     {
       html: html`
@@ -422,7 +405,7 @@ test.describe.parallel('Markdown', () => {
           </li>
         </ol>
       `,
-      text: '    1. ',
+      text: '    1. '
     },
     {
       html: html`
@@ -430,7 +413,7 @@ test.describe.parallel('Markdown', () => {
           <li value="1"><br /></li>
         </ul>
       `,
-      text: '- ',
+      text: '- '
     },
     {
       html: html`
@@ -442,7 +425,7 @@ test.describe.parallel('Markdown', () => {
           </li>
         </ul>
       `,
-      text: '    - ',
+      text: '    - '
     },
     {
       html: html`
@@ -450,7 +433,7 @@ test.describe.parallel('Markdown', () => {
           <li value="1"><br /></li>
         </ul>
       `,
-      text: '* ',
+      text: '* '
     },
     {
       html: html`
@@ -462,7 +445,7 @@ test.describe.parallel('Markdown', () => {
           </li>
         </ul>
       `,
-      text: '    * ',
+      text: '    * '
     },
     {
       html: html`
@@ -474,7 +457,7 @@ test.describe.parallel('Markdown', () => {
           </li>
         </ul>
       `,
-      text: '      * ',
+      text: '      * '
     },
     {
       html: html`
@@ -492,58 +475,52 @@ test.describe.parallel('Markdown', () => {
           </li>
         </ul>
       `,
-      text: '        * ',
+      text: '        * '
     },
     {
       html: html`
         <hr
           class="PlaygroundEditorTheme__hr"
           contenteditable="false"
-          data-lexical-decorator="true" />
+          data-lexical-decorator="true"
+        />
         <p dir="auto"><br /></p>
       `,
-      text: '--- ',
+      text: '--- '
     },
     {
       html: html`
         <hr
           class="PlaygroundEditorTheme__hr"
           contenteditable="false"
-          data-lexical-decorator="true" />
+          data-lexical-decorator="true"
+        />
         <p dir="auto"><br /></p>
       `,
-      text: '*** ',
-    },
-  ];
+      text: '*** '
+    }
+  ]
 
   const SIMPLE_TEXT_FORMAT_SHORTCUTS = [
     {
       html: html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">hello</span>
-          <em
-            class="PlaygroundEditorTheme__textItalic"
-            data-lexical-text="true">
-            world
-          </em>
+          <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> world </em>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: 'hello *world*!',
+      text: 'hello *world*!'
     },
     {
       html: html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">hello</span>
-          <strong
-            class="PlaygroundEditorTheme__textBold"
-            data-lexical-text="true">
-            world
-          </strong>
+          <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true"> world </strong>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: 'hello **world**!',
+      text: 'hello **world**!'
     },
     {
       html: html`
@@ -551,13 +528,14 @@ test.describe.parallel('Markdown', () => {
           <span data-lexical-text="true">hello</span>
           <strong
             class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             world
           </strong>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: 'hello ***world***!',
+      text: 'hello ***world***!'
     },
     {
       html: html`
@@ -565,13 +543,14 @@ test.describe.parallel('Markdown', () => {
           <span data-lexical-text="true">hello</span>
           <strong
             class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             world
           </strong>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: 'hello ___world___!',
+      text: 'hello ___world___!'
     },
     {
       html: html`
@@ -583,7 +562,7 @@ test.describe.parallel('Markdown', () => {
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: 'hello [world](https://www.test.com)!',
+      text: 'hello [world](https://www.test.com)!'
     },
     {
       html: html`
@@ -591,9 +570,9 @@ test.describe.parallel('Markdown', () => {
           <span data-lexical-text="true">10:20:30😄</span>
         </p>
       `,
-      text: '10:20:30:smile:',
-    },
-  ];
+      text: '10:20:30:smile:'
+    }
+  ]
 
   const NESTED_TEXT_FORMAT_SHORTCUTS = [
     {
@@ -601,281 +580,277 @@ test.describe.parallel('Markdown', () => {
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <strong
             class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             hello world
           </strong>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: '~~_**hello world**_~~!',
+      text: '~~_**hello world**_~~!'
     },
     {
       html: html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <em
             class="PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             hello world
           </em>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: '~~_hello world_~~!',
+      text: '~~_hello world_~~!'
     },
     {
       html: html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <strong
             class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textStrikethrough"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             hello world
           </strong>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: '~~**hello world**~~!',
+      text: '~~**hello world**~~!'
     },
     {
       html: html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <strong
             class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             hello world
           </strong>
           <span data-lexical-text="true">!</span>
         </p>
       `,
-      text: '_**hello world**_!',
-    },
-  ];
+      text: '_**hello world**_!'
+    }
+  ]
 
   BASE_BLOCK_SHORTCUTS.forEach((testCase) => {
-    test(`can convert "${testCase.text}" shortcut`, async ({
-      page,
-      isCollab,
-    }) => {
-      await focusEditor(page);
-      await page.keyboard.type(testCase.text);
-      await assertHTML(page, testCase.html, undefined, {ignoreClasses: true});
+    test(`can convert "${testCase.text}" shortcut`, async ({ page, isCollab }) => {
+      await focusEditor(page)
+      await page.keyboard.type(testCase.text)
+      await assertHTML(page, testCase.html, undefined, { ignoreClasses: true })
 
       if (!isCollab) {
-        const escapedText = testCase.text.replace('>', '&gt;');
-        await undo(page);
+        const escapedText = testCase.text.replace('>', '&gt;')
+        await undo(page)
         await assertHTML(
           page,
           `<p dir="auto"><span data-lexical-text="true">${escapedText}</span></p>`,
           undefined,
-          {ignoreClasses: true},
-        );
-        await redo(page);
-        await assertHTML(page, testCase.html, undefined, {ignoreClasses: true});
+          { ignoreClasses: true }
+        )
+        await redo(page)
+        await assertHTML(page, testCase.html, undefined, { ignoreClasses: true })
       }
-    });
-  });
+    })
+  })
 
   SIMPLE_TEXT_FORMAT_SHORTCUTS.forEach((testCase) => {
-    test(`can convert "${testCase.text}" shortcut`, async ({
-      page,
-      isCollab,
-    }) => {
-      await focusEditor(page);
-      await page.keyboard.type(testCase.text);
-      await assertHTML(page, testCase.html, undefined, {ignoreClasses: false});
-      await assertMarkdownImportExport(page, testCase.text, testCase.html);
-    });
-  });
+    test(`can convert "${testCase.text}" shortcut`, async ({ page, isCollab }) => {
+      await focusEditor(page)
+      await page.keyboard.type(testCase.text)
+      await assertHTML(page, testCase.html, undefined, { ignoreClasses: false })
+      await assertMarkdownImportExport(page, testCase.text, testCase.html)
+    })
+  })
 
   NESTED_TEXT_FORMAT_SHORTCUTS.forEach((testCase) => {
-    test(`can convert "${testCase.text}" shortcut`, async ({page}) => {
-      await focusEditor(page);
-      await page.keyboard.type(testCase.text);
-      await assertHTML(page, testCase.html, undefined, {ignoreClasses: false});
-      await assertMarkdownImportExport(page, testCase.text, testCase.html);
-    });
-  });
+    test(`can convert "${testCase.text}" shortcut`, async ({ page }) => {
+      await focusEditor(page)
+      await page.keyboard.type(testCase.text)
+      await assertHTML(page, testCase.html, undefined, { ignoreClasses: false })
+      await assertMarkdownImportExport(page, testCase.text, testCase.html)
+    })
+  })
 
-  test('can undo/redo nested transformations', async ({page, isCollab}) => {
-    await focusEditor(page);
-    await page.keyboard.type('~~_**hello world**_~~');
+  test('can undo/redo nested transformations', async ({ page, isCollab }) => {
+    await focusEditor(page)
+    await page.keyboard.type('~~_**hello world**_~~')
 
     const BOLD_ITALIC_STRIKETHROUGH = html`
       <p class="PlaygroundEditorTheme__paragraph" dir="auto">
         <strong
           class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-          data-lexical-text="true">
+          data-lexical-text="true"
+        >
           hello world
         </strong>
       </p>
-    `;
+    `
     const BOLD_ITALIC = html`
       <p class="PlaygroundEditorTheme__paragraph" dir="auto">
         <span data-lexical-text="true">~~</span>
         <strong
           class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic"
-          data-lexical-text="true">
+          data-lexical-text="true"
+        >
           hello world
         </strong>
         <span data-lexical-text="true">~~</span>
       </p>
-    `;
+    `
     const BOLD = html`
       <p class="PlaygroundEditorTheme__paragraph" dir="auto">
         <span data-lexical-text="true">~~_</span>
-        <strong
-          class="PlaygroundEditorTheme__textBold"
-          data-lexical-text="true">
+        <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true">
           hello world
         </strong>
         <span data-lexical-text="true">_</span>
       </p>
-    `;
+    `
     const PLAIN = html`
       <p class="PlaygroundEditorTheme__paragraph" dir="auto">
         <span data-lexical-text="true">~~_**hello world**</span>
       </p>
-    `;
+    `
 
-    await assertHTML(page, BOLD_ITALIC_STRIKETHROUGH);
+    await assertHTML(page, BOLD_ITALIC_STRIKETHROUGH)
 
     if (isCollab) {
-      return;
+      return
     }
 
-    await undo(page); // Undo last transformation
-    await assertHTML(page, BOLD_ITALIC);
-    await undo(page); // Undo transformation & its text typing
-    await undo(page);
-    await assertHTML(page, BOLD);
-    await undo(page); // Undo transformation & its text typing
-    await undo(page);
-    await assertHTML(page, PLAIN);
-    await redo(page); // Redo transformation & its text typing
-    await redo(page);
-    await assertHTML(page, BOLD);
-    await redo(page); // Redo transformation & its text typing
-    await redo(page);
-    await assertHTML(page, BOLD_ITALIC);
-    await redo(page); // Redo transformation
-    await assertHTML(page, BOLD_ITALIC_STRIKETHROUGH);
-  });
+    await undo(page) // Undo last transformation
+    await assertHTML(page, BOLD_ITALIC)
+    await undo(page) // Undo transformation & its text typing
+    await undo(page)
+    await assertHTML(page, BOLD)
+    await undo(page) // Undo transformation & its text typing
+    await undo(page)
+    await assertHTML(page, PLAIN)
+    await redo(page) // Redo transformation & its text typing
+    await redo(page)
+    await assertHTML(page, BOLD)
+    await redo(page) // Redo transformation & its text typing
+    await redo(page)
+    await assertHTML(page, BOLD_ITALIC)
+    await redo(page) // Redo transformation
+    await assertHTML(page, BOLD_ITALIC_STRIKETHROUGH)
+  })
 
-  test('can convert already styled text (overlapping ranges)', async ({
-    page,
-  }) => {
+  test('can convert already styled text (overlapping ranges)', async ({ page }) => {
     // type partially bold/underlined text, add opening markdown tag within bold/underline part
     // and add closing within plain text
-    await focusEditor(page);
-    await pressToggleBold(page);
-    await pressToggleUnderline(page);
-    await page.keyboard.type('h*e~~llo');
-    await pressToggleBold(page);
-    await pressToggleUnderline(page);
-    await page.keyboard.type(' wo~~r*ld');
+    await focusEditor(page)
+    await pressToggleBold(page)
+    await pressToggleUnderline(page)
+    await page.keyboard.type('h*e~~llo')
+    await pressToggleBold(page)
+    await pressToggleUnderline(page)
+    await page.keyboard.type(' wo~~r*ld')
     await assertHTML(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <strong
             class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textUnderline"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             h
           </strong>
           <strong
             class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textUnderline"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             e
           </strong>
           <strong
             class="PlaygroundEditorTheme__textUnderlineStrikethrough PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             llo
           </strong>
           <em
             class="PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-            data-lexical-text="true">
+            data-lexical-text="true"
+          >
             wo
           </em>
-          <em
-            class="PlaygroundEditorTheme__textItalic"
-            data-lexical-text="true">
-            r
-          </em>
+          <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> r </em>
           <span data-lexical-text="true">ld</span>
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
-  test('can convert markdown text into rich text', async ({page, isCollab}) => {
-    await focusEditor(page);
-    await page.keyboard.type('```markdown ');
+  test('can convert markdown text into rich text', async ({ page, isCollab }) => {
+    await focusEditor(page)
+    await page.keyboard.type('```markdown ')
     await pasteFromClipboard(page, {
-      'text/plain': IMPORTED_MARKDOWN,
-    });
+      'text/plain': IMPORTED_MARKDOWN
+    })
 
-    const originalHTML = await getHTML(page);
+    const originalHTML = await getHTML(page)
 
     // Import from current markdown codeblock content
-    await click(page, '.action-button .markdown');
-    await assertHTML(page, IMPORTED_MARKDOWN_HTML);
+    await click(page, '.action-button .markdown')
+    await assertHTML(page, IMPORTED_MARKDOWN_HTML)
 
     if (!isCollab) {
-      await undo(page);
-      await assertHTML(page, originalHTML);
-      await redo(page);
-      await assertHTML(page, IMPORTED_MARKDOWN_HTML);
+      await undo(page)
+      await assertHTML(page, originalHTML)
+      await redo(page)
+      await assertHTML(page, IMPORTED_MARKDOWN_HTML)
 
       // Click again to run export/import cycle twice to make sure
       // no extra nodes (e.g. newlines) are created
-      await click(page, '.action-button .markdown');
-      await click(page, '.action-button .markdown');
-      await click(page, '.action-button .markdown');
-      await click(page, '.action-button .markdown');
-      await assertHTML(page, IMPORTED_MARKDOWN_HTML);
+      await click(page, '.action-button .markdown')
+      await click(page, '.action-button .markdown')
+      await click(page, '.action-button .markdown')
+      await click(page, '.action-button .markdown')
+      await assertHTML(page, IMPORTED_MARKDOWN_HTML)
     }
-  });
+  })
 
-  test('can type text with markdown', async ({page}) => {
-    await focusEditor(page);
-    await page.keyboard.type(TYPED_MARKDOWN);
-    await assertHTML(page, TYPED_MARKDOWN_HTML);
-  });
+  test('can type text with markdown', async ({ page }) => {
+    await focusEditor(page)
+    await page.keyboard.type(TYPED_MARKDOWN)
+    await assertHTML(page, TYPED_MARKDOWN_HTML)
+  })
 
-  test('intraword text format', async ({page}) => {
-    await focusEditor(page);
-    await page.keyboard.type('he_llo_ world');
+  test('intraword text format', async ({ page }) => {
+    await focusEditor(page)
+    await page.keyboard.type('he_llo_ world')
     await assertHTML(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">he_llo_ world</span>
         </p>
-      `,
-    );
+      `
+    )
 
-    await clearEditor(page);
-    await page.keyboard.type('_hello world');
-    await moveLeft(page, 3);
-    await page.keyboard.type('_');
+    await clearEditor(page)
+    await page.keyboard.type('_hello world')
+    await moveLeft(page, 3)
+    await page.keyboard.type('_')
     await assertHTML(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">_hello wo_rld</span>
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
-  test('can export text format next to a newline', async ({page}) => {
-    await focusEditor(page);
-    await page.keyboard.type('Hello');
-    await page.keyboard.down('Shift');
-    await page.keyboard.press('Enter');
-    await page.keyboard.up('Shift');
-    await page.keyboard.type('_world_');
-    await click(page, '.action-button .markdown');
+  test('can export text format next to a newline', async ({ page }) => {
+    await focusEditor(page)
+    await page.keyboard.type('Hello')
+    await page.keyboard.down('Shift')
+    await page.keyboard.press('Enter')
+    await page.keyboard.up('Shift')
+    await page.keyboard.type('_world_')
+    await click(page, '.action-button .markdown')
     await assertHTML(
       page,
       html`
@@ -885,74 +860,61 @@ test.describe.parallel('Markdown', () => {
           spellcheck="false"
           data-gutter="12"
           data-highlight-language="markdown"
-          data-language="markdown">
+          data-language="markdown"
+        >
           <span data-lexical-text="true">Hello</span>
           <br />
-          <span
-            class="PlaygroundEditorTheme__tokenPunctuation"
-            data-lexical-text="true">
-            *
-          </span>
+          <span class="PlaygroundEditorTheme__tokenPunctuation" data-lexical-text="true"> * </span>
           <span data-lexical-text="true">world</span>
-          <span
-            class="PlaygroundEditorTheme__tokenPunctuation"
-            data-lexical-text="true">
-            *
-          </span>
+          <span class="PlaygroundEditorTheme__tokenPunctuation" data-lexical-text="true"> * </span>
         </code>
-      `,
-    );
-  });
+      `
+    )
+  })
 
-  test('can import single decorator node (#2604)', async ({page}) => {
+  test('can import single decorator node (#2604)', async ({ page }) => {
     // TODO(collab-v2): nested editors are not supported yet
-    test.skip(IS_COLLAB_V2);
+    test.skip(IS_COLLAB_V2)
 
-    await focusEditor(page);
+    await focusEditor(page)
     await page.keyboard.type(
-      '```markdown ![Yellow flower in tilt shift lens](' +
-        SAMPLE_IMAGE_URL +
-        ')',
-    );
-    await click(page, '.action-button .markdown');
-    await waitForSelector(page, '.editor-image img');
+      '```markdown ![Yellow flower in tilt shift lens](' + SAMPLE_IMAGE_URL + ')'
+    )
+    await click(page, '.action-button .markdown')
+    await waitForSelector(page, '.editor-image img')
     await assertHTML(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-          <span
-            class="editor-image"
-            contenteditable="false"
-            data-lexical-decorator="true">
+          <span class="editor-image" contenteditable="false" data-lexical-decorator="true">
             <div draggable="false">
               <img
                 alt="Yellow flower in tilt shift lens"
                 draggable="false"
                 src="${SAMPLE_IMAGE_URL}"
-                style="height: inherit; max-width: 800px; width: inherit" />
+                style="height: inherit; max-width: 800px; width: inherit"
+              />
             </div>
           </span>
           <br />
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
-  test('can import several text match transformers in a same line (#5385)', async ({
-    page,
-  }) => {
+  test('can import several text match transformers in a same line (#5385)', async ({ page }) => {
     // TODO(collab-v2): nested editors are not supported yet
-    test.skip(IS_COLLAB_V2);
+    test.skip(IS_COLLAB_V2)
 
-    await focusEditor(page);
+    await focusEditor(page)
     await page.keyboard.type(
       '```markdown [link](https://lexical.dev)[link](https://lexical.dev)![Yellow flower in tilt shift lens](' +
         SAMPLE_IMAGE_URL +
-        ')just text in between$1$',
-    );
-    await click(page, '.action-button .markdown');
-    await waitForSelector(page, '.editor-image img');
-    await waitForSelector(page, '.editor-equation');
+        ')just text in between$1$'
+    )
+    await click(page, '.action-button .markdown')
+    await waitForSelector(page, '.editor-image img')
+    await waitForSelector(page, '.editor-equation')
     await assertHTML(
       page,
       html`
@@ -963,28 +925,24 @@ test.describe.parallel('Markdown', () => {
           <a class="PlaygroundEditorTheme__link" href="https://lexical.dev">
             <span data-lexical-text="true">link</span>
           </a>
-          <span
-            class="editor-image"
-            contenteditable="false"
-            data-lexical-decorator="true">
+          <span class="editor-image" contenteditable="false" data-lexical-decorator="true">
             <div draggable="false">
               <img
                 alt="Yellow flower in tilt shift lens"
                 draggable="false"
                 src="${SAMPLE_IMAGE_URL}"
-                style="height: inherit; max-width: 800px; width: inherit" />
+                style="height: inherit; max-width: 800px; width: inherit"
+              />
             </div>
           </span>
           <span data-lexical-text="true">just text in between</span>
-          <span
-            class="editor-equation"
-            contenteditable="false"
-            data-lexical-decorator="true">
+          <span class="editor-equation" contenteditable="false" data-lexical-decorator="true">
             <img
               alt=""
               height="0"
               src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-              width="0" />
+              width="0"
+            />
             <span role="button" tabindex="-1">
               <span class="katex">
                 <span class="katex-html" aria-hidden="true">
@@ -999,19 +957,18 @@ test.describe.parallel('Markdown', () => {
               alt=""
               height="0"
               src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-              width="0" />
+              width="0"
+            />
           </span>
           <br />
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
-  test('does not use code-formatted text in text format transformers (#7349)', async ({
-    page,
-  }) => {
-    await focusEditor(page);
-    await page.keyboard.type('`void*` or `int*`');
+  test('does not use code-formatted text in text format transformers (#7349)', async ({ page }) => {
+    await focusEditor(page)
+    await page.keyboard.type('`void*` or `int*`')
     await assertHTML(
       page,
       html`
@@ -1024,15 +981,15 @@ test.describe.parallel('Markdown', () => {
             <span class="PlaygroundEditorTheme__textCode">int*</span>
           </code>
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
-  test('can adjust selection after text match transformer', async ({page}) => {
-    await focusEditor(page);
-    await page.keyboard.type('Hello  world');
-    await moveLeft(page, 6);
-    await page.keyboard.type('[link](https://lexical.dev)');
+  test('can adjust selection after text match transformer', async ({ page }) => {
+    await focusEditor(page)
+    await page.keyboard.type('Hello  world')
+    await moveLeft(page, 6)
+    await page.keyboard.type('[link](https://lexical.dev)')
     await assertHTML(
       page,
       html`
@@ -1043,54 +1000,54 @@ test.describe.parallel('Markdown', () => {
           </a>
           <span data-lexical-text="true">world</span>
         </p>
-      `,
-    );
+      `
+    )
     // Selection starts after newly created link element
 
     await assertSelection(page, {
       anchorOffset: 0,
       anchorPath: [0, 2, 0],
       focusOffset: 0,
-      focusPath: [0, 2, 0],
-    });
-  });
+      focusPath: [0, 2, 0]
+    })
+  })
 
-  test('keep list marker on its own items', async ({page}) => {
-    await focusEditor(page);
-    await page.keyboard.type('+');
-    await page.keyboard.type(' a');
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Tab');
-    await page.keyboard.type('b');
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('c');
-    await click(page, '.action-button .markdown');
-    await assertHTML(page, LIST_MARKER_MARKDOWN);
-  });
+  test('keep list marker on its own items', async ({ page }) => {
+    await focusEditor(page)
+    await page.keyboard.type('+')
+    await page.keyboard.type(' a')
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Tab')
+    await page.keyboard.type('b')
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('c')
+    await click(page, '.action-button .markdown')
+    await assertHTML(page, LIST_MARKER_MARKDOWN)
+  })
 
-  test('keep list marker on its own items with copy/paste', async ({page}) => {
-    await focusEditor(page);
-    await page.keyboard.type('+');
-    await page.keyboard.type(' a');
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Tab');
-    await page.keyboard.type('b');
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('c');
-    await selectAll(page);
+  test('keep list marker on its own items with copy/paste', async ({ page }) => {
+    await focusEditor(page)
+    await page.keyboard.type('+')
+    await page.keyboard.type(' a')
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Tab')
+    await page.keyboard.type('b')
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('c')
+    await selectAll(page)
     await withExclusiveClipboardAccess(async () => {
-      const clipboard = await copyToClipboard(page);
+      const clipboard = await copyToClipboard(page)
       // Delete selected text and then delete remaining bullet list.
-      await page.keyboard.press('Backspace');
-      await page.keyboard.press('Backspace');
-      await pasteFromClipboard(page, clipboard);
-      await click(page, '.action-button .markdown');
-      await assertHTML(page, LIST_MARKER_MARKDOWN);
-    });
-  });
-});
+      await page.keyboard.press('Backspace')
+      await page.keyboard.press('Backspace')
+      await pasteFromClipboard(page, clipboard)
+      await click(page, '.action-button .markdown')
+      await assertHTML(page, LIST_MARKER_MARKDOWN)
+    })
+  })
+})
 
 const LIST_MARKER_MARKDOWN = html`
   <code
@@ -1099,7 +1056,8 @@ const LIST_MARKER_MARKDOWN = html`
     spellcheck="false"
     data-gutter="123"
     data-highlight-language="markdown"
-    data-language="markdown">
+    data-language="markdown"
+  >
     <span data-lexical-text="true">+</span>
     <span data-lexical-text="true">a</span>
     <br />
@@ -1110,7 +1068,7 @@ const LIST_MARKER_MARKDOWN = html`
     <span data-lexical-text="true">+</span>
     <span data-lexical-text="true">c</span>
   </code>
-`;
+`
 
 const TYPED_MARKDOWN = `# Markdown Shortcuts
 This is *italic*, _italic_, **bold**, __bold__, ~~strikethrough~~ text
@@ -1128,7 +1086,7 @@ It ~~___works [with links](https://lexical.io) too___~~
 \`\`\`sql Code block
 
 
-Done`;
+Done`
 
 const TYPED_MARKDOWN_HTML = html`
   <h1 class="PlaygroundEditorTheme__h1" dir="auto">
@@ -1136,25 +1094,15 @@ const TYPED_MARKDOWN_HTML = html`
   </h1>
   <p class="PlaygroundEditorTheme__paragraph" dir="auto">
     <span data-lexical-text="true">This is</span>
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      italic
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> italic </em>
     <span data-lexical-text="true">,</span>
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      italic
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> italic </em>
     <span data-lexical-text="true">,</span>
-    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true">
-      bold
-    </strong>
+    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true"> bold </strong>
     <span data-lexical-text="true">,</span>
-    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true">
-      bold
-    </strong>
+    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true"> bold </strong>
     <span data-lexical-text="true">,</span>
-    <span
-      class="PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+    <span class="PlaygroundEditorTheme__textStrikethrough" data-lexical-text="true">
       strikethrough
     </span>
     <span data-lexical-text="true">text</span>
@@ -1163,13 +1111,15 @@ const TYPED_MARKDOWN_HTML = html`
     <span data-lexical-text="true">This is</span>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       bold italic strikethrough
     </strong>
     <span data-lexical-text="true">text,</span>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       this one too
     </strong>
   </p>
@@ -1177,34 +1127,34 @@ const TYPED_MARKDOWN_HTML = html`
     <span data-lexical-text="true">It</span>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       works
     </strong>
     <a class="PlaygroundEditorTheme__link" href="https://lexical.io">
       <strong
         class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-        data-lexical-text="true">
+        data-lexical-text="true"
+      >
         with links
       </strong>
     </a>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       too
     </strong>
   </p>
   <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      Nested
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> Nested </em>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       stars tags
     </strong>
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      are handled too
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> are handled too </em>
   </p>
   <h1 class="PlaygroundEditorTheme__h1" dir="auto">
     <span data-lexical-text="true">Title</span>
@@ -1215,17 +1165,12 @@ const TYPED_MARKDOWN_HTML = html`
   <blockquote class="PlaygroundEditorTheme__quote" dir="auto">
     <span data-lexical-text="true">Quote</span>
   </blockquote>
-  <hr
-    class="PlaygroundEditorTheme__hr"
-    contenteditable="false"
-    data-lexical-decorator="true" />
+  <hr class="PlaygroundEditorTheme__hr" contenteditable="false" data-lexical-decorator="true" />
   <ul class="PlaygroundEditorTheme__ul" dir="auto">
     <li class="PlaygroundEditorTheme__listItem" value="1">
       <span data-lexical-text="true">List here</span>
     </li>
-    <li
-      class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem"
-      value="2">
+    <li class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem" value="2">
       <ul class="PlaygroundEditorTheme__ul">
         <li class="PlaygroundEditorTheme__listItem" value="1">
           <span data-lexical-text="true">Nested one</span>
@@ -1239,13 +1184,14 @@ const TYPED_MARKDOWN_HTML = html`
     spellcheck="false"
     data-gutter="1"
     data-highlight-language="sql"
-    data-language="sql">
+    data-language="sql"
+  >
     <span data-lexical-text="true">Code block</span>
   </code>
   <p class="PlaygroundEditorTheme__paragraph" dir="auto">
     <span data-lexical-text="true">Done</span>
   </p>
-`;
+`
 
 const IMPORTED_MARKDOWN = `# Markdown Import
 ### Formatting
@@ -1293,7 +1239,7 @@ Inline \`code\` format which also \`preserves **_~~any markdown-like~~_** text\`
 // Some comments
 1 + 1 = 2;
 **_~~1~~_**
-\`\`\``;
+\`\`\``
 
 const IMPORTED_MARKDOWN_HTML = html`
   <h1 class="PlaygroundEditorTheme__h1" dir="auto">
@@ -1304,25 +1250,15 @@ const IMPORTED_MARKDOWN_HTML = html`
   </h3>
   <p class="PlaygroundEditorTheme__paragraph" dir="auto">
     <span data-lexical-text="true">This is</span>
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      italic
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> italic </em>
     <span data-lexical-text="true">,</span>
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      italic
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> italic </em>
     <span data-lexical-text="true">,</span>
-    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true">
-      bold
-    </strong>
+    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true"> bold </strong>
     <span data-lexical-text="true">,</span>
-    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true">
-      bold
-    </strong>
+    <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true"> bold </strong>
     <span data-lexical-text="true">,</span>
-    <span
-      class="PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+    <span class="PlaygroundEditorTheme__textStrikethrough" data-lexical-text="true">
       strikethrough
     </span>
     <span data-lexical-text="true">text</span>
@@ -1331,14 +1267,16 @@ const IMPORTED_MARKDOWN_HTML = html`
     <span data-lexical-text="true">This is</span>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       bold italic strikethrough
     </strong>
     <span data-lexical-text="true">text,</span>
     <br />
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       this one too
     </strong>
   </p>
@@ -1346,14 +1284,16 @@ const IMPORTED_MARKDOWN_HTML = html`
     <span data-lexical-text="true">It</span>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       works
     </strong>
     <span data-lexical-text="true">and</span>
     <a class="PlaygroundEditorTheme__link" href="https://lexical.io">
       <strong
         class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic PlaygroundEditorTheme__textStrikethrough"
-        data-lexical-text="true">
+        data-lexical-text="true"
+      >
         with links
       </strong>
     </a>
@@ -1363,7 +1303,8 @@ const IMPORTED_MARKDOWN_HTML = html`
     <span data-lexical-text="true">Links</span>
     <a
       class="PlaygroundEditorTheme__link"
-      href="https://lexical.io/tag_here_and__here__and___here___too">
+      href="https://lexical.io/tag_here_and__here__and___here___too"
+    >
       <span data-lexical-text="true">with underscores</span>
     </a>
     <span data-lexical-text="true">and (</span>
@@ -1373,17 +1314,14 @@ const IMPORTED_MARKDOWN_HTML = html`
     <span data-lexical-text="true">)</span>
   </p>
   <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      Nested
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> Nested </em>
     <strong
       class="PlaygroundEditorTheme__textBold PlaygroundEditorTheme__textItalic"
-      data-lexical-text="true">
+      data-lexical-text="true"
+    >
       stars tags
     </strong>
-    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true">
-      are handled too
-    </em>
+    <em class="PlaygroundEditorTheme__textItalic" data-lexical-text="true"> are handled too </em>
   </p>
   <h3 class="PlaygroundEditorTheme__h3" dir="auto">
     <span data-lexical-text="true">Headings</span>
@@ -1409,10 +1347,7 @@ const IMPORTED_MARKDOWN_HTML = html`
   <h3 class="PlaygroundEditorTheme__h3" dir="auto">
     <span data-lexical-text="true">Horizontal Rules</span>
   </h3>
-  <hr
-    class="PlaygroundEditorTheme__hr"
-    contenteditable="false"
-    data-lexical-decorator="true" />
+  <hr class="PlaygroundEditorTheme__hr" contenteditable="false" data-lexical-decorator="true" />
   <h3 class="PlaygroundEditorTheme__h3" dir="auto">
     <span data-lexical-text="true">Blockquotes</span>
   </h3>
@@ -1444,18 +1379,12 @@ const IMPORTED_MARKDOWN_HTML = html`
         <span class="PlaygroundEditorTheme__textCode">*</span>
       </code>
     </li>
-    <li
-      class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem"
-      value="2">
+    <li class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem" value="2">
       <ul class="PlaygroundEditorTheme__ul">
         <li class="PlaygroundEditorTheme__listItem" value="1">
-          <span data-lexical-text="true">
-            Lists can be indented with 2 spaces
-          </span>
+          <span data-lexical-text="true"> Lists can be indented with 2 spaces </span>
         </li>
-        <li
-          class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem"
-          value="2">
+        <li class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem" value="2">
           <ul class="PlaygroundEditorTheme__ul">
             <li class="PlaygroundEditorTheme__listItem" value="1">
               <span data-lexical-text="true">Very easy</span>
@@ -1470,16 +1399,12 @@ const IMPORTED_MARKDOWN_HTML = html`
   </h3>
   <ol class="PlaygroundEditorTheme__ol1" dir="auto">
     <li class="PlaygroundEditorTheme__listItem" value="1">
-      <span data-lexical-text="true">
-        Oredered lists started with numbers as
-      </span>
+      <span data-lexical-text="true"> Oredered lists started with numbers as </span>
       <code spellcheck="false" data-lexical-text="true">
         <span class="PlaygroundEditorTheme__textCode">1.</span>
       </code>
     </li>
-    <li
-      class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem"
-      value="2">
+    <li class="PlaygroundEditorTheme__listItem PlaygroundEditorTheme__nestedListItem" value="2">
       <ol class="PlaygroundEditorTheme__ol2">
         <li class="PlaygroundEditorTheme__listItem" value="1">
           <span data-lexical-text="true">And can be nested</span>
@@ -1522,58 +1447,31 @@ const IMPORTED_MARKDOWN_HTML = html`
     spellcheck="false"
     data-gutter="123"
     data-highlight-language="javascript"
-    data-language="javascript">
+    data-language="javascript"
+  >
     <span class="PlaygroundEditorTheme__tokenComment" data-lexical-text="true">
       // Some comments
     </span>
     <br />
-    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true">
-      1
-    </span>
+    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true"> 1 </span>
     <span data-lexical-text="true"></span>
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      +
-    </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> + </span>
     <span data-lexical-text="true"></span>
-    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true">
-      1
-    </span>
+    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true"> 1 </span>
     <span data-lexical-text="true"></span>
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      =
-    </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> = </span>
     <span data-lexical-text="true"></span>
-    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true">
-      2
-    </span>
-    <span
-      class="PlaygroundEditorTheme__tokenPunctuation"
-      data-lexical-text="true">
-      ;
-    </span>
+    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true"> 2 </span>
+    <span class="PlaygroundEditorTheme__tokenPunctuation" data-lexical-text="true"> ; </span>
     <br />
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      **
-    </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> ** </span>
     <span data-lexical-text="true">_</span>
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      ~
-    </span>
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      ~
-    </span>
-    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true">
-      1
-    </span>
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      ~
-    </span>
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      ~
-    </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> ~ </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> ~ </span>
+    <span class="PlaygroundEditorTheme__tokenProperty" data-lexical-text="true"> 1 </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> ~ </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> ~ </span>
     <span data-lexical-text="true">_</span>
-    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true">
-      **
-    </span>
+    <span class="PlaygroundEditorTheme__tokenOperator" data-lexical-text="true"> ** </span>
   </code>
-`;
+`

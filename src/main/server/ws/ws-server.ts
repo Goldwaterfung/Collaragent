@@ -20,6 +20,7 @@ type UpdateMessage = {
   instanceId: string
   clientId?: string
   payload: DocumentPayload
+  sequenceNumber?: number
 }
 type RequestSyncMessage = { type: 'requestSync'; instanceId: string; clientId?: string }
 type DeleteMessage = { type: 'delete'; instanceId: string; clientId?: string }
@@ -126,7 +127,8 @@ const MessageSchema: z.ZodType<Message> = z.discriminatedUnion('type', [
     type: z.literal('update'),
     instanceId: z.string(),
     clientId: z.string().optional(),
-    payload: DocumentInstancePayloadSchema
+    payload: DocumentInstancePayloadSchema,
+    sequenceNumber: z.number().optional()
   }),
   z.object({
     type: z.literal('requestSync'),
@@ -194,6 +196,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
   const instanceWatchers = new Set<WebSocket>()
   const commandSequences = new Map<string, number>()
   const proposals = new Map<string, Map<string, Command[]>>()
+  const proposalBaselines = new Map<string, DocumentPayload>()
 
   function currentIsoTimestamp() {
     return new Date().toISOString()
@@ -634,6 +637,8 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
       }
       const doc = docs.get(instanceId)
       const meta = instanceMetadata.get(instanceId)
+      const isCanvas = meta?.type === 'canvas' || (doc && isGraphCanvasPayload(doc))
+      if (!isCanvas && proposals.has(instanceId)) return
       if (doc && meta) {
         await saveDocumentInstanceToApi({
           instanceId,
@@ -650,6 +655,8 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
       saveDebounceTimers.delete(id)
       const doc = docs.get(id)
       const meta = instanceMetadata.get(id)
+      const isCanvas = meta?.type === 'canvas' || (doc && isGraphCanvasPayload(doc))
+      if (!isCanvas && proposals.has(id)) continue
       if (doc && meta) {
         flushPromises.push(
           saveDocumentInstanceToApi({
@@ -765,6 +772,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     const { exclude = null, from = null } = options
     const peers = channels.get(instanceId)
     if (!peers) return
+    const currentVersion = commandSequences.get(instanceId) ?? 0
     const message = (() => {
       if (isGraphCanvasPayload(payload)) {
         const dto = normalizeGraphPayload(payload) as any
@@ -772,7 +780,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           type: 'sync-snapshot',
           graph: dto.graph,
           layout: dto.layout?.layoutByNodeId ?? {},
-          version: 1,
+          version: currentVersion,
           instanceId,
           from
         })
@@ -783,7 +791,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         type: 'sync-snapshot',
         blocks: Array.isArray(doc.blocks) ? doc.blocks : [],
         comments: doc.comments,
-        version: 1,
+        version: currentVersion,
         instanceId,
         from
       })
@@ -954,6 +962,17 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             return
           }
 
+          if (m.clientId === 'system-checkpoint-restore') {
+            commandSequences.set(m.instanceId, m.sequenceNumber ?? 0)
+            proposals.delete(m.instanceId)
+            proposalBaselines.delete(m.instanceId)
+            broadcastSync(m.instanceId, normalizedPayload, {
+              exclude: ws,
+              from: m.clientId || null
+            })
+            return
+          }
+
           broadcastSync(m.instanceId, normalizedPayload, {
             exclude: ws,
             from: m.clientId || null
@@ -1115,6 +1134,8 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             return
           }
 
+          const currentVersion = commandSequences.get(instanceId) ?? 0
+
           if (isGraphCanvasPayload(doc)) {
             const canonicalDoc = normalizeGraphPayload(doc) as Extract<
               DocumentPayload,
@@ -1125,7 +1146,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
                 type: 'sync-snapshot',
                 graph: (canonicalDoc as any).graph,
                 layout: (canonicalDoc as any).layout.layoutByNodeId,
-                version: 1
+                version: currentVersion
               })
             )
           } else if (isDocumentBlocksPayload(doc)) {
@@ -1134,7 +1155,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
                 type: 'sync-snapshot',
                 blocks: doc.blocks,
                 comments: doc.comments,
-                version: 1
+                version: currentVersion
               })
             )
           } else {
@@ -1204,9 +1225,17 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
               : (nextDto as DocumentPayload)
           docs.set(instanceId, updatedDoc)
 
+          const isStaged =
+            Boolean(m.command.staged) &&
+            meta?.type !== 'canvas' &&
+            !isGraphCanvasPayload(updatedDoc)
+
           // If command is staged, buffer it with previous state and broadcast the current proposal state
-          if ((m.command as any).staged) {
+          if (isStaged) {
             const threadId = m.threadId || 'default'
+            if (!proposalBaselines.has(instanceId)) {
+              proposalBaselines.set(instanceId, structuredClone(doc))
+            }
             if (!proposals.has(instanceId)) {
               proposals.set(instanceId, new Map())
             }
@@ -1280,7 +1309,10 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           }
 
           // 3. Debounce the Database Persistence (IO efficiency)
-          await debouncedSave(instanceId, meta?.projectId, updatedDoc)
+          // Staged commands are proposals and must NOT be written to SQLite disk
+          if (!isStaged) {
+            await debouncedSave(instanceId, meta?.projectId, updatedDoc)
+          }
 
           return
         }
@@ -1294,9 +1326,11 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             instanceProposals.delete(threadId)
             if (instanceProposals.size === 0) {
               proposals.delete(instanceId)
+              proposalBaselines.delete(instanceId)
             }
           } else {
             proposals.delete(instanceId)
+            proposalBaselines.delete(instanceId)
           }
 
           // Broadcast empty sync-changes to clear UI state for all clients
@@ -1311,6 +1345,13 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             for (const peer of peers) {
               if (peer.readyState === WebSocket.OPEN) peer.send(broadcastMsg)
             }
+          }
+
+          // Persist the newly accepted document state to SQLite
+          const meta = instanceMetadata.get(instanceId)
+          const currentDoc = docs.get(instanceId)
+          if (currentDoc) {
+            await debouncedSave(instanceId, meta?.projectId, currentDoc)
           }
           return
         }
@@ -1337,59 +1378,68 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           let currentDoc = docs.get(instanceId)
           if (!currentDoc) return
 
-          const meta = instanceMetadata.get(instanceId)
+          if (proposalBaselines.has(instanceId)) {
+            currentDoc = structuredClone(proposalBaselines.get(instanceId)!)
+          } else {
+            // Process in reverse to undo correctly if baseline snapshot was not present
+            for (const cmd of [...buffered].reverse()) {
+              const prev = cmd.previousState as CommandPreviousState | undefined
+              if (!prev) continue
 
-          // Process in reverse to undo correctly
-          for (const cmd of [...buffered].reverse()) {
-            const prev = (cmd as any).previousState
-            if (!prev) continue
-
-            if (isDocumentBlocksPayload(currentDoc)) {
-              const doc = currentDoc as any
-              switch (cmd.type) {
-                case 'editor:replace_document':
-                  if (prev.documentPayload) {
-                    currentDoc = prev.documentPayload
+              if (isDocumentBlocksPayload(currentDoc)) {
+                const doc = currentDoc as {
+                  blocks: Array<Record<string, unknown>>
+                  comments?: Record<string, unknown>
+                }
+                switch (cmd.type) {
+                  case 'editor:replace_document':
+                    if (prev.documentPayload && isDocumentBlocksPayload(prev.documentPayload)) {
+                      currentDoc = prev.documentPayload
+                    }
+                    break
+                  case 'editor:update_comments':
+                    if (
+                      prev.documentPayload &&
+                      isDocumentBlocksPayload(prev.documentPayload) &&
+                      prev.documentPayload.comments
+                    ) {
+                      doc.comments = prev.documentPayload.comments
+                    }
+                    break
+                  case 'editor:update_block': {
+                    const block = doc.blocks.find((b) => b.id === cmd.blockId)
+                    if (block && prev.block) {
+                      Object.assign(block, prev.block)
+                    }
+                    break
                   }
-                  break
-                case 'editor:update_comments':
-                  if (prev.documentPayload?.comments) {
-                    doc.comments = prev.documentPayload.comments
-                  }
-                  break
-                case 'editor:update_block':
-                  const block = doc.blocks.find((b: any) => b.id === cmd.blockId)
-                  if (block && prev.block) {
-                    Object.assign(block, prev.block)
-                  }
-                  break
-                case 'editor:insert_block':
-                  doc.blocks.splice(cmd.index, 1)
-                  break
-                case 'editor:remove_block':
-                  if (prev.block && prev.index !== undefined) {
-                    doc.blocks.splice(prev.index, 0, prev.block)
-                  }
-                  break
+                  case 'editor:insert_block':
+                    doc.blocks.splice(cmd.index, 1)
+                    break
+                  case 'editor:remove_block':
+                    if (prev.block && typeof prev.block === 'object' && prev.index !== undefined) {
+                      doc.blocks.splice(prev.index, 0, prev.block as Record<string, unknown>)
+                    }
+                    break
+                }
               }
             }
           }
 
-          docs.set(instanceId, currentDoc!)
+          docs.set(instanceId, currentDoc)
           if (threadId) {
             instanceProposals.delete(threadId)
             if (instanceProposals.size === 0) {
               proposals.delete(instanceId)
+              proposalBaselines.delete(instanceId)
             }
           } else {
             proposals.delete(instanceId)
+            proposalBaselines.delete(instanceId)
           }
 
-          // Persist reverted state
-          await debouncedSave(instanceId, meta?.projectId, currentDoc!)
-
-          // Broadcast recovered snapshot to all clients
-          broadcastSync(instanceId, currentDoc!, { from: 'agent-proposal-reverted' })
+          // Broadcast recovered snapshot to all clients (without persisting to disk)
+          broadcastSync(instanceId, currentDoc, { from: 'agent-proposal-reverted' })
 
           // Broadcast clear to all clients
           const peers = channels.get(instanceId)

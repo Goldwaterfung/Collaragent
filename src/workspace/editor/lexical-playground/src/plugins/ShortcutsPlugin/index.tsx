@@ -6,8 +6,8 @@
  *
  */
 
-import {TOGGLE_LINK_COMMAND} from '@lexical/link';
-import {HeadingTagType} from '@lexical/rich-text';
+import { TOGGLE_LINK_COMMAND } from '@lexical/link'
+import { HeadingTagType } from '@lexical/rich-text'
 import {
   COMMAND_PRIORITY_NORMAL,
   FORMAT_ELEMENT_COMMAND,
@@ -16,13 +16,13 @@ import {
   isModifierMatch,
   KEY_DOWN_COMMAND,
   LexicalEditor,
-  OUTDENT_CONTENT_COMMAND,
-} from 'lexical';
-import {Dispatch, useEffect} from 'react';
+  OUTDENT_CONTENT_COMMAND
+} from 'lexical'
+import { Dispatch, useEffect } from 'react'
 
-import {useToolbarState} from '../../context/ToolbarContext';
-import {sanitizeUrl} from '../../utils/url';
-import {INSERT_INLINE_COMMAND} from '../CommentPlugin';
+import { useToolbarState } from '../../context/ToolbarContext'
+import { sanitizeUrl } from '../../utils/url'
+import { INSERT_INLINE_COMMAND } from '../CommentPlugin'
 import {
   clearFormatting,
   formatBulletList,
@@ -33,8 +33,8 @@ import {
   formatParagraph,
   formatQuote,
   updateFontSize,
-  UpdateFontSizeType,
-} from '../ToolbarPlugin/utils';
+  UpdateFontSizeType
+} from '../ToolbarPlugin/utils'
 import {
   isAddComment,
   isCapitalize,
@@ -60,105 +60,97 @@ import {
   isStrikeThrough,
   isSubscript,
   isSuperscript,
-  isUppercase,
-} from './shortcuts';
+  isUppercase
+} from './shortcuts'
 
 export default function ShortcutsPlugin({
   editor,
-  setIsLinkEditMode,
+  setIsLinkEditMode
 }: {
-  editor: LexicalEditor;
-  setIsLinkEditMode: Dispatch<boolean>;
+  editor: LexicalEditor
+  setIsLinkEditMode: Dispatch<boolean>
 }): null {
-  const {toolbarState} = useToolbarState();
+  const { toolbarState } = useToolbarState()
 
   useEffect(() => {
     const keyboardShortcutsHandler = (event: KeyboardEvent) => {
       // Short-circuit, a least one modifier must be set
       if (isModifierMatch(event, {})) {
-        return false;
+        return false
       } else if (isFormatParagraph(event)) {
-        formatParagraph(editor);
+        formatParagraph(editor)
       } else if (isFormatHeading(event)) {
-        const {code} = event;
-        const headingSize = `h${code[code.length - 1]}` as HeadingTagType;
-        formatHeading(editor, toolbarState.blockType, headingSize);
+        const { code } = event
+        const headingSize = `h${code[code.length - 1]}` as HeadingTagType
+        formatHeading(editor, toolbarState.blockType, headingSize)
       } else if (isFormatBulletList(event)) {
-        formatBulletList(editor, toolbarState.blockType);
+        formatBulletList(editor, toolbarState.blockType)
       } else if (isFormatNumberedList(event)) {
-        formatNumberedList(editor, toolbarState.blockType);
+        formatNumberedList(editor, toolbarState.blockType)
       } else if (isFormatCheckList(event)) {
-        formatCheckList(editor, toolbarState.blockType);
+        formatCheckList(editor, toolbarState.blockType)
       } else if (isFormatCode(event)) {
-        formatCode(editor, toolbarState.blockType);
+        formatCode(editor, toolbarState.blockType)
       } else if (isFormatQuote(event)) {
-        formatQuote(editor, toolbarState.blockType);
+        formatQuote(editor, toolbarState.blockType)
       } else if (isStrikeThrough(event)) {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')
       } else if (isLowercase(event)) {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'lowercase');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'lowercase')
       } else if (isUppercase(event)) {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'uppercase');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'uppercase')
       } else if (isCapitalize(event)) {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'capitalize');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'capitalize')
       } else if (isIndent(event)) {
-        editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+        editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined)
       } else if (isOutdent(event)) {
-        editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+        editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined)
       } else if (isCenterAlign(event)) {
-        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'center');
+        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'center')
       } else if (isLeftAlign(event)) {
-        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'left');
+        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'left')
       } else if (isRightAlign(event)) {
-        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'right');
+        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'right')
       } else if (isJustifyAlign(event)) {
-        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'justify');
+        editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'justify')
       } else if (isSubscript(event)) {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'subscript')
       } else if (isSuperscript(event)) {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'superscript')
       } else if (isInsertCodeBlock(event)) {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')
       } else if (isIncreaseFontSize(event)) {
-        updateFontSize(
-          editor,
-          UpdateFontSizeType.increment,
-          toolbarState.fontSizeInputValue,
-        );
+        updateFontSize(editor, UpdateFontSizeType.increment, toolbarState.fontSizeInputValue)
       } else if (isDecreaseFontSize(event)) {
-        updateFontSize(
-          editor,
-          UpdateFontSizeType.decrement,
-          toolbarState.fontSizeInputValue,
-        );
+        updateFontSize(editor, UpdateFontSizeType.decrement, toolbarState.fontSizeInputValue)
       } else if (isClearFormatting(event)) {
-        clearFormatting(editor);
+        clearFormatting(editor)
       } else if (isInsertLink(event)) {
-        const url = toolbarState.isLink ? null : sanitizeUrl('https://');
-        setIsLinkEditMode(!toolbarState.isLink);
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
+        const url = toolbarState.isLink ? null : sanitizeUrl('https://')
+        setIsLinkEditMode(!toolbarState.isLink)
+        editor.dispatchCommand(TOGGLE_LINK_COMMAND, url)
       } else if (isAddComment(event)) {
-        editor.dispatchCommand(INSERT_INLINE_COMMAND, undefined);
+        editor.dispatchCommand(INSERT_INLINE_COMMAND, undefined)
       } else {
         // No match for any of the event handlers
-        return false;
+        return false
       }
-      event.preventDefault();
-      return true;
-    };
+      event.preventDefault()
+      return true
+    }
 
     return editor.registerCommand(
       KEY_DOWN_COMMAND,
       keyboardShortcutsHandler,
-      COMMAND_PRIORITY_NORMAL,
-    );
+      COMMAND_PRIORITY_NORMAL
+    )
   }, [
     editor,
     toolbarState.isLink,
     toolbarState.blockType,
     toolbarState.fontSizeInputValue,
-    setIsLinkEditMode,
-  ]);
+    setIsLinkEditMode
+  ])
 
-  return null;
+  return null
 }

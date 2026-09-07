@@ -12,20 +12,20 @@ import {
   focusEditor,
   html,
   initialize,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 test.describe('Regression test #1113', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
   test(`Selects new line when inserting a new line at the end of a link`, async ({
     isRichText,
-    page,
+    page
   }) => {
-    test.skip(isRichText);
-    await focusEditor(page);
+    test.skip(isRichText)
+    await focusEditor(page)
 
-    await page.keyboard.type('https://www.example.com');
-    await page.keyboard.press('Enter');
+    await page.keyboard.type('https://www.example.com')
+    await page.keyboard.press('Enter')
 
     await assertHTML(
       page,
@@ -37,13 +37,13 @@ test.describe('Regression test #1113', () => {
           <br />
           <br />
         </p>
-      `,
-    );
+      `
+    )
     await assertSelection(page, {
       anchorOffset: 2,
       anchorPath: [0],
       focusOffset: 2,
-      focusPath: [0],
-    });
-  });
-});
+      focusPath: [0]
+    })
+  })
+})

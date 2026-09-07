@@ -226,6 +226,11 @@ describe('manageGraph - Snapshot Parsing and readGraph Tool', () => {
 
       expect(result.status).toBe('success')
       expect(mockSendBatch).toHaveBeenCalled()
+      const sentCommands = mockSendBatch.mock.calls[0][0] as Array<{ staged?: boolean }>
+      expect(sentCommands.length).toBeGreaterThan(0)
+      for (const cmd of sentCommands) {
+        expect(cmd.staged).toBe(false)
+      }
       expect(mockDisconnect).toHaveBeenCalledTimes(1)
     })
 

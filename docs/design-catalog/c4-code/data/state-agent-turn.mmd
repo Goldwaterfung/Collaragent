@@ -24,7 +24,11 @@ stateDiagram-v2
         DispatchTool --> ExecutingFilesystemTool : read_file / write_file
         DispatchTool --> ExecutingSubagent : task / dynamic_task
         
-        ExecutingWorkspaceTool --> StageProposal : Broadcast with staged: true
+        ExecutingWorkspaceTool --> DirectMutation : Direct mutation (staged: false) & debouncedSave
+        ExecutingWorkspaceTool --> StageProposal : Staged proposal review (staged: true)
+        DirectMutation --> ReturnToolResult : State committed to SQLite
+        StageProposal --> ReturnToolResult : Buffered in proposals[instanceId][threadId]
+        ReturnToolResult --> ToolExecuting
         ExecutingSubagent --> SubagentRecursion : Run isolated ReactAgent (limit 200)
         SubagentRecursion --> ReturnSynthesis : Merge final synthesis
     }

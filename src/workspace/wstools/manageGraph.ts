@@ -411,7 +411,7 @@ export async function executeWriteGraph(options: WriteGraphOptions) {
 
   // 4. Execute Commands
   // Send them in batch sequentially and await acknowledgments
-  const staged = options.staged ?? true
+  const staged = validatedSpec.staged ?? options.staged ?? false
   const baseVersion = client.getServerVersion?.() ?? undefined
   try {
     if (commands.length > 0) {

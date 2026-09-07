@@ -974,10 +974,16 @@ export class StorageMigrationEngine {
       }
 
       // 8. Snapshots (Preserving instance foreign keys)
+      const stmtPutBlob = stagingDb.prepare(`
+        INSERT OR IGNORE INTO workspace_blobs
+        (hash, content_msgpack, byte_size, created_at)
+        VALUES (?, ?, ?, ?)
+      `)
+
       const stmtInsertSnapshot = stagingDb.prepare(`
         INSERT OR REPLACE INTO workspace_snapshots
-        (id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, snapshot_cursor_json, snapshot_msgpack, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, instance_id, project_id, instance_type, snapshot_ref, snapshot_hash, blob_hash, snapshot_cursor_json, snapshot_msgpack, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
       const knownSnapshotRefs = new Set<string>()
@@ -1024,12 +1030,15 @@ export class StorageMigrationEngine {
             snapshotBlob = Buffer.isBuffer(packed) ? packed : Buffer.from(packed)
           }
 
+          stmtPutBlob.run(snapHash, snapshotBlob, snapshotBlob.length, createdAt)
+
           stmtInsertSnapshot.run(
             id,
             instId,
             projId,
             instType,
             snapRef,
+            snapHash,
             snapHash,
             cursorJson,
             snapshotBlob,

@@ -54,8 +54,8 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 - Thread-partitioned staging proposals: Staged modifications (`staged: true`) are buffered by `(instanceId, threadId)`, enabling independent proposal reviews (`accept-changes` / `reject-changes`) across concurrent agents.
 - Optimistic Concurrency Control (OCC): Mutation commands submit `baseVersion` and are rejected with `WORKSPACE_STALE_BASE_VERSION` if applying against an outdated instance sequence.
 - Resilient client lifecycle: `SyncClient` pre-handles internal `readyPromise` with `.catch(() => {})`, preventing unhandled promise rejection crashes during React fiber unmounting and layout adjustments.
-- Idempotent content-addressed workspace snapshots (`workspace_snapshots`) and multi-project scoped checkpoint bundles (`CHECKPOINT_BUNDLE`).
-- Dual-path state restoration supporting baseline session clearance (`__start__`) and point-in-time chat message truncation paired with LangGraph checkpoint head rewinding.
+- Idempotent Content-Addressed Storage (CAS) with decoupled immutable blobs (`workspace_blobs`) and reference-pointer snapshots (`workspace_snapshots_v5`) guaranteeing cascade-deletion immunity.
+- Non-linear DAG tree checkpoint lineage (`parentBundleId`, `branchName`) with fail-closed state restoration (`STORAGE_CHECKPOINT_NOT_FOUND` if snapshot data is missing) and WebSocket OCC sequence realignment (`system-checkpoint-restore`).
 - Bi-directional WebSocket synchronization (`/ws/canvas/:id`, `/ws/editor/:id`) with monotonic sequence acknowledgments.
 - Deterministic diff and inverse command engines (`CanvasDiffEngine`, `DocumentDiffEngine`, `InverseCommandEngine`) providing mathematical command inversion for granular undo/redo.
 
@@ -63,15 +63,15 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 
 ## 3. Non-Functional Requirements (Quality Attributes)
 
-| Attribute                   | Target Metric                              | Architectural Strategy                                                                                                                  |
-| --------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| **UI Responsiveness (p95)** | < 16ms (60 FPS during canvas pan/zoom)     | Decoupled SVG edge rendering and DOM node layering; offloaded Leiden clustering to background Web Worker.                               |
-| **Stream Latency (TTFT)**   | < 350ms to first token                     | AsyncGenerator streaming over isolated dynamic IPC channels with token unbuffering.                                                     |
-| **Multi-Agent Concurrency** | Zero cross-thread blocking                 | Thread-partitioned WebSocket proposal buffers, OCC sequence validation, and lock-free turn checkpoints without global window pauses.    |
-| **Storage Scalability**     | > 10,000 nodes / 500 documents per project | Single-file SQLite V4 storage engine with B-Tree indexing and MessagePack BLOB compression (`instances`, `snapshots`, `chat_sessions`). |
-| **Data Integrity & Safety** | Zero data loss on abrupt window close      | Lock-file process concurrency protection, pre-close dirty state flush, and atomic disk writes.                                          |
-| **Memory Isolation**        | Max 500MB RAM baseline                     | Heavy project I/O, SQLite database engine, WAL checkpoints, and Express REST server forked into decoupled Node.js `UtilityProcess`.     |
-| **Security & Privacy**      | Zero plain-text credential leaks           | API keys encrypted using OS-level `safeStorage` (Keychain / DPAPI / Secret Service) with `0o600` file permissions.                      |
+| Attribute                   | Target Metric                              | Architectural Strategy                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **UI Responsiveness (p95)** | < 16ms (60 FPS during canvas pan/zoom)     | Decoupled SVG edge rendering and DOM node layering; offloaded Leiden clustering to background Web Worker.                                                                              |
+| **Stream Latency (TTFT)**   | < 350ms to first token                     | AsyncGenerator streaming over isolated dynamic IPC channels with token unbuffering.                                                                                                    |
+| **Multi-Agent Concurrency** | Zero cross-thread blocking                 | Thread-partitioned WebSocket proposal buffers, OCC sequence validation, and lock-free turn checkpoints without global window pauses.                                                   |
+| **Storage Scalability**     | > 10,000 nodes / 500 documents per project | Single-file SQLite V5 CAS storage engine with SHA-256 deduplicated blobs, B-Tree indexing, and MessagePack compression (`instances`, `workspace_blobs`, `snapshots`, `chat_sessions`). |
+| **Data Integrity & Safety** | Zero data loss on abrupt window close      | Lock-file process concurrency protection, pre-close dirty state flush, and atomic disk writes.                                                                                         |
+| **Memory Isolation**        | Max 500MB RAM baseline                     | Heavy project I/O, SQLite database engine, WAL checkpoints, and Express REST server forked into decoupled Node.js `UtilityProcess`.                                                    |
+| **Security & Privacy**      | Zero plain-text credential leaks           | API keys encrypted using OS-level `safeStorage` (Keychain / DPAPI / Secret Service) with `0o600` file permissions.                                                                     |
 
 ---
 
@@ -82,3 +82,4 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 3. **No Hardcoded Constants**: Dimensional parameters (`DEFAULT_NODE_WIDTH = 300`, `NODE_SPACING = 200`) and design tokens (`--color-surface-50` to `--color-surface-300`) must be referenced from centralized constants and `DESIGN.md`.
 4. **No Unchecked Fallbacks**: Silent fallback logic that conceals errors is forbidden; schema mismatches and I/O failures must bubble up as typed errors.
 5. **Context Window Protection**: Tool outputs exceeding 20,000 tokens (~80KB) are automatically evicted to the `large_tool_outputs` SQLite table (accessible via `/large_tool_results/` virtual endpoints) and replaced with truncated previews.
+6. **Fail-Closed Checkpoint Integrity**: Checkpoint restoration and snapshot resolution must fail closed with structured error codes (`STORAGE_CHECKPOINT_NOT_FOUND`) if backing CAS blobs are unresolvable, strictly prohibiting destructive in-memory or database overwrites with empty or null state.

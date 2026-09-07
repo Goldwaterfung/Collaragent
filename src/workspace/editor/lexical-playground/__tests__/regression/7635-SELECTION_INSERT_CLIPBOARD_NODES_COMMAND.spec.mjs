@@ -6,9 +6,9 @@
  *
  */
 
-import {expect} from '@playwright/test';
+import { expect } from '@playwright/test'
 
-import {moveRight} from '../keyboardShortcuts/index.mjs';
+import { moveRight } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   click,
@@ -18,8 +18,8 @@ import {
   insertSampleImage,
   pasteFromClipboard,
   SAMPLE_IMAGE_URL,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 function assertHTMLIgnoreInlineStyles(page, expectedHtml) {
   // There's some sort of bug in webkit that sometimes omits the
@@ -27,36 +27,34 @@ function assertHTMLIgnoreInlineStyles(page, expectedHtml) {
   // -         style="user-select: text; white-space: pre-wrap; word-break: break-word"
   // +         style="white-space: pre-wrap; word-break: break-word"
   return assertHTML(page, expectedHtml, expectedHtml, {
-    ignoreInlineStyles: true,
-  });
+    ignoreInlineStyles: true
+  })
 }
 
 test.describe('Regression #7635', () => {
-  test.beforeEach(({isCollab, page}) =>
-    initialize({isCollab, page, showNestedEditorTreeView: false}),
-  );
+  test.beforeEach(({ isCollab, page }) =>
+    initialize({ isCollab, page, showNestedEditorTreeView: false })
+  )
 
-  test('Paste into image caption', async ({page, isPlainText, isCollab}) => {
-    test.skip(isPlainText || isCollab);
+  test('Paste into image caption', async ({ page, isPlainText, isCollab }) => {
+    test.skip(isPlainText || isCollab)
 
-    await focusEditor(page);
-    await insertSampleImage(page);
+    await focusEditor(page)
+    await insertSampleImage(page)
 
-    await click(page, '.editor-image img');
+    await click(page, '.editor-image img')
     await assertHTMLIgnoreInlineStyles(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-          <span
-            class="editor-image"
-            contenteditable="false"
-            data-lexical-decorator="true">
+          <span class="editor-image" contenteditable="false" data-lexical-decorator="true">
             <div draggable="true">
               <img
                 class="focused draggable"
                 alt="Yellow flower in tilt shift lens"
                 draggable="false"
-                src="${SAMPLE_IMAGE_URL}" />
+                src="${SAMPLE_IMAGE_URL}"
+              />
             </div>
             <div>
               <button class="image-caption-button">Add Caption</button>
@@ -72,25 +70,23 @@ test.describe('Regression #7635', () => {
           </span>
           <br />
         </p>
-      `,
-    );
-    await click(page, '.image-caption-button');
-    await expect(page.locator('.ImageNode__contentEditable')).toBeVisible();
-    const TEST_TEXT = 'some content';
-    await page.keyboard.type(TEST_TEXT);
+      `
+    )
+    await click(page, '.image-caption-button')
+    await expect(page.locator('.ImageNode__contentEditable')).toBeVisible()
+    const TEST_TEXT = 'some content'
+    await page.keyboard.type(TEST_TEXT)
     await assertHTMLIgnoreInlineStyles(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-          <span
-            class="editor-image"
-            contenteditable="false"
-            data-lexical-decorator="true">
+          <span class="editor-image" contenteditable="false" data-lexical-decorator="true">
             <div draggable="false">
               <img
                 alt="Yellow flower in tilt shift lens"
                 draggable="false"
-                src="${SAMPLE_IMAGE_URL}" />
+                src="${SAMPLE_IMAGE_URL}"
+              />
             </div>
             <div class="image-caption-container">
               <div
@@ -99,7 +95,8 @@ test.describe('Regression #7635', () => {
                 role="textbox"
                 spellcheck="true"
                 aria-placeholder="Enter a caption..."
-                data-lexical-editor="true">
+                data-lexical-editor="true"
+              >
                 <p class="PlaygroundEditorTheme__paragraph" dir="auto">
                   <span data-lexical-text="true">some content</span>
                 </p>
@@ -108,10 +105,10 @@ test.describe('Regression #7635', () => {
           </span>
           <br />
         </p>
-      `,
-    );
+      `
+    )
     for (let i = 0; i < TEST_TEXT.length; i++) {
-      await page.keyboard.press('Backspace');
+      await page.keyboard.press('Backspace')
     }
     await pasteFromClipboard(
       page,
@@ -122,23 +119,21 @@ test.describe('Regression #7635', () => {
             <b>World</b>
           </p>
         `,
-        'text/plain': 'Hello World',
+        'text/plain': 'Hello World'
       },
-      'div.ImageNode__contentEditable[contenteditable="true"]',
-    );
+      'div.ImageNode__contentEditable[contenteditable="true"]'
+    )
     await assertHTMLIgnoreInlineStyles(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-          <span
-            class="editor-image"
-            contenteditable="false"
-            data-lexical-decorator="true">
+          <span class="editor-image" contenteditable="false" data-lexical-decorator="true">
             <div draggable="false">
               <img
                 alt="Yellow flower in tilt shift lens"
                 draggable="false"
-                src="${SAMPLE_IMAGE_URL}" />
+                src="${SAMPLE_IMAGE_URL}"
+              />
             </div>
             <div class="image-caption-container">
               <div
@@ -147,12 +142,11 @@ test.describe('Regression #7635', () => {
                 role="textbox"
                 spellcheck="true"
                 aria-placeholder="Enter a caption..."
-                data-lexical-editor="true">
+                data-lexical-editor="true"
+              >
                 <p class="PlaygroundEditorTheme__paragraph" dir="auto">
                   <span data-lexical-text="true">Hello</span>
-                  <strong
-                    class="PlaygroundEditorTheme__textBold"
-                    data-lexical-text="true">
+                  <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true">
                     World
                   </strong>
                 </p>
@@ -161,29 +155,27 @@ test.describe('Regression #7635', () => {
           </span>
           <br />
         </p>
-      `,
-    );
+      `
+    )
 
     // Focus the parent editor by clicking the decorator (Firefox doesn't let you do this with arrow keys)
-    await click(page, '.editor-image img');
+    await click(page, '.editor-image img')
     // Move the caret after the image in the parent editor
-    await moveRight(page, 1);
+    await moveRight(page, 1)
 
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('Below the image');
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('Below the image')
     await assertHTMLIgnoreInlineStyles(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-          <span
-            class="editor-image"
-            contenteditable="false"
-            data-lexical-decorator="true">
+          <span class="editor-image" contenteditable="false" data-lexical-decorator="true">
             <div draggable="false">
               <img
                 alt="Yellow flower in tilt shift lens"
                 draggable="false"
-                src="${SAMPLE_IMAGE_URL}" />
+                src="${SAMPLE_IMAGE_URL}"
+              />
             </div>
             <div class="image-caption-container">
               <div
@@ -192,12 +184,11 @@ test.describe('Regression #7635', () => {
                 role="textbox"
                 spellcheck="true"
                 aria-placeholder="Enter a caption..."
-                data-lexical-editor="true">
+                data-lexical-editor="true"
+              >
                 <p class="PlaygroundEditorTheme__paragraph" dir="auto">
                   <span data-lexical-text="true">Hello</span>
-                  <strong
-                    class="PlaygroundEditorTheme__textBold"
-                    data-lexical-text="true">
+                  <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true">
                     World
                   </strong>
                 </p>
@@ -209,7 +200,7 @@ test.describe('Regression #7635', () => {
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">Below the image</span>
         </p>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

@@ -6,10 +6,10 @@
  *
  */
 
-import type {JSX} from 'react';
+import type { JSX } from 'react'
 
-import 'react-day-picker/style.css';
-import './DateTimeNode.css';
+import 'react-day-picker/style.css'
+import './DateTimeNode.css'
 
 import {
   autoUpdate,
@@ -22,11 +22,11 @@ import {
   useDismiss,
   useFloating,
   useInteractions,
-  useRole,
-} from '@floating-ui/react';
-import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
-import {useLexicalNodeSelection} from '@lexical/react/useLexicalNodeSelection';
-import {setHours, setMinutes} from 'date-fns';
+  useRole
+} from '@floating-ui/react'
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
+import { setHours, setMinutes } from 'date-fns'
 import {
   $getNodeByKey,
   IS_BOLD,
@@ -34,185 +34,168 @@ import {
   IS_ITALIC,
   IS_STRIKETHROUGH,
   IS_UNDERLINE,
-  NodeKey,
-} from 'lexical';
-import * as React from 'react';
-import {useEffect, useRef, useState} from 'react';
-import {DayPicker} from 'react-day-picker';
+  NodeKey
+} from 'lexical'
+import * as React from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { DayPicker } from 'react-day-picker'
 
-import {$isDateTimeNode, type DateTimeNode} from './DateTimeNode';
+import { $isDateTimeNode, type DateTimeNode } from './DateTimeNode'
 
 const FORMAT_CLASSES = [
   [IS_BOLD, 'bold'],
   [IS_HIGHLIGHT, 'highlight'],
   [IS_ITALIC, 'italic'],
   [IS_STRIKETHROUGH, 'strikethrough'],
-  [IS_UNDERLINE, 'underline'],
-] as const;
+  [IS_UNDERLINE, 'underline']
+] as const
 
-const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 export default function DateTimeComponent({
   dateTime,
   format,
-  nodeKey,
+  nodeKey
 }: {
-  dateTime: Date | undefined;
-  format: number;
-  nodeKey: NodeKey;
+  dateTime: Date | undefined
+  format: number
+  nodeKey: NodeKey
 }): JSX.Element {
-  const [editor] = useLexicalComposerContext();
-  const [isOpen, setIsOpen] = useState(false);
-  const ref = useRef(null);
-  const [selected, setSelected] = useState(dateTime);
+  const [editor] = useLexicalComposerContext()
+  const [isOpen, setIsOpen] = useState(false)
+  const ref = useRef(null)
+  const [selected, setSelected] = useState(dateTime)
   const [includeTime, setIncludeTime] = useState(() => {
     if (dateTime === undefined) {
-      return false;
+      return false
     }
-    const hours = dateTime?.getHours();
-    const minutes = dateTime?.getMinutes();
-    return hours !== 0 || minutes !== 0;
-  });
+    const hours = dateTime?.getHours()
+    const minutes = dateTime?.getMinutes()
+    return hours !== 0 || minutes !== 0
+  })
   const [timeValue, setTimeValue] = useState(() => {
     if (dateTime === undefined) {
-      return '00:00';
+      return '00:00'
     }
-    const hours = dateTime?.getHours();
-    const minutes = dateTime?.getMinutes();
+    const hours = dateTime?.getHours()
+    const minutes = dateTime?.getMinutes()
     if (hours !== 0 || minutes !== 0) {
-      return `${hours?.toString().padStart(2, '0')}:${minutes
-        ?.toString()
-        .padStart(2, '0')}`;
+      return `${hours?.toString().padStart(2, '0')}:${minutes?.toString().padStart(2, '0')}`
     }
-    return '00:00';
-  });
+    return '00:00'
+  })
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isNodeSelected, setNodeSelected, clearNodeSelection] =
-    useLexicalNodeSelection(nodeKey);
+  const [isNodeSelected, setNodeSelected, clearNodeSelection] = useLexicalNodeSelection(nodeKey)
 
-  const {refs, floatingStyles, context} = useFloating({
+  const { refs, floatingStyles, context } = useFloating({
     elements: {
-      reference: ref.current,
+      reference: ref.current
     },
     middleware: [
       offset(5),
       flip({
-        fallbackPlacements: ['top-start'],
+        fallbackPlacements: ['top-start']
       }),
-      shift({padding: 10}),
+      shift({ padding: 10 })
     ],
     onOpenChange: setIsOpen,
     open: isOpen,
     placement: 'bottom-start',
     strategy: 'fixed',
-    whileElementsMounted: autoUpdate,
-  });
+    whileElementsMounted: autoUpdate
+  })
 
-  const role = useRole(context, {role: 'dialog'});
-  const dismiss = useDismiss(context);
+  const role = useRole(context, { role: 'dialog' })
+  const dismiss = useDismiss(context)
 
-  const {getFloatingProps} = useInteractions([role, dismiss]);
+  const { getFloatingProps } = useInteractions([role, dismiss])
 
   useEffect(() => {
-    const dateTimePillRef = ref.current as HTMLElement | null;
+    const dateTimePillRef = ref.current as HTMLElement | null
     function onClick(e: MouseEvent) {
-      e.preventDefault();
-      setIsOpen(true);
+      e.preventDefault()
+      setIsOpen(true)
     }
 
     if (dateTimePillRef) {
-      dateTimePillRef.addEventListener('click', onClick);
+      dateTimePillRef.addEventListener('click', onClick)
     }
 
     return () => {
       if (dateTimePillRef) {
-        dateTimePillRef.removeEventListener('click', onClick);
+        dateTimePillRef.removeEventListener('click', onClick)
       }
-    };
-  }, [refs, editor]);
+    }
+  }, [refs, editor])
 
-  const withDateTimeNode = (
-    cb: (node: DateTimeNode) => void,
-    onUpdate?: () => void,
-  ): void => {
+  const withDateTimeNode = (cb: (node: DateTimeNode) => void, onUpdate?: () => void): void => {
     editor.update(
       () => {
-        const node = $getNodeByKey(nodeKey);
+        const node = $getNodeByKey(nodeKey)
         if ($isDateTimeNode(node)) {
-          cb(node);
+          cb(node)
         }
       },
-      {onUpdate},
-    );
-  };
+      { onUpdate }
+    )
+  }
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     withDateTimeNode((node) => {
       if (e.target.checked) {
-        setIncludeTime(true);
+        setIncludeTime(true)
       } else {
         if (selected) {
-          const newSelectedDate = setHours(setMinutes(selected, 0), 0);
-          node.setDateTime(newSelectedDate);
+          const newSelectedDate = setHours(setMinutes(selected, 0), 0)
+          node.setDateTime(newSelectedDate)
         }
-        setIncludeTime(false);
-        setTimeValue('00:00');
+        setIncludeTime(false)
+        setTimeValue('00:00')
       }
-    });
-  };
+    })
+  }
 
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     withDateTimeNode((node) => {
-      const time = e.target.value;
+      const time = e.target.value
       if (!selected) {
-        setTimeValue(time);
-        return;
+        setTimeValue(time)
+        return
       }
-      const [hours, minutes] = time
-        .split(':')
-        .map((str: string) => parseInt(str, 10));
-      const newSelectedDate = setHours(setMinutes(selected, minutes), hours);
-      setSelected(newSelectedDate);
-      node.setDateTime(newSelectedDate);
-      setTimeValue(time);
-    });
-  };
+      const [hours, minutes] = time.split(':').map((str: string) => parseInt(str, 10))
+      const newSelectedDate = setHours(setMinutes(selected, minutes), hours)
+      setSelected(newSelectedDate)
+      node.setDateTime(newSelectedDate)
+      setTimeValue(time)
+    })
+  }
 
   const handleDaySelect = (date: Date | undefined) => {
     withDateTimeNode((node) => {
       if (!timeValue || !date) {
-        setSelected(date);
-        return;
+        setSelected(date)
+        return
       }
-      const [hours, minutes] = timeValue
-        .split(':')
-        .map((str) => parseInt(str, 10));
-      const newDate = new Date(
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate(),
-        hours,
-        minutes,
-      );
-      node.setDateTime(newDate);
-      setSelected(newDate);
-    });
-  };
+      const [hours, minutes] = timeValue.split(':').map((str) => parseInt(str, 10))
+      const newDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes)
+      node.setDateTime(newDate)
+      setSelected(newDate)
+    })
+  }
 
-  const classNames = ['dateTimePill'];
+  const classNames = ['dateTimePill']
   for (const [flag, className] of FORMAT_CLASSES) {
     if (format & flag) {
-      classNames.push(className);
+      classNames.push(className)
     }
   }
   if (isNodeSelected) {
-    classNames.push('selected');
+    classNames.push('selected')
   }
 
   return (
     <div className={classNames.join(' ')} ref={ref}>
-      {dateTime?.toDateString() + (includeTime ? ' ' + timeValue : '') ||
-        'Invalid Date'}
+      {dateTime?.toDateString() + (includeTime ? ' ' + timeValue : '') || 'Invalid Date'}
       {isOpen && (
         <FloatingPortal>
           <FloatingOverlay lockScroll={true}>
@@ -221,7 +204,8 @@ export default function DateTimeComponent({
                 className={'dateTimePicker'}
                 ref={refs.setFloating}
                 style={floatingStyles}
-                {...getFloatingProps()}>
+                {...getFloatingProps()}
+              >
                 <DayPicker
                   captionLayout="dropdown"
                   navLayout="after"
@@ -235,14 +219,15 @@ export default function DateTimeComponent({
                   startMonth={new Date(1925, 0)}
                   endMonth={new Date(2042, 7)}
                 />
-                <form style={{marginBlockEnd: '1em'}}>
+                <form style={{ marginBlockEnd: '1em' }}>
                   <div
                     style={{
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
-                      width: '300px',
-                    }}>
+                      width: '300px'
+                    }}
+                  >
                     <input
                       type="checkbox"
                       id="option1"
@@ -268,5 +253,5 @@ export default function DateTimeComponent({
         </FloatingPortal>
       )}
     </div>
-  );
+  )
 }

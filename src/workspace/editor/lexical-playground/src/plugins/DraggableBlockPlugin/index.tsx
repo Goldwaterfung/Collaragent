@@ -5,225 +5,216 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
-import type {NodeKey} from 'lexical';
-import type {JSX} from 'react';
+import type { NodeKey } from 'lexical'
+import type { JSX } from 'react'
 
-import './index.css';
+import './index.css'
 
-import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
-import {DraggableBlockPlugin_EXPERIMENTAL} from '@lexical/react/LexicalDraggableBlockPlugin';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { DraggableBlockPlugin_EXPERIMENTAL } from '@lexical/react/LexicalDraggableBlockPlugin'
 import {
   $createParagraphNode,
   $createTextNode,
   $getNearestNodeFromDOMNode,
   $getNodeByKey,
   $isParagraphNode,
-  $isTextNode,
-} from 'lexical';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import * as ReactDOM from 'react-dom';
+  $isTextNode
+} from 'lexical'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import * as ReactDOM from 'react-dom'
 
-import useModal from '../../hooks/useModal';
+import useModal from '../../hooks/useModal'
 import {
   ComponentPickerMenuItem,
   ComponentPickerOption,
   getBaseOptions,
-  getDynamicOptions,
-} from '../ComponentPickerPlugin';
+  getDynamicOptions
+} from '../ComponentPickerPlugin'
 
-const DRAGGABLE_BLOCK_MENU_CLASSNAME = 'draggable-block-menu';
+const DRAGGABLE_BLOCK_MENU_CLASSNAME = 'draggable-block-menu'
 
 type PickerState = {
-  insertBefore: boolean;
-  targetNodeKey: NodeKey;
-};
+  insertBefore: boolean
+  targetNodeKey: NodeKey
+}
 
 function isOnMenu(element: HTMLElement): boolean {
-  return !!element.closest(`.${DRAGGABLE_BLOCK_MENU_CLASSNAME}`);
+  return !!element.closest(`.${DRAGGABLE_BLOCK_MENU_CLASSNAME}`)
 }
 
 export default function DraggableBlockPlugin({
-  anchorElem = document.body,
+  anchorElem = document.body
 }: {
-  anchorElem?: HTMLElement;
+  anchorElem?: HTMLElement
 }): JSX.Element {
-  const [editor] = useLexicalComposerContext();
-  const [modal, showModal] = useModal();
-  const menuRef = useRef<HTMLDivElement>(null);
-  const pickerRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const targetLineRef = useRef<HTMLDivElement>(null);
-  const [draggableElement, setDraggableElement] = useState<HTMLElement | null>(
-    null,
-  );
-  const [pickerState, setPickerState] = useState<PickerState | null>(null);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [queryString, setQueryString] = useState('');
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [editor] = useLexicalComposerContext()
+  const [modal, showModal] = useModal()
+  const menuRef = useRef<HTMLDivElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const targetLineRef = useRef<HTMLDivElement>(null)
+  const [draggableElement, setDraggableElement] = useState<HTMLElement | null>(null)
+  const [pickerState, setPickerState] = useState<PickerState | null>(null)
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
+  const [queryString, setQueryString] = useState('')
+  const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [pickerPosition, setPickerPosition] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
+    left: number
+    top: number
+  } | null>(null)
 
   const options = useMemo(() => {
-    const baseOptions = getBaseOptions(editor, showModal);
+    const baseOptions = getBaseOptions(editor, showModal)
 
     if (!queryString) {
-      return baseOptions;
+      return baseOptions
     }
 
-    const regex = new RegExp(queryString, 'i');
+    const regex = new RegExp(queryString, 'i')
     return [
       ...getDynamicOptions(editor, queryString),
       ...baseOptions.filter(
         (option) =>
-          regex.test(option.title) ||
-          option.keywords.some((keyword) => regex.test(keyword)),
-      ),
-    ];
-  }, [editor, queryString, showModal]);
+          regex.test(option.title) || option.keywords.some((keyword) => regex.test(keyword))
+      )
+    ]
+  }, [editor, queryString, showModal])
 
   useEffect(() => {
     if (isPickerOpen && searchInputRef.current) {
-      searchInputRef.current.focus();
+      searchInputRef.current.focus()
     }
-  }, [isPickerOpen]);
+  }, [isPickerOpen])
 
   useEffect(() => {
     if (!isPickerOpen || !options.length) {
-      return;
+      return
     }
-    setHighlightedIndex((current) =>
-      Math.min(current, Math.max(options.length - 1, 0)),
-    );
-  }, [isPickerOpen, options.length]);
+    setHighlightedIndex((current) => Math.min(current, Math.max(options.length - 1, 0)))
+  }, [isPickerOpen, options.length])
 
   useEffect(() => {
     if (!isPickerOpen) {
-      return;
+      return
     }
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node | null;
+      const target = event.target as Node | null
       if (
         (pickerRef.current && pickerRef.current.contains(target)) ||
         (menuRef.current && menuRef.current.contains(target))
       ) {
-        return;
+        return
       }
-      setIsPickerOpen(false);
-      setPickerState(null);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
+      setIsPickerOpen(false)
+      setPickerState(null)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isPickerOpen]);
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isPickerOpen])
 
   const selectOption = useCallback(
     (option: ComponentPickerOption) => {
       if (!pickerState) {
-        setIsPickerOpen(false);
-        return;
+        setIsPickerOpen(false)
+        return
       }
-      setIsPickerOpen(false);
+      setIsPickerOpen(false)
       editor.update(() => {
-        const node = $getNodeByKey(pickerState.targetNodeKey);
+        const node = $getNodeByKey(pickerState.targetNodeKey)
         if (!node) {
-          return;
+          return
         }
-        const placeholder = $createParagraphNode();
-        const textNode = $createTextNode('');
-        placeholder.append(textNode);
+        const placeholder = $createParagraphNode()
+        const textNode = $createTextNode('')
+        placeholder.append(textNode)
         if (pickerState.insertBefore) {
-          node.insertBefore(placeholder);
+          node.insertBefore(placeholder)
         } else {
-          node.insertAfter(placeholder);
+          node.insertAfter(placeholder)
         }
-        textNode.select();
-        option.onSelect(queryString);
-        const latestPlaceholder = placeholder.getLatest();
+        textNode.select()
+        option.onSelect(queryString)
+        const latestPlaceholder = placeholder.getLatest()
         if ($isParagraphNode(latestPlaceholder)) {
-          const onlyChild = latestPlaceholder.getFirstChild();
+          const onlyChild = latestPlaceholder.getFirstChild()
           if (
             $isTextNode(onlyChild) &&
             onlyChild.getTextContent().length === 0 &&
             latestPlaceholder.getChildrenSize() === 1
           ) {
-            latestPlaceholder.remove();
+            latestPlaceholder.remove()
           }
         }
-      });
+      })
     },
-    [editor, pickerState, queryString],
-  );
+    [editor, pickerState, queryString]
+  )
 
   useEffect(() => {
     if (!isPickerOpen) {
-      return;
+      return
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isPickerOpen || !options.length) {
-        return;
+        return
       }
       if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        setHighlightedIndex((index) =>
-          index + 1 >= options.length ? 0 : index + 1,
-        );
+        event.preventDefault()
+        setHighlightedIndex((index) => (index + 1 >= options.length ? 0 : index + 1))
       } else if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        setHighlightedIndex((index) =>
-          index - 1 < 0 ? options.length - 1 : index - 1,
-        );
+        event.preventDefault()
+        setHighlightedIndex((index) => (index - 1 < 0 ? options.length - 1 : index - 1))
       } else if (event.key === 'Enter') {
-        event.preventDefault();
-        const option = options[highlightedIndex];
+        event.preventDefault()
+        const option = options[highlightedIndex]
         if (option) {
-          selectOption(option);
+          selectOption(option)
         }
       } else if (event.key === 'Escape') {
-        event.preventDefault();
-        setIsPickerOpen(false);
-        setPickerState(null);
+        event.preventDefault()
+        setIsPickerOpen(false)
+        setPickerState(null)
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
+    }
+    window.addEventListener('keydown', handleKeyDown)
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [highlightedIndex, isPickerOpen, options, selectOption]);
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [highlightedIndex, isPickerOpen, options, selectOption])
 
   function openComponentPicker(e: React.MouseEvent) {
     if (!draggableElement || !editor) {
-      return;
+      return
     }
 
-    let targetNodeKey: NodeKey | null = null;
+    let targetNodeKey: NodeKey | null = null
     editor.read(() => {
-      const resolvedNode = $getNearestNodeFromDOMNode(draggableElement);
+      const resolvedNode = $getNearestNodeFromDOMNode(draggableElement)
       if (resolvedNode) {
-        targetNodeKey = resolvedNode.getKey();
+        targetNodeKey = resolvedNode.getKey()
       }
-    });
+    })
 
     if (!targetNodeKey) {
-      return;
+      return
     }
 
-    const insertBefore = e.altKey || e.ctrlKey;
-    const rect = menuRef.current?.getBoundingClientRect();
+    const insertBefore = e.altKey || e.ctrlKey
+    const rect = menuRef.current?.getBoundingClientRect()
     setPickerPosition(
       rect
         ? {
             left: rect.left + rect.width + window.scrollX + 8,
-            top: rect.top + window.scrollY,
+            top: rect.top + window.scrollY
           }
-        : null,
-    );
-    setPickerState({insertBefore, targetNodeKey});
-    setQueryString('');
-    setHighlightedIndex(0);
-    setIsPickerOpen(true);
+        : null
+    )
+    setPickerState({ insertBefore, targetNodeKey })
+    setQueryString('')
+    setHighlightedIndex(0)
+    setIsPickerOpen(true)
   }
 
   return (
@@ -238,8 +229,9 @@ export default function DraggableBlockPlugin({
                 left: pickerPosition.left,
                 position: 'absolute',
                 top: pickerPosition.top,
-                zIndex: 10,
-              }}>
+                zIndex: 10
+              }}
+            >
               <input
                 className="component-picker-search"
                 placeholder="Filter blocks..."
@@ -253,8 +245,8 @@ export default function DraggableBlockPlugin({
                     index={i}
                     isSelected={highlightedIndex === i}
                     onClick={() => {
-                      setHighlightedIndex(i);
-                      selectOption(option);
+                      setHighlightedIndex(i)
+                      selectOption(option)
                     }}
                     onMouseEnter={() => setHighlightedIndex(i)}
                     key={option.key}
@@ -263,7 +255,7 @@ export default function DraggableBlockPlugin({
                 ))}
               </ul>
             </div>,
-            document.body,
+            document.body
           )
         : null}
       <DraggableBlockPlugin_EXPERIMENTAL
@@ -280,12 +272,10 @@ export default function DraggableBlockPlugin({
             <div className="icon" />
           </div>
         }
-        targetLineComponent={
-          <div ref={targetLineRef} className="draggable-block-target-line" />
-        }
+        targetLineComponent={<div ref={targetLineRef} className="draggable-block-target-line" />}
         isOnMenu={isOnMenu}
         onElementChanged={setDraggableElement}
       />
     </>
-  );
+  )
 }

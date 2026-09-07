@@ -16,6 +16,8 @@ export type InstanceRestorePoint = {
   snapshotId: string
   targetCursor: InstanceLogPosition
   agentSeqs?: number[]
+  blobHash?: string
+  sequenceNumber?: number
 }
 
 export type CheckpointBundle = {
@@ -23,6 +25,7 @@ export type CheckpointBundle = {
   createdAt: string
   sessionId: string
   threadId: string
+  parentBundleId?: string
   agentCheckpointId?: string
   chat: {
     messageId?: string
@@ -52,6 +55,8 @@ export type WorkspaceSnapshot = {
   projectId: string
   snapshotRef: string
   snapshotHash?: string
+  blobHash?: string
+  sequenceNumber?: number
   snapshotCursor: InstanceLogPosition
 }
 

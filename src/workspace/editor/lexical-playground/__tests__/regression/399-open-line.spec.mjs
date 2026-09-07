@@ -6,7 +6,7 @@
  *
  */
 
-import {moveLeft} from '../keyboardShortcuts/index.mjs';
+import { moveLeft } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   assertSelection,
@@ -14,24 +14,21 @@ import {
   html,
   initialize,
   IS_MAC,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 test.describe('Regression test #399', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
-  test(`Supports Ctrl-O as an open line command`, async ({
-    page,
-    isRichText,
-  }) => {
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
+  test(`Supports Ctrl-O as an open line command`, async ({ page, isRichText }) => {
     // This is a Mac only command
     if (!IS_MAC) {
-      return;
+      return
     }
 
-    await focusEditor(page);
-    await page.keyboard.type('foo');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('bar');
+    await focusEditor(page)
+    await page.keyboard.type('foo')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('bar')
     if (isRichText) {
       await assertHTML(
         page,
@@ -42,14 +39,14 @@ test.describe('Regression test #399', () => {
           <p class="PlaygroundEditorTheme__paragraph" dir="auto">
             <span data-lexical-text="true">bar</span>
           </p>
-        `,
-      );
+        `
+      )
       await assertSelection(page, {
         anchorOffset: 3,
         anchorPath: [1, 0, 0],
         focusOffset: 3,
-        focusPath: [1, 0, 0],
-      });
+        focusPath: [1, 0, 0]
+      })
     } else {
       await assertHTML(
         page,
@@ -59,18 +56,18 @@ test.describe('Regression test #399', () => {
             <br />
             <span data-lexical-text="true">bar</span>
           </p>
-        `,
-      );
+        `
+      )
       await assertSelection(page, {
         anchorOffset: 3,
         anchorPath: [0, 2, 0],
         focusOffset: 3,
-        focusPath: [0, 2, 0],
-      });
+        focusPath: [0, 2, 0]
+      })
     }
 
-    await moveLeft(page, 3);
-    await page.keyboard.press('Control+KeyO');
+    await moveLeft(page, 3)
+    await page.keyboard.press('Control+KeyO')
     if (isRichText) {
       await assertHTML(
         page,
@@ -82,14 +79,14 @@ test.describe('Regression test #399', () => {
             <br />
             <span data-lexical-text="true">bar</span>
           </p>
-        `,
-      );
+        `
+      )
       await assertSelection(page, {
         anchorOffset: 0,
         anchorPath: [1],
         focusOffset: 0,
-        focusPath: [1],
-      });
+        focusPath: [1]
+      })
     } else {
       await assertHTML(
         page,
@@ -100,14 +97,14 @@ test.describe('Regression test #399', () => {
             <br />
             <span data-lexical-text="true">bar</span>
           </p>
-        `,
-      );
+        `
+      )
       await assertSelection(page, {
         anchorOffset: 2,
         anchorPath: [0],
         focusOffset: 2,
-        focusPath: [0],
-      });
+        focusPath: [0]
+      })
     }
-  });
-});
+  })
+})

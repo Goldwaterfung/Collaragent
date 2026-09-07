@@ -14,20 +14,42 @@
  * which were individually stale after a restore.
  */
 export class AgentCheckpointRegistry {
-  private effectiveByThreadId: Map<string, string> = new Map();
+  private effectiveByThreadId: Map<string, string> = new Map()
   /**
    * When set, the next stream invocation should branch from this checkpoint_id
    * rather than the latest. This is consumed once and cleared.
    */
-  private pendingBranchByThreadId: Map<string, string> = new Map();
+  private pendingBranchByThreadId: Map<string, string> = new Map()
+  private effectiveBundleIdByThreadId: Map<string, string> = new Map()
+
+  /**
+   * Record the effective active CheckpointBundle id for a thread.
+   * Call this after a bundle creation or after a bundle restore.
+   */
+  setEffectiveBundleId(threadId: string, bundleId: string | null): void {
+    if (!threadId) return
+    if (!bundleId) {
+      this.effectiveBundleIdByThreadId.delete(threadId)
+      return
+    }
+    this.effectiveBundleIdByThreadId.set(threadId, bundleId)
+  }
+
+  /**
+   * Get the active CheckpointBundle id for a thread.
+   * Returns undefined if no bundle was created or restored yet in this thread.
+   */
+  getEffectiveBundleId(threadId: string): string | undefined {
+    return this.effectiveBundleIdByThreadId.get(threadId)
+  }
 
   /**
    * Record the effective current checkpoint for a thread.
    * Call this after both restores and successful stream completions.
    */
   setEffective(threadId: string, checkpointId: string): void {
-    if (!threadId || !checkpointId) return;
-    this.effectiveByThreadId.set(threadId, checkpointId);
+    if (!threadId || !checkpointId) return
+    this.effectiveByThreadId.set(threadId, checkpointId)
   }
 
   /**
@@ -35,7 +57,7 @@ export class AgentCheckpointRegistry {
    * Used by bundle creation to capture the right branching point.
    */
   getEffective(threadId: string): string | undefined {
-    return this.effectiveByThreadId.get(threadId);
+    return this.effectiveByThreadId.get(threadId)
   }
 
   /**
@@ -44,8 +66,8 @@ export class AgentCheckpointRegistry {
    * Called only by restoreCheckpointBundle.
    */
   setPendingBranch(threadId: string, checkpointId: string): void {
-    if (!threadId || !checkpointId) return;
-    this.pendingBranchByThreadId.set(threadId, checkpointId);
+    if (!threadId || !checkpointId) return
+    this.pendingBranchByThreadId.set(threadId, checkpointId)
   }
 
   /**
@@ -54,22 +76,22 @@ export class AgentCheckpointRegistry {
    * Returns undefined if no branch was scheduled (normal continuation).
    */
   consumePendingBranch(threadId: string): string | undefined {
-    const id = this.pendingBranchByThreadId.get(threadId);
-    if (id) this.pendingBranchByThreadId.delete(threadId);
-    return id;
+    const id = this.pendingBranchByThreadId.get(threadId)
+    if (id) this.pendingBranchByThreadId.delete(threadId)
+    return id
   }
-
-
 
   clear(threadId?: string): void {
     if (threadId) {
-      this.effectiveByThreadId.delete(threadId);
-      this.pendingBranchByThreadId.delete(threadId);
-      return;
+      this.effectiveByThreadId.delete(threadId)
+      this.pendingBranchByThreadId.delete(threadId)
+      this.effectiveBundleIdByThreadId.delete(threadId)
+      return
     }
-    this.effectiveByThreadId.clear();
-    this.pendingBranchByThreadId.clear();
+    this.effectiveByThreadId.clear()
+    this.pendingBranchByThreadId.clear()
+    this.effectiveBundleIdByThreadId.clear()
   }
 }
 
-export const agentCheckpointRegistry = new AgentCheckpointRegistry();
+export const agentCheckpointRegistry = new AgentCheckpointRegistry()

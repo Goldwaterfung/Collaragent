@@ -12,38 +12,33 @@ import {
   focusEditor,
   initialize,
   mouseMoveToSelector,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 test.describe('DraggableBlock', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
 
   test('Paragraph one can be successfully dragged below paragraph two', async ({
     page,
     isPlainText,
     browserName,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isCollab);
-    test.skip(isPlainText);
-    test.skip(browserName === 'firefox');
+    test.skip(isCollab)
+    test.skip(isPlainText)
+    test.skip(browserName === 'firefox')
 
-    await focusEditor(page);
-    await page.keyboard.type('Paragraph 1');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('Paragraph 2');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('Paragraph 3');
+    await focusEditor(page)
+    await page.keyboard.type('Paragraph 1')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('Paragraph 2')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('Paragraph 3')
 
-    await mouseMoveToSelector(page, 'p:has-text("Paragraph 1")');
-    await page.pause();
-    await dragDraggableMenuTo(
-      page,
-      'p:has-text("Paragraph 2")',
-      'middle',
-      'end',
-    );
-    await page.pause();
+    await mouseMoveToSelector(page, 'p:has-text("Paragraph 1")')
+    await page.pause()
+    await dragDraggableMenuTo(page, 'p:has-text("Paragraph 2")', 'middle', 'end')
+    await page.pause()
     await assertHTML(
       page,
       `
@@ -63,33 +58,28 @@ test.describe('DraggableBlock', () => {
           dir="auto">
           <span data-lexical-text="true">Paragraph 3</span>
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
   test('Dragging a paragraph to the end of itself does not change the content', async ({
     page,
     isPlainText,
     browserName,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isCollab);
-    test.skip(isPlainText);
-    test.skip(browserName === 'firefox');
+    test.skip(isCollab)
+    test.skip(isPlainText)
+    test.skip(browserName === 'firefox')
 
-    await focusEditor(page);
-    await page.keyboard.type('Paragraph 1');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('Paragraph 2');
+    await focusEditor(page)
+    await page.keyboard.type('Paragraph 1')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('Paragraph 2')
 
-    await mouseMoveToSelector(page, 'p:has-text("Paragraph 1")');
-    await page.pause();
-    await dragDraggableMenuTo(
-      page,
-      'p:has-text("Paragraph 1")',
-      'middle',
-      'end',
-    );
+    await mouseMoveToSelector(page, 'p:has-text("Paragraph 1")')
+    await page.pause()
+    await dragDraggableMenuTo(page, 'p:has-text("Paragraph 1")', 'middle', 'end')
 
     await assertHTML(
       page,
@@ -105,33 +95,28 @@ test.describe('DraggableBlock', () => {
           dir="auto">
           <span data-lexical-text="true">Paragraph 2</span>
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
   test('Drag a paragraph to the bottom of its previous paragraph and nothing happens', async ({
     page,
     isPlainText,
     browserName,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isCollab);
-    test.skip(isPlainText);
-    test.skip(browserName === 'firefox');
+    test.skip(isCollab)
+    test.skip(isPlainText)
+    test.skip(browserName === 'firefox')
 
-    await focusEditor(page);
-    await page.keyboard.type('Paragraph 1');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('Paragraph 2');
+    await focusEditor(page)
+    await page.keyboard.type('Paragraph 1')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('Paragraph 2')
 
-    await mouseMoveToSelector(page, 'p:has-text("Paragraph 2")');
-    await page.pause();
-    await dragDraggableMenuTo(
-      page,
-      'p:has-text("Paragraph 1")',
-      'middle',
-      'end',
-    );
+    await mouseMoveToSelector(page, 'p:has-text("Paragraph 2")')
+    await page.pause()
+    await dragDraggableMenuTo(page, 'p:has-text("Paragraph 1")', 'middle', 'end')
 
     await assertHTML(
       page,
@@ -147,28 +132,28 @@ test.describe('DraggableBlock', () => {
           style="">
           <span data-lexical-text="true">Paragraph 2</span>
         </p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
   test('Dragging the first paragraph to an empty space in the middle of the editor works correctly', async ({
     page,
     isPlainText,
     browserName,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isCollab);
-    test.skip(isPlainText);
-    test.skip(browserName === 'firefox');
+    test.skip(isCollab)
+    test.skip(isPlainText)
+    test.skip(browserName === 'firefox')
 
-    await focusEditor(page);
-    await page.keyboard.type('Paragraph 1');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('Paragraph 2');
+    await focusEditor(page)
+    await page.keyboard.type('Paragraph 1')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('Paragraph 2')
 
-    await mouseMoveToSelector(page, 'p:has-text("Paragraph 1")');
-    await page.pause();
-    await dragDraggableMenuTo(page, '.ContentEditable__root');
+    await mouseMoveToSelector(page, 'p:has-text("Paragraph 1")')
+    await page.pause()
+    await dragDraggableMenuTo(page, '.ContentEditable__root')
 
     await assertHTML(
       page,
@@ -184,7 +169,7 @@ test.describe('DraggableBlock', () => {
         style="">
         <span data-lexical-text="true">Paragraph 1</span>
       </p>
-    `,
-    );
-  });
-});
+    `
+    )
+  })
+})

@@ -6,84 +6,75 @@
  *
  */
 
-import {
-  evaluate,
-  expect,
-  focusEditor,
-  initialize,
-  test,
-} from '../utils/index.mjs';
+import { evaluate, expect, focusEditor, initialize, test } from '../utils/index.mjs'
 
 test.describe('Auto scroll while typing', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
   async function addScroll(page, selector_) {
     await evaluate(
       page,
       (selector) => {
-        const element = document.querySelector(selector);
-        element.style.overflow = 'auto';
-        element.style.maxHeight = '200px';
+        const element = document.querySelector(selector)
+        element.style.overflow = 'auto'
+        element.style.maxHeight = '200px'
       },
-      selector_,
-    );
+      selector_
+    )
   }
 
   async function isCaretVisible(page, selector_) {
     return await evaluate(
       page,
       (selector) => {
-        const selection = document.getSelection();
-        const range = selection.getRangeAt(0);
-        const element = document.createElement('span');
-        element.innerHTML = '|';
-        range.insertNode(element);
-        const selectionRect = element.getBoundingClientRect();
-        element.parentNode.removeChild(element);
-        const containerRect = document
-          .querySelector(selector)
-          .getBoundingClientRect();
+        const selection = document.getSelection()
+        const range = selection.getRangeAt(0)
+        const element = document.createElement('span')
+        element.innerHTML = '|'
+        range.insertNode(element)
+        const selectionRect = element.getBoundingClientRect()
+        element.parentNode.removeChild(element)
+        const containerRect = document.querySelector(selector).getBoundingClientRect()
 
-        return (
-          selectionRect.top >= containerRect.top &&
-          selectionRect.top < containerRect.bottom
-        );
+        return selectionRect.top >= containerRect.top && selectionRect.top < containerRect.bottom
       },
-      selector_,
-    );
+      selector_
+    )
   }
 
-  [
+  ;[
     {
       name: 'Can auto scroll if content editable element is scrollable',
-      selector: '.ContentEditable__root',
+      selector: '.ContentEditable__root'
     },
     {
       name: 'Can auto scroll if parent element is scrollable',
-      selector: '.editor-container',
-    },
+      selector: '.editor-container'
+    }
   ].forEach((testCase) => {
-    [true, false].forEach((isSoftLineBreak) => {
-      test(`${testCase.name}${
-        isSoftLineBreak ? ' (soft line break)' : ''
-      }`, async ({page, isPlainText, browserName}) => {
-        test.skip(isPlainText || isSoftLineBreak);
-        await focusEditor(page);
-        await addScroll(page, testCase.selector);
+    ;[true, false].forEach((isSoftLineBreak) => {
+      test(`${testCase.name}${isSoftLineBreak ? ' (soft line break)' : ''}`, async ({
+        page,
+        isPlainText,
+        browserName
+      }) => {
+        test.skip(isPlainText || isSoftLineBreak)
+        await focusEditor(page)
+        await addScroll(page, testCase.selector)
 
         for (let i = 0; i < 15; i++) {
-          await page.keyboard.type('Hello');
+          await page.keyboard.type('Hello')
 
           if (isSoftLineBreak) {
-            await page.keyboard.down('Shift');
-            await page.keyboard.press('Enter');
-            await page.keyboard.up('Shift');
+            await page.keyboard.down('Shift')
+            await page.keyboard.press('Enter')
+            await page.keyboard.up('Shift')
           } else {
-            await page.keyboard.press('Enter');
+            await page.keyboard.press('Enter')
           }
 
-          expect(await isCaretVisible(page, testCase.selector)).toBe(true);
+          expect(await isCaretVisible(page, testCase.selector)).toBe(true)
         }
-      });
-    });
-  });
-});
+      })
+    })
+  })
+})

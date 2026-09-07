@@ -6,9 +6,9 @@
  *
  */
 
-import type {EditorThemeClasses} from 'lexical';
+import type { EditorThemeClasses } from 'lexical'
 
-import './PlaygroundEditorTheme.css';
+import './PlaygroundEditorTheme.css'
 
 const theme: EditorThemeClasses = {
   autocomplete: 'PlaygroundEditorTheme__autocomplete',
@@ -46,11 +46,11 @@ const theme: EditorThemeClasses = {
     tag: 'PlaygroundEditorTheme__tokenProperty',
     unchanged: 'PlaygroundEditorTheme__tokenUnchanged',
     url: 'PlaygroundEditorTheme__tokenOperator',
-    variable: 'PlaygroundEditorTheme__tokenVariable',
+    variable: 'PlaygroundEditorTheme__tokenVariable'
   },
   embedBlock: {
     base: 'PlaygroundEditorTheme__embedBlock',
-    focus: 'PlaygroundEditorTheme__embedBlockFocus',
+    focus: 'PlaygroundEditorTheme__embedBlockFocus'
   },
   hashtag: 'PlaygroundEditorTheme__hashtag',
   heading: {
@@ -59,7 +59,7 @@ const theme: EditorThemeClasses = {
     h3: 'PlaygroundEditorTheme__h3',
     h4: 'PlaygroundEditorTheme__h4',
     h5: 'PlaygroundEditorTheme__h5',
-    h6: 'PlaygroundEditorTheme__h6',
+    h6: 'PlaygroundEditorTheme__h6'
   },
   hr: 'PlaygroundEditorTheme__hr',
   hrSelected: 'PlaygroundEditorTheme__hrSelected',
@@ -74,16 +74,16 @@ const theme: EditorThemeClasses = {
     listitemChecked: 'PlaygroundEditorTheme__listItemChecked',
     listitemUnchecked: 'PlaygroundEditorTheme__listItemUnchecked',
     nested: {
-      listitem: 'PlaygroundEditorTheme__nestedListItem',
+      listitem: 'PlaygroundEditorTheme__nestedListItem'
     },
     olDepth: [
       'PlaygroundEditorTheme__ol1',
       'PlaygroundEditorTheme__ol2',
       'PlaygroundEditorTheme__ol3',
       'PlaygroundEditorTheme__ol4',
-      'PlaygroundEditorTheme__ol5',
+      'PlaygroundEditorTheme__ol5'
     ],
-    ul: 'PlaygroundEditorTheme__ul',
+    ul: 'PlaygroundEditorTheme__ul'
   },
   mark: 'PlaygroundEditorTheme__mark',
   markOverlap: 'PlaygroundEditorTheme__markOverlap',
@@ -96,12 +96,11 @@ const theme: EditorThemeClasses = {
   tableAddRows: 'PlaygroundEditorTheme__tableAddRows',
   tableAlignment: {
     center: 'PlaygroundEditorTheme__tableAlignmentCenter',
-    right: 'PlaygroundEditorTheme__tableAlignmentRight',
+    right: 'PlaygroundEditorTheme__tableAlignmentRight'
   },
   tableCell: 'PlaygroundEditorTheme__tableCell',
   tableCellActionButton: 'PlaygroundEditorTheme__tableCellActionButton',
-  tableCellActionButtonContainer:
-    'PlaygroundEditorTheme__tableCellActionButtonContainer',
+  tableCellActionButtonContainer: 'PlaygroundEditorTheme__tableCellActionButtonContainer',
   tableCellHeader: 'PlaygroundEditorTheme__tableCellHeader',
   tableCellResizer: 'PlaygroundEditorTheme__tableCellResizer',
   tableCellSelected: 'PlaygroundEditorTheme__tableCellSelected',
@@ -123,8 +122,8 @@ const theme: EditorThemeClasses = {
     superscript: 'PlaygroundEditorTheme__textSuperscript',
     underline: 'PlaygroundEditorTheme__textUnderline',
     underlineStrikethrough: 'PlaygroundEditorTheme__textUnderlineStrikethrough',
-    uppercase: 'PlaygroundEditorTheme__textUppercase',
-  },
-};
+    uppercase: 'PlaygroundEditorTheme__textUppercase'
+  }
+}
 
-export default theme;
+export default theme

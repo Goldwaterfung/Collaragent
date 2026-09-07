@@ -1,8 +1,6 @@
 ---
-
 # The Complete Guide to Masterful Mind Mapping
 ## GRINDE Framework — Adapted for the Workspace Tool Suite
-
 ---
 
 ## Understanding the Tool Landscape
@@ -11,17 +9,17 @@ Before applying the GRINDE framework, understand what the workspace tools can an
 
 ### Tool Capabilities at a Glance
 
-| Feature | `writeMindMap` | `writeGraph` |
-|---------|---------------|-------------|
-| **Structure** | Pure hierarchy (parent → children only) | Flat nodes + edges (any topology) |
-| **Edge labels** | ❌ None (edges are unlabeled structural connectors) | ✅ Single `label` string per edge |
-| **Arrow/edge types** | ❌ Not supported | ❌ Not supported (all edges look the same) |
-| **Node color/icon** | ❌ Not supported | ❌ Not supported |
-| **Node size/weight** | ❌ Not supported | ❌ Not supported |
-| **Layout directions** | `RADIAL` (default), `LR`, `TD` | `RADIAL`, `LR`, `TD` |
-| **Cross-branch links** | ❌ Cannot be expressed in tree structure | ✅ Supported via flat edges |
-| **Feedback loops** | ❌ Not supported | ✅ Supported (A → B, B → A) |
-| **Merge/extend** | ❌ Always replaces in full | ✅ Supports `merge` mode |
+| Feature                | `writeMindMap`                                      | `writeGraph`                               |
+| ---------------------- | --------------------------------------------------- | ------------------------------------------ |
+| **Structure**          | Pure hierarchy (parent → children only)             | Flat nodes + edges (any topology)          |
+| **Edge labels**        | ❌ None (edges are unlabeled structural connectors) | ✅ Single `label` string per edge          |
+| **Arrow/edge types**   | ❌ Not supported                                    | ❌ Not supported (all edges look the same) |
+| **Node color/icon**    | ❌ Not supported                                    | ❌ Not supported                           |
+| **Node size/weight**   | ❌ Not supported                                    | ❌ Not supported                           |
+| **Layout directions**  | `RADIAL` (default), `LR`, `TD`                      | `RADIAL`, `LR`, `TD`                       |
+| **Cross-branch links** | ❌ Cannot be expressed in tree structure            | ✅ Supported via flat edges                |
+| **Feedback loops**     | ❌ Not supported                                    | ✅ Supported (A → B, B → A)                |
+| **Merge/extend**       | ❌ Always replaces in full                          | ✅ Supports `merge` mode                   |
 
 ### The Core Constraint: Label Is Your Only Semantic Tool
 
@@ -43,7 +41,8 @@ Group concepts by meaningful categories, not by the source structure (e.g., not 
 **How to Execute with Our Tools:**
 
 #### Use `writeMindMap` for Structure-First Grouping
-The `writeMindMap` tool is ideal for GRINDE's Grouping step. Its recursive `root → children` structure *forces* you to think in hierarchical groups before anything else.
+
+The `writeMindMap` tool is ideal for GRINDE's Grouping step. Its recursive `root → children` structure _forces_ you to think in hierarchical groups before anything else.
 
 **Rule of 5:** Keep main branches to 5 or fewer. Every direct child of the root is a "main branch."
 
@@ -64,12 +63,14 @@ The `writeMindMap` tool is ideal for GRINDE's Grouping step. Its recursive `root
 ```
 
 **Bad Grouping (By Source Order):**
+
 ```json
 { "entity": "Chapter 1 - History", "children": [...] }
 { "entity": "Chapter 2 - Anatomy", "children": [...] }
 ```
 
 **Good Grouping (By Meaning):**
+
 ```json
 { "entity": "Structure",   "children": [...] }
 { "entity": "Function",    "children": [...] }
@@ -78,9 +79,11 @@ The `writeMindMap` tool is ideal for GRINDE's Grouping step. Its recursive `root
 
 **Pro Tip — Encode Group Type in the Name:**
 Since nodes have no color or icon, use optional naming conventions to clarify category type if needed:
+
 ```json
 { "entity": "Structure", "name": "🏗 Structure" }
 ```
+
 The `name` field is the display label; `entity` is the ID for edge wiring.
 
 ---
@@ -88,24 +91,25 @@ The `name` field is the display label; `entity` is the ID for edge wiring.
 ### **R — RELATIONAL: Encode Relationships in Edge Labels**
 
 **The Principle:**
-Understanding is not knowing *what* things are, but *how they relate*. In the original GRINDE framework, different arrow types communicated relationship categories visually. **Our tools have no arrow types — the label string must do all the work.**
+Understanding is not knowing _what_ things are, but _how they relate_. In the original GRINDE framework, different arrow types communicated relationship categories visually. **Our tools have no arrow types — the label string must do all the work.**
 
 **The Label Is Everything:**
 
-| Original GRINDE Relationship | Adapted Label Strategy |
-|-----------------------------|------------------------|
+| Original GRINDE Relationship | Adapted Label Strategy                              |
+| ---------------------------- | --------------------------------------------------- |
 | Hierarchical (vertical line) | Use `writeMindMap` tree structure — no label needed |
-| Cause-Effect (→) | `"label": "causes"` or `"label": "leads to"` |
-| Part-Whole | `"label": "part of"` or `"label": "contains"` |
-| Sequence | Number your labels: `"label": "1. then"` |
-| Comparison | `"label": "contrasts with"` |
-| Example | `"label": "e.g."` |
-| Inhibitory | `"label": "blocks"` or `"label": "prevents"` |
+| Cause-Effect (→)             | `"label": "causes"` or `"label": "leads to"`        |
+| Part-Whole                   | `"label": "part of"` or `"label": "contains"`       |
+| Sequence                     | Number your labels: `"label": "1. then"`            |
+| Comparison                   | `"label": "contrasts with"`                         |
+| Example                      | `"label": "e.g."`                                   |
+| Inhibitory                   | `"label": "blocks"` or `"label": "prevents"`        |
 
 **When to use `writeGraph` instead of `writeMindMap`:**
 Switch to `writeGraph` the moment you need to **label** a relationship. `writeMindMap` connections are always unlabeled structural links.
 
 **Example — Relational Graph with Labels:**
+
 ```json
 {
   "instanceName": "Heart-Cause-Effect",
@@ -117,8 +121,8 @@ Switch to `writeGraph` the moment you need to **label** a relationship. `writeMi
     { "entity": "Heart Attack" }
   ],
   "edges": [
-    { "from": "Blocked Artery",      "to": "Reduced Blood Flow", "label": "causes" },
-    { "from": "Reduced Blood Flow",  "to": "Heart Attack",       "label": "leads to" }
+    { "from": "Blocked Artery", "to": "Reduced Blood Flow", "label": "causes" },
+    { "from": "Reduced Blood Flow", "to": "Heart Attack", "label": "leads to" }
   ]
 }
 ```
@@ -133,6 +137,7 @@ Switch to `writeGraph` the moment you need to **label** a relationship. `writeMi
 Real knowledge is **networked**. The more connections a concept has, the better it is retained. The original framework used cross-branch dashed lines. Our equivalent is using `writeGraph` with edges that deliberately span across conceptual groups.
 
 **The Tool Boundary:**
+
 - `writeMindMap` → **Cannot** create cross-links (tree structure only)
 - `writeGraph` → **Can** create any topology, including cross-branch connections
 
@@ -142,6 +147,7 @@ Use `writeMindMap` to set the high-level hierarchy first, then create a separate
 Alternatively, build the entire map in `writeGraph` from the start if you know cross-connections are essential.
 
 **Example — Cross-Connected Knowledge Graph:**
+
 ```json
 {
   "instanceName": "Heart-Network",
@@ -154,15 +160,15 @@ Alternatively, build the entire map in `writeGraph` from the start if you know c
     { "entity": "High Pressure" }
   ],
   "edges": [
-    { "from": "Left Ventricle",       "to": "Thick Wall",           "label": "has" },
-    { "from": "Left Ventricle",       "to": "Systemic Circulation", "label": "pumps to" },
-    { "from": "Systemic Circulation", "to": "High Pressure",        "label": "requires" },
-    { "from": "High Pressure",        "to": "Thick Wall",           "label": "explains" }
+    { "from": "Left Ventricle", "to": "Thick Wall", "label": "has" },
+    { "from": "Left Ventricle", "to": "Systemic Circulation", "label": "pumps to" },
+    { "from": "Systemic Circulation", "to": "High Pressure", "label": "requires" },
+    { "from": "High Pressure", "to": "Thick Wall", "label": "explains" }
   ]
 }
 ```
 
-The last edge (`High Pressure → Thick Wall: "explains"`) is the cross-link — it connects the *functional* reason to the *structural* fact. This is the GRINDE "I" in action.
+The last edge (`High Pressure → Thick Wall: "explains"`) is the cross-link — it connects the _functional_ reason to the _structural_ fact. This is the GRINDE "I" in action.
 
 **Goal:** After building your graph, check — can you trace a logical path from any node to any other node through labeled edges? If yes, you've built a knowledge network.
 
@@ -179,6 +185,7 @@ Since the `name` field is your only display hook, use it creatively.
 
 **1. Emoji Prefixes as Icons:**
 Attach an emoji to the `name` field to create a visual anchor:
+
 ```json
 { "entity": "SA Node",         "name": "⚡ SA Node (Pacemaker)" }
 { "entity": "Heart Attack",    "name": "🚨 Heart Attack" }
@@ -188,6 +195,7 @@ Attach an emoji to the `name` field to create a visual anchor:
 
 **2. Parenthetical Clarifiers:**
 Pack a brief meaning hint directly into the node name:
+
 ```json
 { "entity": "Frank-Starling Law", "name": "Frank-Starling Law (stretch → stronger contraction)" }
 { "entity": "AV Node",           "name": "AV Node (signal delay gate)" }
@@ -195,6 +203,7 @@ Pack a brief meaning hint directly into the node name:
 
 **3. Status/Category Prefixes:**
 Use a consistent notation to signal node type:
+
 ```json
 { "entity": "Tachycardia",  "name": "⚠️ Tachycardia >100bpm" }
 { "entity": "Myocardium",   "name": "🔬 Myocardium [cardiac muscle]" }
@@ -213,24 +222,28 @@ Knowledge is dynamic. Directional elements show how things change, influence eac
 **Adapted Strategies:**
 
 **1. Causal Chains — Use directional label verbs:**
+
 ```json
 { "from": "SA Node", "to": "Atria Contract", "label": "triggers" }
 { "from": "Atria Contract", "to": "AV Node", "label": "signal passes to" }
 ```
 
 **2. Inhibitory Relationships — Use "blocks/prevents" in label:**
+
 ```json
 { "from": "Beta Blockers", "to": "Heart Rate", "label": "reduces" }
 { "from": "Vagus Nerve",   "to": "SA Node",    "label": "inhibits" }
 ```
 
 **3. Feedback Loops — Use bidirectional edges:**
+
 ```json
 { "from": "Blood Pressure", "to": "Baroreceptors",  "label": "detected by" },
 { "from": "Baroreceptors",  "to": "Blood Pressure",  "label": "adjusts (feedback)" }
 ```
 
 **4. Sequences — Number the labels:**
+
 ```json
 { "from": "SA Node",        "to": "Atria",           "label": "1. fires" },
 { "from": "Atria",          "to": "AV Node",          "label": "2. signal to" },
@@ -239,11 +252,13 @@ Knowledge is dynamic. Directional elements show how things change, influence eac
 ```
 
 **5. Conditional Relationships — Use "if/may" in label:**
+
 ```json
 { "from": "Physical Stress", "to": "Tachycardia", "label": "may cause" }
 ```
 
 **6. Magnitude — Approximate strength in the label:**
+
 ```json
 { "from": "Left Ventricle",  "to": "Aorta",        "label": "strong pump →" }
 { "from": "Right Ventricle", "to": "Pulmonary Art", "label": "weaker pump →" }
@@ -251,6 +266,7 @@ Knowledge is dynamic. Directional elements show how things change, influence eac
 
 **Layout Direction as a Secondary Signal:**
 Use the layout `direction` parameter to reinforce the flow semantically:
+
 - `"TD"` (top-down): ideal for hierarchies and process flows (time goes downward)
 - `"LR"` (left-right): ideal for cause-and-effect chains (causes on left, effects on right)
 - `"RADIAL"`: ideal for a central concept with radiating relationships (classic mind map)
@@ -283,6 +299,7 @@ In `RADIAL` layout, the root node is always centered. Use this deliberately — 
 
 **2. Node Name Emphasis with Symbols:**
 Use `name` field capitalization and symbols to signal importance:
+
 ```json
 { "entity": "Frank-Starling Law", "name": "⭐ FRANK-STARLING LAW ⭐" }
 { "entity": "Cardiac Output",     "name": "🔑 Cardiac Output = HR × SV" }
@@ -290,6 +307,7 @@ Use `name` field capitalization and symbols to signal importance:
 
 **3. Depth as Hierarchy:**
 In the tree structure, **depth = importance level**:
+
 - Level 1 (root's direct children) = Most important concepts
 - Level 2 = Supporting concepts
 - Level 3+ = Details and examples
@@ -300,6 +318,7 @@ In the tree structure, **depth = importance level**:
 In `writeGraph`, the `LR` or `TD` layout organizes nodes by their edge topology. Nodes that are highly connected (many edges in/out) will naturally appear more central in the rendered layout — use this to your advantage by making critical concepts the hub of many edges.
 
 **5. Naming Convention for Exceptions and Warnings:**
+
 ```json
 { "entity": "Tachycardia", "name": "⚠️ Tachycardia — EXCEPTION to normal rhythm" }
 { "entity": "AV Block",    "name": "🚫 AV Block — conduction failure" }
@@ -309,36 +328,40 @@ In `writeGraph`, the `LR` or `TD` layout organizes nodes by their edge topology.
 
 ## Decision Guide: Which Tool for Which GRINDE Step?
 
-| GRINDE Step | Recommended Tool | Reason |
-|-------------|-----------------|--------|
-| **G — Grouping** | `writeMindMap` | Forces hierarchical grouping via parent-child tree |
-| **R — Relational** | `writeGraph` | Edge labels carry relationship semantics |
-| **I — Interconnected** | `writeGraph` | Only tool that supports cross-branch/arbitrary topology |
-| **N — Non-verbal** | Both (via `name` field emojis) | Encode visual meaning into display names |
-| **D — Directional** | `writeGraph` | Directional edges + numbered/verb labels convey flow |
-| **E — Emphasized** | `writeMindMap` (root = most important) + `writeGraph` (hub nodes) | Use structural centrality as a proxy for visual weight |
+| GRINDE Step            | Recommended Tool                                                  | Reason                                                  |
+| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| **G — Grouping**       | `writeMindMap`                                                    | Forces hierarchical grouping via parent-child tree      |
+| **R — Relational**     | `writeGraph`                                                      | Edge labels carry relationship semantics                |
+| **I — Interconnected** | `writeGraph`                                                      | Only tool that supports cross-branch/arbitrary topology |
+| **N — Non-verbal**     | Both (via `name` field emojis)                                    | Encode visual meaning into display names                |
+| **D — Directional**    | `writeGraph`                                                      | Directional edges + numbered/verb labels convey flow    |
+| **E — Emphasized**     | `writeMindMap` (root = most important) + `writeGraph` (hub nodes) | Use structural centrality as a proxy for visual weight  |
 
 ---
 
 ## Workflow: Building a GRINDE Map Step by Step
 
 ### Phase 1 — GROUPING with `writeMindMap`
+
 1. Survey your material; identify 3–5 big ideas.
 2. Call `writeMindMap` with a `RADIAL` layout to lay out the high-level hierarchy.
 3. Use the `name` field for any emoji hints on the root or main branches.
 
 ### Phase 2 — RELATIONAL + DIRECTIONAL with `writeGraph`
+
 1. Create a **separate canvas** named `[Topic]-Relationships`.
 2. Populate it with `writeGraph` in `replace` mode.
 3. Every edge must have a label; choose verbs that describe the relationship precisely.
 4. Use numbered labels for sequences; bidirectional edges for feedback loops.
 
 ### Phase 3 — INTERCONNECTED: Extend with `merge`
+
 1. Identify cross-branch connections from your Phase 1 hierarchy.
 2. Call `writeGraph` in `merge` mode to add these cross-links without rebuilding from scratch.
 3. Aim for at least 2–3 inter-group edges per main branch.
 
 ### Phase 4 — EMPHASIS: Final Pass
+
 1. Revisit both canvases.
 2. Update `name` fields to add emoji markers and parenthetical notes for the most important nodes.
 3. Ensure critical nodes are positioned close to the root (in `writeMindMap`) or are high-connectivity hubs (in `writeGraph`).
@@ -347,12 +370,12 @@ In `writeGraph`, the `LR` or `TD` layout organizes nodes by their edge topology.
 
 ## Common Pitfalls (Adapted for Our Tools)
 
-| Pitfall | Why It Happens | Solution |
-|---------|---------------|----------|
-| **Unlabeled edges in `writeGraph`** | Forgetting labels are the only semantic tool | Treat every edge without a label as incomplete |
-| **Over-using `writeMindMap` for rich relationships** | It's the simpler API | Switch to `writeGraph` as soon as you need labeled or cross-branch edges |
-| **Using `entity` names as display text without `name`** | Forgetting the `name` field | Always set `name` with emoji/clarifiers for important nodes |
-| **Flat, disconnected hierarchy** | Creating groups but no inter-group edges | Add a `writeGraph` canvas specifically for cross-connections |
-| **Burying key concepts deep** | Not thinking about structural emphasis | Move critical concepts up the tree; make them edge hubs in the graph |
-| **Single monolithic canvas** | Trying to fit everything in one tool call | Use two canvases: one hierarchy map (`writeMindMap`) + one relationship map (`writeGraph`) |
-| **Ignoring feedback loops** | Treating knowledge as one-directional | Explicitly add reversed edges with `"label": "(feedback)"` for loops |
+| Pitfall                                                 | Why It Happens                               | Solution                                                                                   |
+| ------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Unlabeled edges in `writeGraph`**                     | Forgetting labels are the only semantic tool | Treat every edge without a label as incomplete                                             |
+| **Over-using `writeMindMap` for rich relationships**    | It's the simpler API                         | Switch to `writeGraph` as soon as you need labeled or cross-branch edges                   |
+| **Using `entity` names as display text without `name`** | Forgetting the `name` field                  | Always set `name` with emoji/clarifiers for important nodes                                |
+| **Flat, disconnected hierarchy**                        | Creating groups but no inter-group edges     | Add a `writeGraph` canvas specifically for cross-connections                               |
+| **Burying key concepts deep**                           | Not thinking about structural emphasis       | Move critical concepts up the tree; make them edge hubs in the graph                       |
+| **Single monolithic canvas**                            | Trying to fit everything in one tool call    | Use two canvases: one hierarchy map (`writeMindMap`) + one relationship map (`writeGraph`) |
+| **Ignoring feedback loops**                             | Treating knowledge as one-directional        | Explicitly add reversed edges with `"label": "(feedback)"` for loops                       |

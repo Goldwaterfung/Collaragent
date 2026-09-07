@@ -6,11 +6,8 @@
  *
  */
 
-export type ShowFlashMessage = (
-  message?: React.ReactNode,
-  duration?: number,
-) => void;
+export type ShowFlashMessage = (message?: React.ReactNode, duration?: number) => void
 
 export default function useFlashMessage(): ShowFlashMessage {
-  return () => {};
+  return () => {}
 }

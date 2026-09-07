@@ -1,26 +1,30 @@
 stateDiagram-v2
     [*] --> ActiveEditing : Live Workspace & Agent Interaction
-    
-    ActiveEditing --> Quiescing : CheckpointCreateRequested (Manual or Auto)
-    Quiescing --> SnapshotCapturing : Suppress WebSocket echo (SyncPause lock)
-    
+
+    ActiveEditing --> SnapshotCapturing : PostTurnAutoCheckpoint (Decoupled wsHandle.flush(), zero window pause)
+
     state SnapshotCapturing {
-        [*] --> FlushWSBuffers : wsServer.flush()
+        [*] --> FlushWSBuffers : wsHandle.flush() (commit dirty memory state)
         FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
-        CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & Idempotent MsgPack snapshot
-        CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record with projectId & chat.messageId
+        CaptureLangGraphHead --> DeduplicateCASBlob : SHA-256 hash & upsert workspace_blobs
+        DeduplicateCASBlob --> LinkSnapshotV5 : Insert workspace_snapshots with blob_hash
+        LinkSnapshotV5 --> AssembleDAGBundle : Create CheckpointBundle with parentBundleId & branchName
     }
-    
-    SnapshotCapturing --> ActiveEditing : Release SyncPause & resume editing
-    
+
+    SnapshotCapturing --> ActiveEditing : Checkpoint stored & refresh CheckpointMarkers
+
     ActiveEditing --> RestoreRequested : User clicks CheckpointMarker in Chat
-    RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing
-    
+    RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing (SyncPause mutex)
+
     state QuiescingRestore {
-        [*] --> RollbackChat : Clear session (__start__) OR truncate to messageId
-        RollbackChat --> ResetBranchRegistry : agentCheckpointRegistry.setPendingBranch()
-        ResetBranchRegistry --> RestoreSnapshots : Reconstitute instances from MsgPack
-        RestoreSnapshots --> InvertCommandLogs : Apply InverseCommandEngine deltas
+        [*] --> ValidateTargetBundle : Verify bundle existence
+        ValidateTargetBundle --> RollbackChat : Clear session (__start__) OR truncate to messageId
+        RollbackChat --> UpdateDAGRegistry : setEffectiveBundleId(parent) & setPendingBranch()
+        UpdateDAGRegistry --> HydrateFromCAS : Reconstitute instances from workspace_blobs via blob_hash
+        HydrateFromCAS --> FailClosedGuard : Check payload integrity
+        FailClosedGuard --> ResetOCCSequences : Payload valid: emit system-checkpoint-restore & reset commandSequences
+        FailClosedGuard --> AbortRestore : Missing/corrupt: Throw STORAGE_CHECKPOINT_NOT_FOUND (safe fail-closed)
     }
-    
-    QuiescingRestore --> ActiveEditing : Broadcast state:reset to UI & resume
+
+    QuiescingRestore --> ActiveEditing : Release SyncPause & broadcast chat:restored to UI
+    AbortRestore --> ActiveEditing : Release SyncPause & preserve live workspace unharmed

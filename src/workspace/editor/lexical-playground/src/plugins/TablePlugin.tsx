@@ -6,45 +6,45 @@
  *
  */
 
-import type {JSX} from 'react';
+import type { JSX } from 'react'
 
-import {INSERT_TABLE_COMMAND} from '@lexical/table';
-import {LexicalEditor} from 'lexical';
-import {useEffect, useState} from 'react';
+import { INSERT_TABLE_COMMAND } from '@lexical/table'
+import { LexicalEditor } from 'lexical'
+import { useEffect, useState } from 'react'
 
-import Button from '../ui/Button';
-import {DialogActions} from '../ui/Dialog';
-import TextInput from '../ui/TextInput';
+import Button from '../ui/Button'
+import { DialogActions } from '../ui/Dialog'
+import TextInput from '../ui/TextInput'
 
 export function InsertTableDialog({
   activeEditor,
-  onClose,
+  onClose
 }: {
-  activeEditor: LexicalEditor;
-  onClose: () => void;
+  activeEditor: LexicalEditor
+  onClose: () => void
 }): JSX.Element {
-  const [rows, setRows] = useState('5');
-  const [columns, setColumns] = useState('5');
-  const [isDisabled, setIsDisabled] = useState(true);
+  const [rows, setRows] = useState('5')
+  const [columns, setColumns] = useState('5')
+  const [isDisabled, setIsDisabled] = useState(true)
 
   useEffect(() => {
-    const row = Number(rows);
-    const column = Number(columns);
+    const row = Number(rows)
+    const column = Number(columns)
     if (row && row > 0 && row <= 500 && column && column > 0 && column <= 50) {
-      setIsDisabled(false);
+      setIsDisabled(false)
     } else {
-      setIsDisabled(true);
+      setIsDisabled(true)
     }
-  }, [rows, columns]);
+  }, [rows, columns])
 
   const onClick = () => {
     activeEditor.dispatchCommand(INSERT_TABLE_COMMAND, {
       columns,
-      rows,
-    });
+      rows
+    })
 
-    onClose();
-  };
+    onClose()
+  }
 
   return (
     <>
@@ -70,5 +70,5 @@ export function InsertTableDialog({
         </Button>
       </DialogActions>
     </>
-  );
+  )
 }

@@ -6,35 +6,36 @@
  *
  */
 
-import { createCommand, LexicalCommand, LexicalNode } from "lexical";
-import { BlockType } from "./editorConfig";
+import { createCommand, LexicalCommand, LexicalNode } from 'lexical'
+import { BlockType } from './editorConfig'
 
-/** 
- * Payload for general block insertion 
+/**
+ * Payload for general block insertion
  */
 export type InsertBlockPayload = {
-  type: BlockType;
-  targetNode?: LexicalNode;
-};
+  type: BlockType
+  targetNode?: LexicalNode
+}
 
 /**
  * Payload for equations
  */
 export type InsertEquationPayload = {
-  equation: string;
-  inline?: boolean;
-};
+  equation: string
+  inline?: boolean
+}
 
 // --- Command Definitions ---
 
-export const INSERT_NEW_BLOCK_COMMAND: LexicalCommand<InsertBlockPayload> = 
-  createCommand("INSERT_NEW_BLOCK_COMMAND");
+export const INSERT_NEW_BLOCK_COMMAND: LexicalCommand<InsertBlockPayload> = createCommand(
+  'INSERT_NEW_BLOCK_COMMAND'
+)
 
-export const INSERT_EQUATION_COMMAND: LexicalCommand<InsertEquationPayload> = 
-  createCommand("INSERT_EQUATION_COMMAND");
+export const INSERT_EQUATION_COMMAND: LexicalCommand<InsertEquationPayload> =
+  createCommand('INSERT_EQUATION_COMMAND')
 
-export const INSERT_PAGE_BREAK_COMMAND: LexicalCommand<void> =
-  createCommand("INSERT_PAGE_BREAK_COMMAND");
+export const INSERT_PAGE_BREAK_COMMAND: LexicalCommand<void> = createCommand(
+  'INSERT_PAGE_BREAK_COMMAND'
+)
 
-export const INSERT_COMMENT_COMMAND: LexicalCommand<void> = 
-  createCommand("INSERT_COMMENT_COMMAND");
+export const INSERT_COMMENT_COMMAND: LexicalCommand<void> = createCommand('INSERT_COMMENT_COMMAND')

@@ -20,7 +20,11 @@ import type {
   CheckpointCancelResponse
 } from '../../shared/ipc/checkpoints/types'
 import * as Channels from '../../shared/ipc/checkpoints/channels'
-import { CheckpointApiClient, HttpCheckpointBundleStore } from '@collaragent/checkpoint'
+import {
+  CheckpointApiClient,
+  HttpCheckpointBundleStore,
+  agentCheckpointRegistry
+} from '@collaragent/checkpoint'
 import {
   CheckpointOrchestratorImpl,
   type CheckpointBundleFactory
@@ -43,15 +47,18 @@ function buildBundleFactory(
     const instances = await resolveInstances(options, apiClient)
     const instanceRestorePoints = [] as CheckpointBundle['instances']
 
-    // Find the previous bundle for this thread to determine the delta interval
+    // Find the active branch's parent bundle for this thread to determine the delta interval and DAG lineage
     const existingBundles = await bundleStore.listBundles(
       options.sessionId,
       options.threadId,
       options.projectId
     )
-    const previousBundle = existingBundles.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )[0]
+    const activeParentBundleId = agentCheckpointRegistry.getEffectiveBundleId(options.threadId)
+    const previousBundle = activeParentBundleId
+      ? existingBundles.find((b) => b.id === activeParentBundleId)
+      : existingBundles.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0]
 
     for (const instanceId of instances) {
       const instance = await apiClient.getInstance(instanceId)
@@ -102,6 +109,7 @@ function buildBundleFactory(
 
     return {
       id: bundleId,
+      parentBundleId: previousBundle?.id,
       createdAt,
       sessionId: options.sessionId,
       threadId: options.threadId,

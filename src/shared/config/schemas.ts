@@ -4,7 +4,7 @@ import { z } from 'zod'
  * Zod schema for ModelConfig
  */
 export const ModelConfigSchema = z.object({
-  provider: z.enum(['openai', 'anthropic', 'google', 'ollama']),
+  provider: z.enum(['openai', 'anthropic', 'google', 'ollama', 'opencode-go']),
   modelId: z.string().min(1),
   name: z.string().optional(),
   baseUrl: z.string().optional(),
@@ -30,7 +30,7 @@ export const SubAgentConfigSchema = z.object({
   enabled: z.boolean(),
   model: z
     .object({
-      provider: z.enum(['openai', 'anthropic', 'google', 'ollama']),
+      provider: z.enum(['openai', 'anthropic', 'google', 'ollama', 'opencode-go']),
       modelId: z.string().min(1)
     })
     .optional()

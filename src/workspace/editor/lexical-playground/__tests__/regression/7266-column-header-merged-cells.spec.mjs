@@ -16,42 +16,36 @@ import {
   selectCellsFromTableCords,
   test,
   toggleColumnHeader,
-  toggleRowHeader,
-} from '../utils/index.mjs';
+  toggleRowHeader
+} from '../utils/index.mjs'
 
 test.describe('Regression test #7266', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
 
   test('toggling column header with merged column cells should only apply column header to the selected column', async ({
     page,
     isPlainText,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isPlainText);
+    test.skip(isPlainText)
 
-    await initialize({isCollab, page});
+    await initialize({ isCollab, page })
 
     if (isCollab) {
       // The contextual menu positioning needs fixing (it's hardcoded to show on the right side)
-      page.setViewportSize({height: 1000, width: 3000});
+      page.setViewportSize({ height: 1000, width: 3000 })
     }
 
-    await focusEditor(page);
+    await focusEditor(page)
 
-    await insertTable(page, 4, 4);
+    await insertTable(page, 4, 4)
 
-    await click(page, '.PlaygroundEditorTheme__tableCell');
-    await selectCellsFromTableCords(
-      page,
-      {x: 1, y: 1},
-      {x: 1, y: 2},
-      false,
-      false,
-    );
+    await click(page, '.PlaygroundEditorTheme__tableCell')
+    await selectCellsFromTableCords(page, { x: 1, y: 1 }, { x: 1, y: 2 }, false, false)
 
-    await mergeTableCells(page);
+    await mergeTableCells(page)
 
-    await toggleColumnHeader(page);
+    await toggleColumnHeader(page)
 
     await assertHTML(
       page,
@@ -65,31 +59,27 @@ test.describe('Regression test #7266', () => {
             <col style="width: 92px" />
           </colgroup>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
           </tr>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <th
               class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader"
-              rowspan="2">
+              rowspan="2"
+            >
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <td class="PlaygroundEditorTheme__tableCell">
@@ -100,8 +90,7 @@ test.describe('Regression test #7266', () => {
             </td>
           </tr>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <td class="PlaygroundEditorTheme__tableCell">
@@ -112,12 +101,10 @@ test.describe('Regression test #7266', () => {
             </td>
           </tr>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <td class="PlaygroundEditorTheme__tableCell">
@@ -129,40 +116,34 @@ test.describe('Regression test #7266', () => {
           </tr>
         </table>
         <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
   test('toggling row header with merged row cells should only apply row header to the selected row', async ({
     page,
     isPlainText,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isPlainText);
+    test.skip(isPlainText)
 
-    await initialize({isCollab, page});
+    await initialize({ isCollab, page })
 
     if (isCollab) {
       // The contextual menu positioning needs fixing (it's hardcoded to show on the right side)
-      page.setViewportSize({height: 1000, width: 3000});
+      page.setViewportSize({ height: 1000, width: 3000 })
     }
 
-    await focusEditor(page);
+    await focusEditor(page)
 
-    await insertTable(page, 4, 4);
+    await insertTable(page, 4, 4)
 
-    await click(page, '.PlaygroundEditorTheme__tableCell');
-    await selectCellsFromTableCords(
-      page,
-      {x: 1, y: 1},
-      {x: 2, y: 1},
-      false,
-      false,
-    );
+    await click(page, '.PlaygroundEditorTheme__tableCell')
+    await selectCellsFromTableCords(page, { x: 1, y: 1 }, { x: 2, y: 1 }, false, false)
 
-    await mergeTableCells(page);
+    await mergeTableCells(page)
 
-    await toggleRowHeader(page);
+    await toggleRowHeader(page)
 
     await assertHTML(
       page,
@@ -176,41 +157,35 @@ test.describe('Regression test #7266', () => {
             <col style="width: 92px" />
           </colgroup>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
           </tr>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <th
               class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader"
-              colspan="2">
+              colspan="2"
+            >
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
           </tr>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <td class="PlaygroundEditorTheme__tableCell">
@@ -224,8 +199,7 @@ test.describe('Regression test #7266', () => {
             </td>
           </tr>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <td class="PlaygroundEditorTheme__tableCell">
@@ -240,7 +214,7 @@ test.describe('Regression test #7266', () => {
           </tr>
         </table>
         <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

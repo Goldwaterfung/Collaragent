@@ -7,32 +7,32 @@
  */
 
 export const BLOCK_TYPE_TO_BLOCK_NAME = {
-  paragraph: "Normal",
-  h1: "Large Heading",
-  h2: "Small Heading",
-  h3: "Heading",
-  h4: "Heading",
-  h5: "Heading",
-  ol: "Numbered List",
-  ul: "Bulleted List",
-  quote: "Quote",
-  code: "Code Block",
-  pagebreak: "Page Break",
-  equation: "Equation",
-} as const;
+  paragraph: 'Normal',
+  h1: 'Large Heading',
+  h2: 'Small Heading',
+  h3: 'Heading',
+  h4: 'Heading',
+  h5: 'Heading',
+  ol: 'Numbered List',
+  ul: 'Bulleted List',
+  quote: 'Quote',
+  code: 'Code Block',
+  pagebreak: 'Page Break',
+  equation: 'Equation'
+} as const
 
-export type BlockType = keyof typeof BLOCK_TYPE_TO_BLOCK_NAME;
+export type BlockType = keyof typeof BLOCK_TYPE_TO_BLOCK_NAME
 
 export const SUPPORTED_BLOCK_TYPES = new Set<string>([
-  "paragraph",
-  "quote",
-  "code",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "ul",
-  "ol",
-  "pagebreak",
-  "equation",
-]);
+  'paragraph',
+  'quote',
+  'code',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'ul',
+  'ol',
+  'pagebreak',
+  'equation'
+])

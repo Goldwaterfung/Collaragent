@@ -14,27 +14,24 @@ Under the hood, tools are callable functions with well-defined inputs and output
 
 The simplest way to create a tool is by importing the `tool` function from the `langchain` package. You can use [zod](https://zod.dev/) to define the tool's input schema:
 
-```ts  theme={null}
-import * as z from "zod"
-import { tool } from "langchain"
+```ts theme={null}
+import * as z from 'zod'
+import { tool } from 'langchain'
 
-const searchDatabase = tool(
-  ({ query, limit }) => `Found ${limit} results for '${query}'`,
-  {
-    name: "search_database",
-    description: "Search the customer database for records matching the query.",
-    schema: z.object({
-      query: z.string().describe("Search terms to look for"),
-      limit: z.number().describe("Maximum number of results to return"),
-    }),
-  }
-);
+const searchDatabase = tool(({ query, limit }) => `Found ${limit} results for '${query}'`, {
+  name: 'search_database',
+  description: 'Search the customer database for records matching the query.',
+  schema: z.object({
+    query: z.string().describe('Search terms to look for'),
+    limit: z.number().describe('Maximum number of results to return')
+  })
+})
 ```
 
 <Note>
   **Server-side tool use**
 
-  Some chat models (e.g., [OpenAI](docs/integrations/chat/openai), [Anthropic](docs/integrations/chat/anthropic), and [Gemini](docs/integrations/chat/google_generative_ai)) feature [built-in tools](docs/langchain/models#server-side-tool-use) that are executed server-side, such as web search and code interpreters. Refer to the [provider overview](docs/integrations/providers/overview) to learn how to access these tools with your specific chat model.
+Some chat models (e.g., [OpenAI](docs/integrations/chat/openai), [Anthropic](docs/integrations/chat/anthropic), and [Gemini](docs/integrations/chat/google_generative_ai)) feature [built-in tools](docs/langchain/models#server-side-tool-use) that are executed server-side, such as web search and code interpreters. Refer to the [provider overview](docs/integrations/providers/overview) to learn how to access these tools with your specific chat model.
 </Note>
 
 ## Accessing context
@@ -42,47 +39,47 @@ const searchDatabase = tool(
 <Info>
   **Why this matters:** Tools are most powerful when they can access agent state, runtime context, and long-term memory. This enables tools to make context-aware decisions, personalize responses, and maintain information across conversations.
 
-  The runtime context provides a structured way to supply runtime data, such as DB connections, user IDs, or config, into your tools. This avoids global state and keeps tools testable and reusable.
+The runtime context provides a structured way to supply runtime data, such as DB connections, user IDs, or config, into your tools. This avoids global state and keeps tools testable and reusable.
 </Info>
 
 #### Context
 
 Tools can access an agent's runtime context through the `config` parameter:
 
-```ts  theme={null}
-import * as z from "zod"
-import { ChatOpenAI } from "@langchain/openai"
-import { createAgent } from "langchain"
+```ts theme={null}
+import * as z from 'zod'
+import { ChatOpenAI } from '@langchain/openai'
+import { createAgent } from 'langchain'
 
 const getUserName = tool(
   (_, config) => {
     return config.context.user_name
   },
   {
-    name: "get_user_name",
+    name: 'get_user_name',
     description: "Get the user's name.",
-    schema: z.object({}),
+    schema: z.object({})
   }
-);
+)
 
 const contextSchema = z.object({
-  user_name: z.string(),
-});
+  user_name: z.string()
+})
 
 const agent = createAgent({
-  model: new ChatOpenAI({ model: "gpt-4o" }),
+  model: new ChatOpenAI({ model: 'gpt-4o' }),
   tools: [getUserName],
-  contextSchema,
-});
+  contextSchema
+})
 
 const result = await agent.invoke(
   {
-    messages: [{ role: "user", content: "What is my name?" }]
+    messages: [{ role: 'user', content: 'What is my name?' }]
   },
   {
-    context: { user_name: "John Smith" }
+    context: { user_name: 'John Smith' }
   }
-);
+)
 ```
 
 #### Memory (Store)
@@ -90,72 +87,71 @@ const result = await agent.invoke(
 Access persistent data across conversations using the store. The store is accessed via `config.store` and allows you to save and retrieve user-specific or application-specific data.
 
 ```ts expandable theme={null}
-import * as z from "zod";
-import { createAgent, tool } from "langchain";
-import { InMemoryStore } from "@langchain/langgraph";
-import { ChatOpenAI } from "@langchain/openai";
+import * as z from 'zod'
+import { createAgent, tool } from 'langchain'
+import { InMemoryStore } from '@langchain/langgraph'
+import { ChatOpenAI } from '@langchain/openai'
 
-const store = new InMemoryStore();
+const store = new InMemoryStore()
 
 // Access memory
 const getUserInfo = tool(
   async ({ user_id }) => {
-    const value = await store.get(["users"], user_id);
-    console.log("get_user_info", user_id, value);
-    return value;
+    const value = await store.get(['users'], user_id)
+    console.log('get_user_info', user_id, value)
+    return value
   },
   {
-    name: "get_user_info",
-    description: "Look up user info.",
+    name: 'get_user_info',
+    description: 'Look up user info.',
     schema: z.object({
-      user_id: z.string(),
-    }),
+      user_id: z.string()
+    })
   }
-);
+)
 
 // Update memory
 const saveUserInfo = tool(
   async ({ user_id, name, age, email }) => {
-    console.log("save_user_info", user_id, name, age, email);
-    await store.put(["users"], user_id, { name, age, email });
-    return "Successfully saved user info.";
+    console.log('save_user_info', user_id, name, age, email)
+    await store.put(['users'], user_id, { name, age, email })
+    return 'Successfully saved user info.'
   },
   {
-    name: "save_user_info",
-    description: "Save user info.",
+    name: 'save_user_info',
+    description: 'Save user info.',
     schema: z.object({
       user_id: z.string(),
       name: z.string(),
       age: z.number(),
-      email: z.string(),
-    }),
+      email: z.string()
+    })
   }
-);
+)
 
 const agent = createAgent({
-  model: new ChatOpenAI({ model: "gpt-4o" }),
+  model: new ChatOpenAI({ model: 'gpt-4o' }),
   tools: [getUserInfo, saveUserInfo],
-  store,
-});
+  store
+})
 
 // First session: save user info
 await agent.invoke({
   messages: [
     {
-      role: "user",
-      content: "Save the following user: userid: abc123, name: Foo, age: 25, email: foo@langchain.dev",
-    },
-  ],
-});
+      role: 'user',
+      content:
+        'Save the following user: userid: abc123, name: Foo, age: 25, email: foo@langchain.dev'
+    }
+  ]
+})
 
 // Second session: get user info
 const result = await agent.invoke({
-  messages: [
-    { role: "user", content: "Get user info for user with id 'abc123'" },
-  ],
-});
+  messages: [{ role: 'user', content: "Get user info for user with id 'abc123'" }]
+})
 
-console.log(result);
+console.log(result)
 // Here is the user info for user with ID "abc123":
 // - Name: Foo
 // - Age: 25
@@ -166,28 +162,28 @@ console.log(result);
 
 Stream custom updates from tools as they execute using `config.streamWriter`. This is useful for providing real-time feedback to users about what a tool is doing.
 
-```ts  theme={null}
-import * as z from "zod";
-import { tool, ToolRuntime } from "langchain";
+```ts theme={null}
+import * as z from 'zod'
+import { tool, ToolRuntime } from 'langchain'
 
 const getWeather = tool(
   ({ city }, config: ToolRuntime) => {
-    const writer = config.writer;
+    const writer = config.writer
 
     // Stream custom updates as the tool executes
     if (writer) {
-      writer(`Looking up data for city: ${city}`);
-      writer(`Acquired data for city: ${city}`);
+      writer(`Looking up data for city: ${city}`)
+      writer(`Acquired data for city: ${city}`)
     }
 
-    return `It's always sunny in ${city}!`;
+    return `It's always sunny in ${city}!`
   },
   {
-    name: "get_weather",
-    description: "Get weather for a given city.",
+    name: 'get_weather',
+    description: 'Get weather for a given city.',
     schema: z.object({
-      city: z.string(),
-    }),
+      city: z.string()
+    })
   }
-);
+)
 ```

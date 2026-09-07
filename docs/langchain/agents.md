@@ -6,7 +6,7 @@ Agents combine language models with [tools](docs/langchain/tools.md) to create s
 
 An agent runs until a stop condition is met - i.e., when the model emits a final output or an iteration limit is reached.
 
-```mermaid  theme={null}
+```mermaid theme={null}
 %%{
   init: {
     "fontFamily": "monospace",
@@ -38,7 +38,7 @@ graph TD
 <Info>
   `createAgent()` builds a **graph**-based agent runtime using [LangGraph](/oss/javascript/langgraph/overview). A graph consists of nodes (steps) and edges (connections) that define how your agent processes information. The agent moves through this graph, executing nodes like the model node (which calls the model), the tools node (which executes tools), or middleware.
 
-  Learn more about the [Graph API](docs/langgraph/graph-api.md).
+Learn more about the [Graph API](docs/langgraph/graph-api.md).
 </Info>
 
 ## Core components
@@ -54,31 +54,31 @@ Static models are configured once when creating the agent and remain unchanged t
 To initialize a static model from a string that follows the format `provider:model` (e.g. openai:gpt-5).
 
 ```ts wrap theme={null}
-import { createAgent } from "langchain";
+import { createAgent } from 'langchain'
 
 const agent = createAgent({
-  model: "openai:gpt-5",
+  model: 'openai:gpt-5',
   tools: []
-});
+})
 ```
 
 Model identifier strings use the format `provider:model` (e.g. `"openai:gpt-5"`). You may want more control over the model configuration, in which case you can initialize a model instance directly using the provider package:
 
 ```ts wrap theme={null}
-import { createAgent } from "langchain";
-import { ChatOpenAI } from "@langchain/openai";
+import { createAgent } from 'langchain'
+import { ChatOpenAI } from '@langchain/openai'
 
 const model = new ChatOpenAI({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   temperature: 0.1,
   maxTokens: 1000,
   timeout: 30
-});
+})
 
 const agent = createAgent({
   model,
   tools: []
-});
+})
 ```
 
 Model instances give you complete control over configuration. Use them when you need to set specific parameters like `temperature`, `max_tokens`, `timeouts`, or configure API keys, `base_url`, and other provider-specific settings.
@@ -89,31 +89,31 @@ Dynamic models are selected at <Tooltip tip="The execution environment of your a
 
 To use a dynamic model, create middleware with `wrapModelCall` that modifies the model in the request:
 
-```ts  theme={null}
-import { ChatOpenAI } from "@langchain/openai";
-import { createAgent, createMiddleware } from "langchain";
+```ts theme={null}
+import { ChatOpenAI } from '@langchain/openai'
+import { createAgent, createMiddleware } from 'langchain'
 
-const basicModel = new ChatOpenAI({ model: "gpt-4o-mini" });
-const advancedModel = new ChatOpenAI({ model: "gpt-4o" });
+const basicModel = new ChatOpenAI({ model: 'gpt-4o-mini' })
+const advancedModel = new ChatOpenAI({ model: 'gpt-4o' })
 
 const dynamicModelSelection = createMiddleware({
-  name: "DynamicModelSelection",
+  name: 'DynamicModelSelection',
   wrapModelCall: (request, handler) => {
     // Choose model based on conversation complexity
-    const messageCount = request.messages.length;
+    const messageCount = request.messages.length
 
     return handler({
-        ...request,
-        model: messageCount > 10 ? advancedModel : basicModel,
-    });
-  },
-});
+      ...request,
+      model: messageCount > 10 ? advancedModel : basicModel
+    })
+  }
+})
 
 const agent = createAgent({
-  model: "gpt-4o-mini", // Base model (used when messageCount ≤ 10)
+  model: 'gpt-4o-mini', // Base model (used when messageCount ≤ 10)
   tools,
-  middleware: [dynamicModelSelection],
-});
+  middleware: [dynamicModelSelection]
+})
 ```
 
 For more details on middleware and advanced patterns, see the [middleware documentation](docs/langchain/middleware.md).
@@ -122,11 +122,11 @@ For more details on middleware and advanced patterns, see the [middleware docume
 
 Tools give agents the ability to take actions. Agents go beyond simple model-only tool binding by facilitating:
 
-* Multiple tool calls in sequence (triggered by a single prompt)
-* Parallel tool calls when appropriate
-* Dynamic tool selection based on previous results
-* Tool retry logic and error handling
-* State persistence across tool calls
+- Multiple tool calls in sequence (triggered by a single prompt)
+- Parallel tool calls when appropriate
+- Dynamic tool selection based on previous results
+- Tool retry logic and error handling
+- State persistence across tool calls
 
 For more information, see [Tools](docs/langchain/tools.md).
 
@@ -135,35 +135,29 @@ For more information, see [Tools](docs/langchain/tools.md).
 Pass a list of tools to the agent.
 
 ```ts wrap theme={null}
-import * as z from "zod";
-import { createAgent, tool } from "langchain";
+import * as z from 'zod'
+import { createAgent, tool } from 'langchain'
 
-const search = tool(
-  ({ query }) => `Results for: ${query}`,
-  {
-    name: "search",
-    description: "Search for information",
-    schema: z.object({
-      query: z.string().describe("The query to search for"),
-    }),
-  }
-);
+const search = tool(({ query }) => `Results for: ${query}`, {
+  name: 'search',
+  description: 'Search for information',
+  schema: z.object({
+    query: z.string().describe('The query to search for')
+  })
+})
 
-const getWeather = tool(
-  ({ location }) => `Weather in ${location}: Sunny, 72°F`,
-  {
-    name: "get_weather",
-    description: "Get weather information for a location",
-    schema: z.object({
-      location: z.string().describe("The location to get weather for"),
-    }),
-  }
-);
+const getWeather = tool(({ location }) => `Weather in ${location}: Sunny, 72°F`, {
+  name: 'get_weather',
+  description: 'Get weather information for a location',
+  schema: z.object({
+    location: z.string().describe('The location to get weather for')
+  })
+})
 
 const agent = createAgent({
-  model: "gpt-4o",
-  tools: [search, getWeather],
-});
+  model: 'gpt-4o',
+  tools: [search, getWeather]
+})
 ```
 
 If an empty tool list is provided, the agent will consist of a single LLM node without tool-calling capabilities.
@@ -173,30 +167,28 @@ If an empty tool list is provided, the agent will consist of a single LLM node w
 To customize how tool errors are handled, use the `wrapToolCall` hook in a custom middleware:
 
 ```ts wrap theme={null}
-import { createAgent, createMiddleware, ToolMessage } from "langchain";
+import { createAgent, createMiddleware, ToolMessage } from 'langchain'
 
 const handleToolErrors = createMiddleware({
-  name: "HandleToolErrors",
+  name: 'HandleToolErrors',
   wrapToolCall: async (request, handler) => {
     try {
-      return await handler(request);
+      return await handler(request)
     } catch (error) {
       // Return a custom error message to the model
       return new ToolMessage({
         content: `Tool error: Please check your input and try again. (${error})`,
-        tool_call_id: request.toolCall.id!,
-      });
+        tool_call_id: request.toolCall.id!
+      })
     }
-  },
-});
+  }
+})
 
 const agent = createAgent({
-  model: "gpt-4o",
-  tools: [
-    /* ... */
-  ],
-  middleware: [handleToolErrors],
-});
+  model: 'gpt-4o',
+  tools: [/* ... */],
+  middleware: [handleToolErrors]
+})
 ```
 
 The agent will return a [`ToolMessage`](https://reference.langchain.com/javascript/classes/_langchain_core.messages.ToolMessage.html) with the custom error message when a tool fails.
@@ -208,56 +200,57 @@ Agents follow the ReAct ("Reasoning + Acting") pattern, alternating between brie
 <Accordion title="Example of ReAct loop">
   **Prompt:** Identify the current most popular wireless headphones and verify availability.
 
-  ```
-  ================================ Human Message =================================
+```
+================================ Human Message =================================
 
-  Find the most popular wireless headphones right now and check if they're in stock
-  ```
+Find the most popular wireless headphones right now and check if they're in stock
+```
 
-  * **Reasoning**: "Popularity is time-sensitive, I need to use the provided search tool."
-  * **Acting**: Call `search_products("wireless headphones")`
+- **Reasoning**: "Popularity is time-sensitive, I need to use the provided search tool."
+- **Acting**: Call `search_products("wireless headphones")`
 
-  ```
-  ================================== Ai Message ==================================
-  Tool Calls:
-    search_products (call_abc123)
-   Call ID: call_abc123
-    Args:
-      query: wireless headphones
-  ```
+```
+================================== Ai Message ==================================
+Tool Calls:
+  search_products (call_abc123)
+ Call ID: call_abc123
+  Args:
+    query: wireless headphones
+```
 
-  ```
-  ================================= Tool Message =================================
+```
+================================= Tool Message =================================
 
-  Found 5 products matching "wireless headphones". Top 5 results: WH-1000XM5, ...
-  ```
+Found 5 products matching "wireless headphones". Top 5 results: WH-1000XM5, ...
+```
 
-  * **Reasoning**: "I need to confirm availability for the top-ranked item before answering."
-  * **Acting**: Call `check_inventory("WH-1000XM5")`
+- **Reasoning**: "I need to confirm availability for the top-ranked item before answering."
+- **Acting**: Call `check_inventory("WH-1000XM5")`
 
-  ```
-  ================================== Ai Message ==================================
-  Tool Calls:
-    check_inventory (call_def456)
-   Call ID: call_def456
-    Args:
-      product_id: WH-1000XM5
-  ```
+```
+================================== Ai Message ==================================
+Tool Calls:
+  check_inventory (call_def456)
+ Call ID: call_def456
+  Args:
+    product_id: WH-1000XM5
+```
 
-  ```
-  ================================= Tool Message =================================
+```
+================================= Tool Message =================================
 
-  Product WH-1000XM5: 10 units in stock
-  ```
+Product WH-1000XM5: 10 units in stock
+```
 
-  * **Reasoning**: "I have the most popular model and its stock status. I can now answer the user's question."
-  * **Acting**: Produce final answer
+- **Reasoning**: "I have the most popular model and its stock status. I can now answer the user's question."
+- **Acting**: Produce final answer
 
-  ```
-  ================================== Ai Message ==================================
+```
+================================== Ai Message ==================================
 
-  I found wireless headphones (model WH-1000XM5) with 10 units in stock...
-  ```
+I found wireless headphones (model WH-1000XM5) with 10 units in stock...
+```
+
 </Accordion>
 
 <Tip>
@@ -272,8 +265,8 @@ You can shape how your agent approaches tasks by providing a prompt. The `system
 const agent = createAgent({
   model,
   tools,
-  systemPrompt: "You are a helpful assistant. Be concise and accurate.",
-});
+  systemPrompt: 'You are a helpful assistant. Be concise and accurate.'
+})
 ```
 
 When no `systemPrompt` is provided, the agent will infer its task from the messages directly.
@@ -281,29 +274,29 @@ When no `systemPrompt` is provided, the agent will infer its task from the messa
 The `systemPrompt` parameter accepts either a `string` or a `SystemMessage`. Using a `SystemMessage` gives you more control over the prompt structure, which is useful for provider-specific features like [Anthropic's prompt caching](/oss/javascript/integrations/chat/anthropic#prompt-caching):
 
 ```ts wrap theme={null}
-import { createAgent } from "langchain";
-import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { createAgent } from 'langchain'
+import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 
 const literaryAgent = createAgent({
-  model: "anthropic:claude-sonnet-4-5",
+  model: 'anthropic:claude-sonnet-4-5',
   systemPrompt: new SystemMessage({
     content: [
       {
-        type: "text",
-        text: "You are an AI assistant tasked with analyzing literary works.",
+        type: 'text',
+        text: 'You are an AI assistant tasked with analyzing literary works.'
       },
       {
-        type: "text",
+        type: 'text',
         text: "<the entire contents of 'Pride and Prejudice'>",
-        cache_control: { type: "ephemeral" }
+        cache_control: { type: 'ephemeral' }
       }
     ]
   })
-});
+})
 
 const result = await literaryAgent.invoke({
   messages: [new HumanMessage("Analyze the major themes in 'Pride and Prejudice'.")]
-});
+})
 ```
 
 The `cache_control` field with `{ type: "ephemeral" }` tells Anthropic to cache that content block, reducing latency and costs for repeated requests that use the same system prompt.
@@ -313,37 +306,37 @@ The `cache_control` field with `{ type: "ephemeral" }` tells Anthropic to cache 
 For more advanced use cases where you need to modify the system prompt based on runtime context or agent state, you can use [middleware](docs/langchain/middleware.md).
 
 ```typescript wrap theme={null}
-import * as z from "zod";
-import { createAgent, dynamicSystemPromptMiddleware } from "langchain";
+import * as z from 'zod'
+import { createAgent, dynamicSystemPromptMiddleware } from 'langchain'
 
 const contextSchema = z.object({
-  userRole: z.enum(["expert", "beginner"]),
-});
+  userRole: z.enum(['expert', 'beginner'])
+})
 
 const agent = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   tools: [/* ... */],
   contextSchema,
   middleware: [
     dynamicSystemPromptMiddleware<z.infer<typeof contextSchema>>((state, runtime) => {
-      const userRole = runtime.context.userRole || "user";
-      const basePrompt = "You are a helpful assistant.";
+      const userRole = runtime.context.userRole || 'user'
+      const basePrompt = 'You are a helpful assistant.'
 
-      if (userRole === "expert") {
-        return `${basePrompt} Provide detailed technical responses.`;
-      } else if (userRole === "beginner") {
-        return `${basePrompt} Explain concepts simply and avoid jargon.`;
+      if (userRole === 'expert') {
+        return `${basePrompt} Provide detailed technical responses.`
+      } else if (userRole === 'beginner') {
+        return `${basePrompt} Explain concepts simply and avoid jargon.`
       }
-      return basePrompt;
-    }),
-  ],
-});
+      return basePrompt
+    })
+  ]
+})
 
 // The system prompt will be set dynamically based on context
 const result = await agent.invoke(
-  { messages: [{ role: "user", content: "Explain machine learning" }] },
-  { context: { userRole: "expert" } }
-);
+  { messages: [{ role: 'user', content: 'Explain machine learning' }] },
+  { context: { userRole: 'expert' } }
+)
 ```
 
 <Tip>
@@ -354,9 +347,9 @@ const result = await agent.invoke(
 
 You can invoke an agent by passing an update to its [`State`](docs/langgraph/graph-api.md). All agents include a [sequence of messages](docs/langgraph/graph-api-usage.md) in their state; to invoke the agent, pass a new message:
 
-```typescript  theme={null}
+```typescript theme={null}
 await agent.invoke({
-  messages: [{ role: "user", content: "What's the weather in San Francisco?" }],
+  messages: [{ role: 'user', content: "What's the weather in San Francisco?" }]
 })
 ```
 
@@ -371,30 +364,30 @@ Otherwise, the agent follows the LangGraph [Graph API](docs/langgraph/graph-api-
 In some situations, you may want the agent to return an output in a specific format. LangChain provides a simple, universal way to do this with the `responseFormat` parameter.
 
 ```ts wrap theme={null}
-import * as z from "zod";
-import { createAgent } from "langchain";
+import * as z from 'zod'
+import { createAgent } from 'langchain'
 
 const ContactInfo = z.object({
   name: z.string(),
   email: z.string(),
-  phone: z.string(),
-});
+  phone: z.string()
+})
 
 const agent = createAgent({
-  model: "gpt-4o",
-  responseFormat: ContactInfo,
-});
+  model: 'gpt-4o',
+  responseFormat: ContactInfo
+})
 
 const result = await agent.invoke({
   messages: [
     {
-      role: "user",
-      content: "Extract contact info from: John Doe, john@example.com, (555) 123-4567",
-    },
-  ],
-});
+      role: 'user',
+      content: 'Extract contact info from: John Doe, john@example.com, (555) 123-4567'
+    }
+  ]
+})
 
-console.log(result.structuredResponse);
+console.log(result.structuredResponse)
 // {
 //   name: 'John Doe',
 //   email: 'john@example.com',
@@ -413,46 +406,48 @@ Agents maintain conversation history automatically through the message state. Yo
 Information stored in the state can be thought of as the [short-term memory](docs/langchain/short-term-memory.md) of the agent:
 
 ```ts wrap theme={null}
-import * as z from "zod";
-import { MessagesZodState } from "@langchain/langgraph";
-import { createAgent } from "langchain";
-import { type BaseMessage } from "@langchain/core/messages";
+import * as z from 'zod'
+import { MessagesZodState } from '@langchain/langgraph'
+import { createAgent } from 'langchain'
+import { type BaseMessage } from '@langchain/core/messages'
 
 const customAgentState = z.object({
   messages: MessagesZodState.shape.messages,
-  userPreferences: z.record(z.string(), z.string()),
-});
+  userPreferences: z.record(z.string(), z.string())
+})
 
 const CustomAgentState = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   tools: [],
-  stateSchema: customAgentState,
-});
+  stateSchema: customAgentState
+})
 ```
 
 ### Streaming
 
 We've seen how the agent can be called with `invoke` to get a final response. If the agent executes multiple steps, this may take a while. To show intermediate progress, we can stream back messages as they occur.
 
-```ts  theme={null}
+```ts theme={null}
 const stream = await agent.stream(
   {
-    messages: [{
-      role: "user",
-      content: "Search for AI news and summarize the findings"
-    }],
+    messages: [
+      {
+        role: 'user',
+        content: 'Search for AI news and summarize the findings'
+      }
+    ]
   },
-  { streamMode: "values" }
-);
+  { streamMode: 'values' }
+)
 
 for await (const chunk of stream) {
   // Each chunk contains the full state at that point
-  const latestMessage = chunk.messages.at(-1);
+  const latestMessage = chunk.messages.at(-1)
   if (latestMessage?.content) {
-    console.log(`Agent: ${latestMessage.content}`);
+    console.log(`Agent: ${latestMessage.content}`)
   } else if (latestMessage?.tool_calls) {
-    const toolCallNames = latestMessage.tool_calls.map((tc) => tc.name);
-    console.log(`Calling tools: ${toolCallNames.join(", ")}`);
+    const toolCallNames = latestMessage.tool_calls.map((tc) => tc.name)
+    console.log(`Calling tools: ${toolCallNames.join(', ')}`)
   }
 }
 ```
@@ -465,11 +460,11 @@ for await (const chunk of stream) {
 
 [Middleware](docs/langchain/middleware.md) provides powerful extensibility for customizing agent behavior at different stages of execution. You can use middleware to:
 
-* Process state before the model is called (e.g., message trimming, context injection)
-* Modify or validate the model's response (e.g., guardrails, content filtering)
-* Handle tool execution errors with custom logic
-* Implement dynamic model selection based on state or context
-* Add custom logging, monitoring, or analytics
+- Process state before the model is called (e.g., message trimming, context injection)
+- Modify or validate the model's response (e.g., guardrails, content filtering)
+- Handle tool execution errors with custom logic
+- Implement dynamic model selection based on state or context
+- Add custom logging, monitoring, or analytics
 
 Middleware integrates seamlessly into the agent's execution, allowing you to intercept and modify data flow at key points without changing the core agent logic.
 

@@ -6,57 +6,55 @@
  *
  */
 
-import type { JSX } from 'react';
+import type { JSX } from 'react'
 
-import 'katex/dist/katex.css';
+import 'katex/dist/katex.css'
 
-import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $wrapNodeInElement } from '@lexical/utils';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { $wrapNodeInElement } from '@lexical/utils'
 import {
-    $createParagraphNode,
-    $insertNodes,
-    $isRootOrShadowRoot,
-    COMMAND_PRIORITY_EDITOR,
-    $createNodeSelection,
-    $setSelection,
-} from 'lexical';
-import { useEffect } from 'react';
+  $createParagraphNode,
+  $insertNodes,
+  $isRootOrShadowRoot,
+  COMMAND_PRIORITY_EDITOR,
+  $createNodeSelection,
+  $setSelection
+} from 'lexical'
+import { useEffect } from 'react'
 
-import { $createEquationNode, EquationNode } from '../nodes/EquationNode';
+import { $createEquationNode, EquationNode } from '../nodes/EquationNode'
 
-import { INSERT_EQUATION_COMMAND, InsertEquationPayload as CommandPayload } from '../utils/commands';
+import { INSERT_EQUATION_COMMAND, InsertEquationPayload as CommandPayload } from '../utils/commands'
 
 export default function EquationsPlugin(): JSX.Element | null {
-    const [editor] = useLexicalComposerContext();
+  const [editor] = useLexicalComposerContext()
 
-    useEffect(() => {
-        if (!editor.hasNodes([EquationNode])) {
-            throw new Error(
-                'EquationsPlugins: EquationsNode not registered on editor',
-            );
+  useEffect(() => {
+    if (!editor.hasNodes([EquationNode])) {
+      throw new Error('EquationsPlugins: EquationsNode not registered on editor')
+    }
+
+    return editor.registerCommand<CommandPayload>(
+      INSERT_EQUATION_COMMAND,
+      (payload) => {
+        const { equation, inline } = payload
+        const equationNode = $createEquationNode(equation, inline)
+
+        $insertNodes([equationNode])
+        if ($isRootOrShadowRoot(equationNode.getParentOrThrow())) {
+          $wrapNodeInElement(equationNode, $createParagraphNode).selectEnd()
         }
 
-        return editor.registerCommand<CommandPayload>(
-            INSERT_EQUATION_COMMAND,
-            (payload) => {
-                const { equation, inline } = payload;
-                const equationNode = $createEquationNode(equation, inline);
+        // Explicitly select the node to trigger the inline editor
+        const selection = $createNodeSelection()
+        selection.add(equationNode.getKey())
+        $setSelection(selection)
 
-                $insertNodes([equationNode]);
-                if ($isRootOrShadowRoot(equationNode.getParentOrThrow())) {
-                    $wrapNodeInElement(equationNode, $createParagraphNode).selectEnd();
-                }
+        return true
+      },
+      COMMAND_PRIORITY_EDITOR
+    )
+  }, [editor])
 
-                // Explicitly select the node to trigger the inline editor
-                const selection = $createNodeSelection();
-                selection.add(equationNode.getKey());
-                $setSelection(selection);
-
-                return true;
-            },
-            COMMAND_PRIORITY_EDITOR,
-        );
-    }, [editor]);
-
-    return null;
+  return null
 }

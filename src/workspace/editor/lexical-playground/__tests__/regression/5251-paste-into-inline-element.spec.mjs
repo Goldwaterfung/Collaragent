@@ -10,8 +10,8 @@ import {
   moveToLineBeginning,
   moveToNextWord,
   moveToPrevWord,
-  selectCharacters,
-} from '../keyboardShortcuts/index.mjs';
+  selectCharacters
+} from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   click,
@@ -23,17 +23,14 @@ import {
   pasteFromClipboard,
   pressToggleBold,
   test,
-  withExclusiveClipboardAccess,
-} from '../utils/index.mjs';
+  withExclusiveClipboardAccess
+} from '../utils/index.mjs'
 
 test.describe('Regression test #5251', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
-  test('Correctly pastes rich content inside an inline element', async ({
-    isPlainText,
-    page,
-  }) => {
-    test.skip(isPlainText);
-    await focusEditor(page);
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
+  test('Correctly pastes rich content inside an inline element', async ({ isPlainText, page }) => {
+    test.skip(isPlainText)
+    await focusEditor(page)
 
     // Root
     //   |- Paragraph
@@ -42,27 +39,27 @@ test.describe('Regression test #5251', () => {
     //      |- Text " "
     //      |- Link
     //         |- Text "World"
-    await page.keyboard.type('Hello ');
-    await pressToggleBold(page);
-    await page.keyboard.type('bold');
-    await pressToggleBold(page);
-    await page.keyboard.type(' World');
-    await moveToPrevWord(page);
-    await selectCharacters(page, 'right', 'World'.length);
-    await click(page, '.link');
-    await click(page, '.link-confirm');
+    await page.keyboard.type('Hello ')
+    await pressToggleBold(page)
+    await page.keyboard.type('bold')
+    await pressToggleBold(page)
+    await page.keyboard.type(' World')
+    await moveToPrevWord(page)
+    await selectCharacters(page, 'right', 'World'.length)
+    await click(page, '.link')
+    await click(page, '.link-confirm')
 
     // Copy "Hello bold"
-    await moveToLineBeginning(page);
-    await selectCharacters(page, 'right', 'Hello bold'.length);
+    await moveToLineBeginning(page)
+    await selectCharacters(page, 'right', 'Hello bold'.length)
     await withExclusiveClipboardAccess(async () => {
-      const clipboard = await copyToClipboard(page);
+      const clipboard = await copyToClipboard(page)
 
       // Drop "bold"
-      await page.keyboard.press('ArrowLeft');
-      await moveToNextWord(page);
-      await selectCharacters(page, 'right', 'bold '.length);
-      await page.keyboard.press('Delete');
+      await page.keyboard.press('ArrowLeft')
+      await moveToNextWord(page)
+      await selectCharacters(page, 'right', 'bold '.length)
+      await page.keyboard.press('Delete')
 
       // Check our current state
       await assertHTML(
@@ -70,42 +67,32 @@ test.describe('Regression test #5251', () => {
         html`
           <p class="PlaygroundEditorTheme__paragraph" dir="auto">
             <span data-lexical-text="true">Hello</span>
-            <a
-              class="PlaygroundEditorTheme__link"
-              href="https://"
-              rel="noreferrer">
+            <a class="PlaygroundEditorTheme__link" href="https://" rel="noreferrer">
               <span data-lexical-text="true">World</span>
             </a>
           </p>
-        `,
-      );
+        `
+      )
 
       // Replace "Wor" with the contents of the clipboard
       if (!IS_WINDOWS) {
-        await page.keyboard.press('ArrowRight');
+        await page.keyboard.press('ArrowRight')
       }
-      await selectCharacters(page, 'right', 'Wor'.length);
-      await pasteFromClipboard(page, clipboard);
+      await selectCharacters(page, 'right', 'Wor'.length)
+      await pasteFromClipboard(page, clipboard)
 
       await assertHTML(
         page,
         html`
           <p class="PlaygroundEditorTheme__paragraph" dir="auto">
             <span data-lexical-text="true">Hello Hello</span>
-            <strong
-              class="PlaygroundEditorTheme__textBold"
-              data-lexical-text="true">
-              bold
-            </strong>
-            <a
-              class="PlaygroundEditorTheme__link"
-              href="https://"
-              rel="noreferrer">
+            <strong class="PlaygroundEditorTheme__textBold" data-lexical-text="true"> bold </strong>
+            <a class="PlaygroundEditorTheme__link" href="https://" rel="noreferrer">
               <span data-lexical-text="true">ld</span>
             </a>
           </p>
-        `,
-      );
-    });
-  });
-});
+        `
+      )
+    })
+  })
+})

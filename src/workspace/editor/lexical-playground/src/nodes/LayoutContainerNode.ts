@@ -15,129 +15,121 @@ import type {
   LexicalUpdateJSON,
   NodeKey,
   SerializedElementNode,
-  Spread,
-} from 'lexical';
+  Spread
+} from 'lexical'
 
-import {addClassNamesToElement} from '@lexical/utils';
-import {ElementNode} from 'lexical';
+import { addClassNamesToElement } from '@lexical/utils'
+import { ElementNode } from 'lexical'
 
 export type SerializedLayoutContainerNode = Spread<
   {
-    templateColumns: string;
+    templateColumns: string
   },
   SerializedElementNode
->;
+>
 
-function $convertLayoutContainerElement(
-  domNode: HTMLElement,
-): DOMConversionOutput | null {
-  const templateColumns = domNode.style.gridTemplateColumns;
+function $convertLayoutContainerElement(domNode: HTMLElement): DOMConversionOutput | null {
+  const templateColumns = domNode.style.gridTemplateColumns
   if (templateColumns) {
-    const node = $createLayoutContainerNode(templateColumns);
-    return {node};
+    const node = $createLayoutContainerNode(templateColumns)
+    return { node }
   }
-  return null;
+  return null
 }
 
 export class LayoutContainerNode extends ElementNode {
-  __templateColumns: string;
+  __templateColumns: string
 
   constructor(templateColumns: string, key?: NodeKey) {
-    super(key);
-    this.__templateColumns = templateColumns;
+    super(key)
+    this.__templateColumns = templateColumns
   }
 
   static getType(): string {
-    return 'layout-container';
+    return 'layout-container'
   }
 
   static clone(node: LayoutContainerNode): LayoutContainerNode {
-    return new LayoutContainerNode(node.__templateColumns, node.__key);
+    return new LayoutContainerNode(node.__templateColumns, node.__key)
   }
 
   createDOM(config: EditorConfig): HTMLElement {
-    const dom = document.createElement('div');
-    dom.style.gridTemplateColumns = this.__templateColumns;
+    const dom = document.createElement('div')
+    dom.style.gridTemplateColumns = this.__templateColumns
     if (typeof config.theme.layoutContainer === 'string') {
-      addClassNamesToElement(dom, config.theme.layoutContainer);
+      addClassNamesToElement(dom, config.theme.layoutContainer)
     }
-    return dom;
+    return dom
   }
 
   exportDOM(): DOMExportOutput {
-    const element = document.createElement('div');
-    element.style.gridTemplateColumns = this.__templateColumns;
-    element.setAttribute('data-lexical-layout-container', 'true');
-    return {element};
+    const element = document.createElement('div')
+    element.style.gridTemplateColumns = this.__templateColumns
+    element.setAttribute('data-lexical-layout-container', 'true')
+    return { element }
   }
 
   updateDOM(prevNode: this, dom: HTMLElement): boolean {
     if (prevNode.__templateColumns !== this.__templateColumns) {
-      dom.style.gridTemplateColumns = this.__templateColumns;
+      dom.style.gridTemplateColumns = this.__templateColumns
     }
-    return false;
+    return false
   }
 
   static importDOM(): DOMConversionMap | null {
     return {
       div: (domNode: HTMLElement) => {
         if (!domNode.hasAttribute('data-lexical-layout-container')) {
-          return null;
+          return null
         }
         return {
           conversion: $convertLayoutContainerElement,
-          priority: 2,
-        };
-      },
-    };
+          priority: 2
+        }
+      }
+    }
   }
 
   static importJSON(json: SerializedLayoutContainerNode): LayoutContainerNode {
-    return $createLayoutContainerNode().updateFromJSON(json);
+    return $createLayoutContainerNode().updateFromJSON(json)
   }
 
-  updateFromJSON(
-    serializedNode: LexicalUpdateJSON<SerializedLayoutContainerNode>,
-  ): this {
-    return super
-      .updateFromJSON(serializedNode)
-      .setTemplateColumns(serializedNode.templateColumns);
+  updateFromJSON(serializedNode: LexicalUpdateJSON<SerializedLayoutContainerNode>): this {
+    return super.updateFromJSON(serializedNode).setTemplateColumns(serializedNode.templateColumns)
   }
 
   isShadowRoot(): boolean {
-    return true;
+    return true
   }
 
   canBeEmpty(): boolean {
-    return false;
+    return false
   }
 
   exportJSON(): SerializedLayoutContainerNode {
     return {
       ...super.exportJSON(),
-      templateColumns: this.__templateColumns,
-    };
+      templateColumns: this.__templateColumns
+    }
   }
 
   getTemplateColumns(): string {
-    return this.getLatest().__templateColumns;
+    return this.getLatest().__templateColumns
   }
 
   setTemplateColumns(templateColumns: string): this {
-    const self = this.getWritable();
-    self.__templateColumns = templateColumns;
-    return self;
+    const self = this.getWritable()
+    self.__templateColumns = templateColumns
+    return self
   }
 }
 
-export function $createLayoutContainerNode(
-  templateColumns: string = '',
-): LayoutContainerNode {
-  return new LayoutContainerNode(templateColumns);
+export function $createLayoutContainerNode(templateColumns: string = ''): LayoutContainerNode {
+  return new LayoutContainerNode(templateColumns)
 }
 
 export function $isLayoutContainerNode(
-  node: LexicalNode | null | undefined,
+  node: LexicalNode | null | undefined
 ): node is LayoutContainerNode {
-  return node instanceof LayoutContainerNode;
+  return node instanceof LayoutContainerNode
 }

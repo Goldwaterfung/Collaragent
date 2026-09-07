@@ -621,7 +621,8 @@ async function createDocumentHandler(
       payload,
       instanceId: uuid,
       wsPort: context?.wsPort,
-      threadId: context?.thread_id || context?.threadId
+      threadId: context?.thread_id || context?.threadId,
+      staged: false
     })
 
     return {
@@ -680,7 +681,8 @@ async function editDocumentHandler(
       commands: compiled.commands,
       instanceId: uuid,
       wsPort: context?.wsPort,
-      threadId: context?.thread_id || context?.threadId
+      threadId: context?.thread_id || context?.threadId,
+      staged: false
     })
 
     const diffViewSnippet = generateUnifiedDiff(currentPatchView, compiled.updatedContent)
@@ -1084,7 +1086,8 @@ export const writeGraph = tool(
         instanceId: uuid,
         wsPort: context?.wsPort,
         apiPort: context?.apiPort,
-        threadId: context?.thread_id || context?.threadId
+        threadId: context?.thread_id || context?.threadId,
+        staged: false
       })
 
       return {
@@ -1198,7 +1201,8 @@ export const writeMindMap = tool(
         instanceId: uuid,
         wsPort: context?.wsPort,
         apiPort: context?.apiPort,
-        threadId: context?.thread_id || context?.threadId
+        threadId: context?.thread_id || context?.threadId,
+        staged: false
       })
 
       return {

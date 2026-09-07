@@ -47,7 +47,8 @@ docs/design-catalog/
     ├── adr-006-large-tool-output-eviction-protocol.md
     ├── adr-007-websocket-staged-proposal-protocol.md
     ├── adr-008-hierarchical-leiden-clustering-and-spatial-layout.md
-    └── adr-009-multi-chat-concurrency-and-workspace-synchronization.md
+    ├── adr-009-multi-chat-concurrency-and-workspace-synchronization.md
+    └── adr-010-cas-blob-deduplication-and-dag-checkpoint-architecture.md
 ```
 
 > [!NOTE]
@@ -548,6 +549,16 @@ erDiagram
     WORKSPACE_SNAPSHOT ||--|| INSTANCE_RESTORE_POINT : targets
     WORKSPACE_COMMAND_LOG ||--|| INSTANCE_LOG_POSITION : indexed_at
 
+    %% Physical SQLite V5 CAS Persistence Schema
+    PROJECTS ||--o{ INSTANCES : owns
+    PROJECTS ||--o{ CHAT_SESSIONS : contains
+    CHAT_SESSIONS ||--o{ CHAT_MESSAGES : logs
+    CHAT_SESSIONS ||--o{ LARGE_TOOL_OUTPUTS : attaches
+    INSTANCES ||--o{ WORKSPACE_SNAPSHOTS : captures
+    INSTANCES ||--o{ WORKSPACE_COMMAND_LOGS : records
+    WORKSPACE_BLOBS ||--o{ WORKSPACE_SNAPSHOTS : stores
+    LANGGRAPH_CHECKPOINTS ||--o{ LANGGRAPH_WRITES : produces
+
     %% Entity Definitions
     GRAPH {
         GraphId id PK
@@ -612,8 +623,10 @@ erDiagram
         string sessionId FK
         string threadId FK
         string projectId FK
-        string chatMessageId FK
+        string parentBundleId FK
+        string branchName
         string agentCheckpointId FK
+        string chatMessageId FK
         string createdAt
         string reason "auto | restore"
         string label
@@ -623,6 +636,9 @@ erDiagram
         string instanceId PK
         string instanceType "graph-canvas | document"
         string snapshotId FK
+        string blobHash FK
+        integer sequenceNumber
+        int[] agentSeqs
         InstanceLogPosition targetCursor
     }
 
@@ -632,6 +648,130 @@ erDiagram
         string source "ui | agent | sync"
         Command command
         Record previousState
+    }
+
+    %% Physical SQLite V5 Table Schemas
+    PROJECTS {
+        string id PK
+        string name
+        string metadata_json
+        integer created_at
+        integer updated_at
+    }
+
+    INSTANCES {
+        string id PK
+        string project_id FK
+        string type "document | canvas"
+        string name
+        blob content_msgpack "MessagePack binary"
+        string metadata_json
+        string created_at
+        string updated_at
+    }
+
+    CHAT_SESSIONS {
+        string id PK
+        string project_id FK
+        string title
+        integer created_at
+        integer updated_at
+    }
+
+    CHAT_MESSAGES {
+        string id PK
+        string session_id FK
+        string role "user | assistant | system"
+        string content
+        string tool_calls_json
+        string blocks_json
+        string actions_json
+        string usage_json
+        string metadata_json
+        integer timestamp
+    }
+
+    LANGGRAPH_CHECKPOINTS {
+        string thread_id PK
+        string checkpoint_ns PK
+        string checkpoint_id PK
+        string parent_checkpoint_id
+        string checkpoint_json
+        string metadata_json
+        integer created_at
+    }
+
+    LANGGRAPH_BLOBS {
+        string thread_id PK
+        string checkpoint_ns PK
+        string channel PK
+        string version PK
+        string type
+        blob data_blob "Serialized payload"
+        integer serialized
+    }
+
+    LANGGRAPH_WRITES {
+        string thread_id PK
+        string checkpoint_ns PK
+        string checkpoint_id PK
+        string task_id PK
+        integer idx PK
+        string channel
+        string type
+        string blob_json
+    }
+
+    LANGGRAPH_RESTORE_HEADS {
+        string thread_id PK
+        string checkpoint_ns PK
+        string checkpoint_id
+        integer updated_at
+    }
+
+    WORKSPACE_BLOBS {
+        string hash PK
+        blob content_msgpack "Immutable MessagePack payload"
+        integer byte_size
+        string created_at
+    }
+
+    WORKSPACE_SNAPSHOTS {
+        string id PK
+        string instance_id FK
+        string project_id FK
+        string instance_type
+        string snapshot_ref
+        string snapshot_hash
+        string blob_hash FK
+        string snapshot_cursor_json
+        blob snapshot_msgpack "Legacy fallback payload"
+        string created_at
+    }
+
+    WORKSPACE_COMMAND_LOGS {
+        integer log_id PK
+        string instance_id FK
+        string command_id
+        string command_type
+        string payload_json
+        integer timestamp
+    }
+
+    FILE_REVISIONS {
+        string id PK
+        string name
+        string description
+        string snapshot_ref FK
+        string created_at
+    }
+
+    LARGE_TOOL_OUTPUTS {
+        string id PK
+        string session_id FK
+        blob content_blob "Evicted output"
+        integer byte_size
+        integer created_at
     }
 ```
 
@@ -668,7 +808,11 @@ stateDiagram-v2
         DispatchTool --> ExecutingFilesystemTool : read_file / write_file
         DispatchTool --> ExecutingSubagent : task / dynamic_task
 
-        ExecutingWorkspaceTool --> StageProposal : Broadcast with staged: true
+        ExecutingWorkspaceTool --> DirectMutation : Direct mutation (staged: false) & debouncedSave
+        ExecutingWorkspaceTool --> StageProposal : Staged proposal review (staged: true)
+        DirectMutation --> ReturnToolResult : State committed to SQLite
+        StageProposal --> ReturnToolResult : Buffered in proposals[instanceId][threadId]
+        ReturnToolResult --> ToolExecuting
         ExecutingSubagent --> SubagentRecursion : Run isolated ReactAgent (limit 200)
         SubagentRecursion --> ReturnSynthesis : Merge final synthesis
     }
@@ -685,29 +829,33 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> ActiveEditing : Live Workspace & Agent Interaction
 
-    ActiveEditing --> Quiescing : CheckpointCreateRequested (Manual or Auto)
-    Quiescing --> SnapshotCapturing : Suppress WebSocket echo (SyncPause lock)
+    ActiveEditing --> SnapshotCapturing : PostTurnAutoCheckpoint (Decoupled wsHandle.flush(), zero window pause)
 
     state SnapshotCapturing {
-        [*] --> FlushWSBuffers : wsServer.flush()
+        [*] --> FlushWSBuffers : wsHandle.flush() (commit dirty memory state)
         FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
-        CaptureLangGraphHead --> CaptureWorkspaceState : Serialize DTO & Idempotent MsgPack snapshot
-        CaptureWorkspaceState --> BundleMetadata : Create CheckpointBundle record with projectId & chat.messageId
+        CaptureLangGraphHead --> DeduplicateCASBlob : SHA-256 hash & upsert workspace_blobs
+        DeduplicateCASBlob --> LinkSnapshotV5 : Insert workspace_snapshots with blob_hash
+        LinkSnapshotV5 --> AssembleDAGBundle : Create CheckpointBundle with parentBundleId & branchName
     }
 
-    SnapshotCapturing --> ActiveEditing : Release SyncPause & resume editing
+    SnapshotCapturing --> ActiveEditing : Checkpoint stored & refresh CheckpointMarkers
 
     ActiveEditing --> RestoreRequested : User clicks CheckpointMarker in Chat
-    RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing
+    RestoreRequested --> QuiescingRestore : Freeze UI & WS syncing (SyncPause mutex)
 
     state QuiescingRestore {
-        [*] --> RollbackChat : Clear session (__start__) OR truncate to messageId
-        RollbackChat --> ResetBranchRegistry : agentCheckpointRegistry.setPendingBranch()
-        ResetBranchRegistry --> RestoreSnapshots : Reconstitute instances from MsgPack
-        RestoreSnapshots --> InvertCommandLogs : Apply InverseCommandEngine deltas
+        [*] --> ValidateTargetBundle : Verify bundle existence
+        ValidateTargetBundle --> RollbackChat : Clear session (__start__) OR truncate to messageId
+        RollbackChat --> UpdateDAGRegistry : setEffectiveBundleId(parent) & setPendingBranch()
+        UpdateDAGRegistry --> HydrateFromCAS : Reconstitute instances from workspace_blobs via blob_hash
+        HydrateFromCAS --> FailClosedGuard : Check payload integrity
+        FailClosedGuard --> ResetOCCSequences : Payload valid: emit system-checkpoint-restore & reset commandSequences
+        FailClosedGuard --> AbortRestore : Missing/corrupt: Throw STORAGE_CHECKPOINT_NOT_FOUND (safe fail-closed)
     }
 
-    QuiescingRestore --> ActiveEditing : Broadcast state:reset to UI & resume
+    QuiescingRestore --> ActiveEditing : Release SyncPause & broadcast chat:restored to UI
+    AbortRestore --> ActiveEditing : Release SyncPause & preserve live workspace unharmed
 ```
 
 ---
@@ -743,10 +891,17 @@ sequenceDiagram
 
     ExtLLM-->>Agent: ToolCall: manageGraph(action: "writeGraph", spec: {...})
     Agent->>Agent: CanvasDiffEngine computes atomic CanvasCommands
-    Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
-    WSS->>WSS: OCC validation (baseVersion >= currentSeq); buffer in proposals[instanceId][threadId]
-    WSS-->>UI: WebSocket push: sync-command & sync-changes (with threadId)
-    UI->>UI: Render Proposal Banner for thread ("Agent modified canvas: 1 node added")
+    alt Direct Workspace Tool Call (Default: staged = false)
+        Agent->>WSS: Broadcast command with { staged: false, threadId, baseVersion }
+        WSS->>WSS: OCC validation & apply to live doc
+        WSS->>WSS: debouncedSave() persists directly to SQLite
+        WSS-->>UI: WebSocket push: sync-command (renders immediately)
+    else Proposal Staging Flow (Explicit: staged = true)
+        Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
+        WSS->>WSS: OCC validation & buffer in proposals[instanceId][threadId]
+        WSS-->>UI: WebSocket push: sync-command & sync-changes (with threadId)
+        UI->>UI: Render Proposal Banner for thread ("Agent modified canvas: 1 node added")
+    end
 
     ExtLLM-->>Agent: Final synthesis text
     Agent-->>Main: Turn finished & persist assistant message
@@ -778,36 +933,49 @@ sequenceDiagram
     participant Main as ⚙️ Main Host (CheckpointOrchestrator)
     participant Registry as ⏱️ AgentCheckpointRegistry
     participant Server as 🗄️ Storage Utility Process
-    participant Storage as 📦 SqliteStorageEngine
+    participant Storage as 📦 SqliteStorageEngine (CAS)
+    participant WSS as ⚡ In-Process WS Server
 
     User->>UI: Clicks "Restore to this point" on CheckpointMarker
-    UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId })
+    UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId, createAutoCheckpoint: false })
     Preload->>Main: IPC invoke(CHECKPOINT_RESTORE)
 
     Main->>UI: IPC send(checkpoint:quiesce) -> Activate SyncPause mutex
     Main->>Main: abortAgentStream(threadId)
-    Main->>Registry: setPendingBranch(threadId, agentCheckpointId)
-    Main->>Registry: setEffective(threadId, agentCheckpointId)
     Main->>Server: POST /api/checkpoints/restore { bundleId, threadId, projectId }
 
-    Server->>Storage: Read CheckpointBundle & target snapshot MsgPack
-    Storage-->>Server: Hydrated Snapshot + Log Cursors
+    Server->>Storage: Read CheckpointBundle & resolve snapshots via blob_hash
+    alt Any snapshot missing or corrupt in workspace_blobs
+        Storage-->>Server: Payload undefined / null
+        Server-->>Main: Throw STORAGE_CHECKPOINT_NOT_FOUND (fail-closed, preserve live state)
+        Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
+        Main-->>Preload: Error response
+        Preload-->>UI: Display restore error notification
+    else Snapshots validated & resolved from CAS
+        Storage-->>Server: Hydrated Snapshot + target cursors
+        Server->>Storage: updateInstance(instanceId, { payload: restoredPayload })
+        Server->>WSS: WebSocket broadcast (clientId: 'system-checkpoint-restore', sequenceNumber)
+        WSS->>WSS: commandSequences.set(instanceId, seq); proposals.delete(instanceId)
+        WSS-->>UI: WebSocket push: instance update & reset proposals
 
-    alt bundle.chat.messageId === '__start__'
-        Server->>Storage: Clear full chat session (clearChatSession)
-    else Regular Message ID
-        Server->>Storage: Truncate chat messages to bundle.chat.messageId (truncateChatSession)
+        alt bundle.chat.messageId === '__start__'
+            Server->>Storage: Clear full chat session (clearChatSession)
+        else Regular Message ID
+            Server->>Storage: Truncate chat messages to bundle.chat.messageId (truncateChatSession)
+        end
+
+        Server-->>Main: Restore completed { status: "restored", bundleId }
+        Main->>Registry: setPendingBranch(threadId, bundle.agentCheckpointId)
+        Main->>Registry: setEffective(threadId, bundle.agentCheckpointId)
+        Main->>Registry: setEffectiveBundleId(threadId, bundle.id)
+
+        Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
+        Main-->>Preload: Restore response
+        Preload-->>UI: Success
+
+        UI->>UI: Reload messages via ChatService.getMessages & refreshBundles()
+        UI->>UI: Re-render Canvas and Lexical Editor at exact historical state
     end
-    Server->>Storage: Set restore head in SqliteCheckpointStore
-    Server-->>UI: WebSocket broadcast: update instance & chat:restored
-    Server-->>Main: Restore completed { status: "restored", bundleId }
-
-    Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
-    Main-->>Preload: Restore response
-    Preload-->>UI: Success
-
-    UI->>UI: Reload messages via ChatService.getMessages & refreshBundles()
-    UI->>UI: Re-render Canvas and Lexical Editor at exact historical state
 ```
 
 #### Sequence 3: WebSocket Canvas Synchronization & Staged Proposal Review
@@ -835,45 +1003,55 @@ sequenceDiagram
     Note over DiffEngine: 1. Remove obsolete relationships<br/>2. Remove deleted nodes<br/>3. Add new nodes + cardinal ports<br/>4. Update node attrs & layouts<br/>5. Add new relationships
     DiffEngine-->>AgentTool: Return atomic CanvasCommand[]
 
-    %% Step 3: Staged Transmission with Thread Scoping & OCC
-    Note over AgentTool: Tag commands with { staged: true, threadId, baseVersion }
-    loop For each CanvasCommand in batch
-        AgentTool->>WSS: Send { type: 'sync-command', command: { ...cmd, staged: true }, version: 1, threadId, baseVersion }
-
-        %% Step 4: Server OCC Validation & Staging
-        WSS->>WSS: validateOCC(baseVersion >= currentSeq)
-        WSS->>WSS: applyCommandToDto() & capture previousState
-        WSS->>WSS: proposals.get(instanceId).get(threadId).push({ ...cmd, previousState })
-        WSS->>WSS: nextSeq = commandSequences++
-
-        WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
-
-        par Real-time Broadcast & Logging
-            WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
-            WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: bufferedProposals }
-            WSS->>RESTServer: POST /api/checkpoints/workspace/logs (Audit Trail)
+    %% Step 3: Transmission Modes (Direct Mutation vs Staged Proposal)
+    alt Direct Workspace Mutation (Default: staged = false)
+        loop For each CanvasCommand in batch
+            AgentTool->>WSS: Send { type: 'sync-command', command: { ...cmd, staged: false }, version: 1, threadId, baseVersion }
+            WSS->>WSS: validateOCC(baseVersion >= currentSeq)
+            WSS->>WSS: applyCommandToDto() & update live doc in memory
+            WSS->>WSS: nextSeq = commandSequences++
+            WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
+            par Broadcast & Direct Persistence
+                WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
+                WSS->>RESTServer: 500ms debouncedSave() persists committed state to SQLite
+                WSS->>RESTServer: POST /api/checkpoints/workspace/logs (Audit Trail)
+            end
         end
-    end
-    AgentTool->>AgentTool: Disconnect ephemeral SyncClient (try/finally safe cleanup)
+    else Staged Proposal Review (Explicit: staged = true)
+        loop For each CanvasCommand in batch
+            AgentTool->>WSS: Send { type: 'sync-command', command: { ...cmd, staged: true }, version: 1, threadId, baseVersion }
+            WSS->>WSS: validateOCC(baseVersion >= currentSeq)
+            WSS->>WSS: applyCommandToDto() & capture previousState
+            WSS->>WSS: proposals.get(instanceId).get(threadId).push({ ...cmd, previousState })
+            WSS->>WSS: nextSeq = commandSequences++
+            WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
+            par Real-time Broadcast & Logging
+                WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
+                WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: bufferedProposals }
+                WSS->>RESTServer: POST /api/checkpoints/workspace/logs (Audit Trail)
+            end
+        end
+        AgentTool->>AgentTool: Disconnect ephemeral SyncClient (try/finally safe cleanup)
 
-    %% Step 5: UI Proposal Banner
-    Note over CanvasUI: CanvasProvider updates visual DOM & displays Thread Proposal Banner
+        %% UI Proposal Banner
+        Note over CanvasUI: CanvasProvider updates visual DOM & displays Thread Proposal Banner
 
-    %% Step 6: User Accept/Reject (Thread-Scoped)
-    alt User clicks "Keep" (Accept Changes for Thread)
-        User->>CanvasUI: Clicks "Accept Changes"
-        CanvasUI->>WSS: Send { type: 'accept-changes', instanceId, threadId, clientId }
-        WSS->>WSS: proposals.get(instanceId).delete(threadId)
-        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
-        WSS->>RESTServer: 500ms debouncedSave() persists committed state
-    else User clicks "Undo" (Reject Changes for Thread)
-        User->>CanvasUI: Clicks "Reject Changes"
-        CanvasUI->>WSS: Send { type: 'reject-changes', instanceId, threadId, clientId }
-        WSS->>WSS: Replay thread proposals in reverse using captured previousState
-        WSS->>WSS: proposals.get(instanceId).delete(threadId)
-        WSS-->>CanvasUI: Broadcast { type: 'sync-snapshot', graph, layout, from: 'agent-proposal-reverted' }
-        WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
-        WSS->>RESTServer: 500ms debouncedSave() persists restored state
+        %% User Accept/Reject (Thread-Scoped)
+        alt User clicks "Keep" (Accept Changes for Thread)
+            User->>CanvasUI: Clicks "Accept Changes"
+            CanvasUI->>WSS: Send { type: 'accept-changes', instanceId, threadId, clientId }
+            WSS->>WSS: proposals.get(instanceId).delete(threadId)
+            WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
+            WSS->>RESTServer: 500ms debouncedSave() persists committed state to SQLite
+        else User clicks "Undo" (Reject Changes for Thread)
+            User->>CanvasUI: Clicks "Reject Changes"
+            CanvasUI->>WSS: Send { type: 'reject-changes', instanceId, threadId, clientId }
+            WSS->>WSS: Replay thread proposals in reverse using captured previousState
+            WSS->>WSS: proposals.get(instanceId).delete(threadId)
+            WSS-->>CanvasUI: Broadcast { type: 'sync-snapshot', graph, layout, from: 'agent-proposal-reverted' }
+            WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
+            WSS->>RESTServer: 500ms debouncedSave() persists restored state to SQLite
+        end
     end
 ```
 
@@ -1025,17 +1203,18 @@ flowchart LR
 
 ## 6. Architecture Decision Records (ADRs)
 
-| ADR                                                                                                                                                | Title                                                                                              | Decision & Key Rationale                                                                                                                                                                                                                                             |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)                | **Multi-Process Electron Host with Forked Utility Daemons**                                        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.                                                                                                   |
-| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)                     | **Sharded V3 Storage Engine (Superseded by V4 SQLite Engine)**                                     | Historical V3 sharded layout (`manifest.json`, `instances/*.json`, `snapshots/*.msgpack`). Superseded by V4 single-file SQLite database with WAL journaling and B-Tree indexing.                                                                                     |
-| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md)               | **Nominal ID Branding for Graph Entities**                                                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                                                                                                                    |
-| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)                  | **Progressive Disclosure Architecture for Agent Skills**                                           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.                                                                                                 |
-| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)               | **Deterministic Inverse Command Rollback Engine**                                                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.                                                                                                    |
-| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)                  | **Large Tool Output Eviction Protocol**                                                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.                                                                                            |
-| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)                   | **WebSocket Real-Time Synchronization & Staged Proposal Protocol**                                 | Stream real-time canvas mutations over dedicated WebSocket channels with thread-partitioned proposal buffering, monotonic sequence acks, and thread-scoped review.                                                                                                   |
-| [ADR-008](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-008-hierarchical-leiden-clustering-and-spatial-layout.md)    | **Hierarchical Leiden Community Detection, Derived Group Enclosures, and Two-Tier Spatial Layout** | Adopt Option A (derived cluster layer in `node.attrs`) with a two-tier spatial layout engine (intra-cluster Dagre/grid + inter-cluster shelf-packing), off-thread WebWorker delta patching for concurrency safety, and granular transactional WebSocket persistence. |
-| [ADR-009](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-009-multi-chat-concurrency-and-workspace-synchronization.md) | **Multi-Chat Concurrent Execution & Workspace Synchronization Architecture**                       | Support concurrent multi-chat Dockview panes via thread-segregated proposal maps, sequence-based Optimistic Concurrency Control, decoupled transactional checkpoint flushes without global window pauses, and unmount-resilient client lifecycle.                    |
+| ADR                                                                                                                                                  | Title                                                                                              | Decision & Key Rationale                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)                  | **Multi-Process Electron Host with Forked Utility Daemons**                                        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.                                                                                                                                                                                                                 |
+| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)                       | **Sharded V3 Storage Engine (Superseded by V4 SQLite Engine)**                                     | Historical V3 sharded layout (`manifest.json`, `instances/*.json`, `snapshots/*.msgpack`). Superseded by V4 single-file SQLite database with WAL journaling and B-Tree indexing.                                                                                                                                                                                                   |
+| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md)                 | **Nominal ID Branding for Graph Entities**                                                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                                                                                                                                                                                                                                  |
+| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)                    | **Progressive Disclosure Architecture for Agent Skills**                                           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.                                                                                                                                                                                                               |
+| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)                 | **Deterministic Inverse Command Rollback Engine**                                                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.                                                                                                                                                                                                                  |
+| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)                    | **Large Tool Output Eviction Protocol**                                                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.                                                                                                                                                                                                          |
+| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)                     | **WebSocket Real-Time Synchronization & Staged Proposal Protocol**                                 | Stream real-time canvas mutations over dedicated WebSocket channels with thread-partitioned proposal buffering, monotonic sequence acks, and thread-scoped review.                                                                                                                                                                                                                 |
+| [ADR-008](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-008-hierarchical-leiden-clustering-and-spatial-layout.md)      | **Hierarchical Leiden Community Detection, Derived Group Enclosures, and Two-Tier Spatial Layout** | Adopt Option A (derived cluster layer in `node.attrs`) with a two-tier spatial layout engine (intra-cluster Dagre/grid + inter-cluster shelf-packing), off-thread WebWorker delta patching for concurrency safety, and granular transactional WebSocket persistence.                                                                                                               |
+| [ADR-009](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-009-multi-chat-concurrency-and-workspace-synchronization.md)   | **Multi-Chat Concurrent Execution & Workspace Synchronization Architecture**                       | Support concurrent multi-chat Dockview panes via thread-segregated proposal maps, sequence-based Optimistic Concurrency Control, decoupled transactional checkpoint flushes without global window pauses, and unmount-resilient client lifecycle.                                                                                                                                  |
+| [ADR-010](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-010-cas-blob-deduplication-and-dag-checkpoint-architecture.md) | **CAS Blob Deduplication, DAG Lineage Tracking, and Fail-Closed Checkpoint Architecture**          | Implement SQLite V5 two-tier Content-Addressed Storage (`workspace_blobs`) with SHA-256 deduplication and cascade-deletion immunity, DAG tree branching via `parentBundleId`, fail-closed restore validation (`STORAGE_CHECKPOINT_NOT_FOUND`), internal `system-checkpoint-restore` WebSocket sequence alignment, and direct workspace tool persistence (`staged: false` default). |
 
 ---
 

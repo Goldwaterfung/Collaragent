@@ -8,7 +8,7 @@ export function registerFileIpc(configManager: ConfigManager) {
   ipcMain.handle('dialog:openFile', async (event) => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [{ name: 'CollarAgent Files', extensions: ['cagent'] }],
+      filters: [{ name: 'CollarAgent Files', extensions: ['cagent'] }]
     })
     if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
       return { canceled: true }
@@ -17,10 +17,14 @@ export function registerFileIpc(configManager: ConfigManager) {
     try {
       // Get the window that initiated the request
       const senderWindow = BrowserWindow.fromWebContents(event.sender) || undefined
-      
+
       const rec = await windowManager.openFile(filePath, senderWindow)
       await configManager.addRecentFile(filePath)
-      try { app.addRecentDocument(filePath) } catch (e) { /* ignore */ }
+      try {
+        app.addRecentDocument(filePath)
+      } catch (e) {
+        /* ignore */
+      }
       return { canceled: false, success: true, windowId: rec.id }
     } catch (err: any) {
       console.error('[ipc] Failed to open file:', err)
@@ -41,7 +45,8 @@ export function registerFileIpc(configManager: ConfigManager) {
           defaultId: 0,
           title: 'File Not Found',
           message: `The file "${filePath}" does not exist.`,
-          detail: 'Would you like to create it as a new file or remove it from the recent files list?'
+          detail:
+            'Would you like to create it as a new file or remove it from the recent files list?'
         })
 
         if (result.response === 0) {
@@ -59,7 +64,11 @@ export function registerFileIpc(configManager: ConfigManager) {
       const senderWindow = BrowserWindow.fromWebContents(event.sender) || undefined
       const rec = await windowManager.openFile(filePath, senderWindow)
       await configManager.addRecentFile(filePath)
-      try { app.addRecentDocument(filePath) } catch (e) { /* ignore */ }
+      try {
+        app.addRecentDocument(filePath)
+      } catch (e) {
+        /* ignore */
+      }
       return { success: true, windowId: rec.id }
     } catch (err: any) {
       console.error('[ipc] Failed to open file:', err)
@@ -71,7 +80,7 @@ export function registerFileIpc(configManager: ConfigManager) {
     const result = await dialog.showSaveDialog({
       title: 'Create New File',
       defaultPath: 'untitled.cagent',
-      filters: [{ name: 'CollarAgent Files', extensions: ['cagent'] }],
+      filters: [{ name: 'CollarAgent Files', extensions: ['cagent'] }]
     })
     if (result.canceled || !result.filePath) return { canceled: true }
     const filePath = result.filePath
@@ -81,7 +90,11 @@ export function registerFileIpc(configManager: ConfigManager) {
 
       const rec = await windowManager.openFile(filePath, senderWindow)
       await configManager.addRecentFile(filePath)
-      try { app.addRecentDocument(filePath) } catch (e) { /* ignore */ }
+      try {
+        app.addRecentDocument(filePath)
+      } catch (e) {
+        /* ignore */
+      }
       return { canceled: false, success: true, windowId: rec.id }
     } catch (err: any) {
       console.error('[ipc] Failed to create file:', err)
@@ -97,14 +110,14 @@ export function registerFileIpc(configManager: ConfigManager) {
     try {
       const senderWindow = BrowserWindow.fromWebContents(event.sender) || undefined
       if (!senderWindow) return { success: false, error: 'No sender window' }
-      
+
       const rec = windowManager.getWindowRecord(senderWindow.id)
       if (!rec) return { success: false, error: 'No active workspace found for this window' }
 
       const result = await dialog.showSaveDialog({
         title: 'Export Workspace Archive',
         defaultPath: rec.filePath,
-        filters: [{ name: 'CollarAgent Archives', extensions: ['cagent'] }],
+        filters: [{ name: 'CollarAgent Archives', extensions: ['cagent'] }]
       })
 
       if (result.canceled || !result.filePath) return { canceled: true }
@@ -112,7 +125,7 @@ export function registerFileIpc(configManager: ConfigManager) {
       // Notify the renderer that the actual export work is starting (dialog is done)
       event.sender.send('export:started')
 
-      const { success, error } = await windowManager.exportArchive(senderWindow.id, result.filePath);
+      const { success, error } = await windowManager.exportArchive(senderWindow.id, result.filePath)
 
       // Notify the renderer that export finished (success or failure)
       event.sender.send('export:ended')

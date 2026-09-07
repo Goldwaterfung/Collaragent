@@ -91,6 +91,7 @@ export class CheckpointOrchestratorImpl implements CheckpointOrchestrator {
     })
 
     const persisted = await this.bundleStore.createBundle(bundle)
+    agentCheckpointRegistry.setEffectiveBundleId(options.threadId, persisted.id)
     return {
       id: persisted.id,
       createdAt: persisted.createdAt,
@@ -150,6 +151,7 @@ export class CheckpointOrchestratorImpl implements CheckpointOrchestrator {
       agentCheckpointRegistry.setPendingBranch(options.threadId, bundle.agentCheckpointId)
       agentCheckpointRegistry.setEffective(options.threadId, bundle.agentCheckpointId)
     }
+    agentCheckpointRegistry.setEffectiveBundleId(options.threadId, bundle.id)
   }
 
   async listCheckpointBundles(

@@ -6,20 +6,18 @@
  *
  */
 
-import {EditorThemeClasses} from 'lexical';
+import { EditorThemeClasses } from 'lexical'
 
 export function getThemeSelector(
   getTheme: () => EditorThemeClasses | null | undefined,
-  name: keyof EditorThemeClasses,
+  name: keyof EditorThemeClasses
 ): string {
-  const className = getTheme()?.[name];
+  const className = getTheme()?.[name]
   if (typeof className !== 'string') {
-    throw new Error(
-      `getThemeClass: required theme property ${name} not defined`,
-    );
+    throw new Error(`getThemeClass: required theme property ${name} not defined`)
   }
   return className
     .split(/\s+/g)
     .map((cls) => `.${cls}`)
-    .join();
+    .join()
 }

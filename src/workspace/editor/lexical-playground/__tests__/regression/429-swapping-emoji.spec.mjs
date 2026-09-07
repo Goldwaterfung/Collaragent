@@ -6,24 +6,24 @@
  *
  */
 
-import {moveLeft} from '../keyboardShortcuts/index.mjs';
+import { moveLeft } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   assertSelection,
   focusEditor,
   html,
   initialize,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 test.describe('Regression test #429', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
   test(
     `Can add new lines before the line with emoji`,
-    {tag: '@flaky'},
-    async ({isRichText, page}) => {
-      await focusEditor(page);
-      await page.keyboard.type(':) or :(');
+    { tag: '@flaky' },
+    async ({ isRichText, page }) => {
+      await focusEditor(page)
+      await page.keyboard.type(':) or :(')
       await assertHTML(
         page,
         html`
@@ -36,17 +36,17 @@ test.describe('Regression test #429', () => {
               <span class="emoji-inner">🙁</span>
             </span>
           </p>
-        `,
-      );
+        `
+      )
       await assertSelection(page, {
         anchorOffset: 2,
         anchorPath: [0, 2, 0, 0],
         focusOffset: 2,
-        focusPath: [0, 2, 0, 0],
-      });
+        focusPath: [0, 2, 0, 0]
+      })
 
-      await moveLeft(page, 6);
-      await page.keyboard.press('Enter');
+      await moveLeft(page, 6)
+      await page.keyboard.press('Enter')
       if (isRichText) {
         await assertHTML(
           page,
@@ -61,14 +61,14 @@ test.describe('Regression test #429', () => {
                 <span class="emoji-inner">🙁</span>
               </span>
             </p>
-          `,
-        );
+          `
+        )
         await assertSelection(page, {
           anchorOffset: 0,
           anchorPath: [1, 0, 0, 0],
           focusOffset: 0,
-          focusPath: [1, 0, 0, 0],
-        });
+          focusPath: [1, 0, 0, 0]
+        })
       } else {
         await assertHTML(
           page,
@@ -83,17 +83,17 @@ test.describe('Regression test #429', () => {
                 <span class="emoji-inner">🙁</span>
               </span>
             </p>
-          `,
-        );
+          `
+        )
         await assertSelection(page, {
           anchorOffset: 0,
           anchorPath: [0, 1, 0, 0],
           focusOffset: 0,
-          focusPath: [0, 1, 0, 0],
-        });
+          focusPath: [0, 1, 0, 0]
+        })
       }
 
-      await page.keyboard.press('Backspace');
+      await page.keyboard.press('Backspace')
       await assertHTML(
         page,
         html`
@@ -106,14 +106,14 @@ test.describe('Regression test #429', () => {
               <span class="emoji-inner">🙁</span>
             </span>
           </p>
-        `,
-      );
+        `
+      )
       await assertSelection(page, {
         anchorOffset: 0,
         anchorPath: [0, 0, 0, 0],
         focusOffset: 0,
-        focusPath: [0, 0, 0, 0],
-      });
-    },
-  );
-});
+        focusPath: [0, 0, 0, 0]
+      })
+    }
+  )
+})

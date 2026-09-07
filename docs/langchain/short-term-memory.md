@@ -23,75 +23,76 @@ To add short-term memory (thread-level persistence) to an agent, you need to spe
 <Info>
   LangChain's agent manages short-term memory as a part of your agent's state.
 
-  By storing these in the graph's state, the agent can access the full context for a given conversation while maintaining separation between different threads.
+By storing these in the graph's state, the agent can access the full context for a given conversation while maintaining separation between different threads.
 
-  State is persisted to a database (or memory) using a checkpointer so the thread can be resumed at any time.
+State is persisted to a database (or memory) using a checkpointer so the thread can be resumed at any time.
 
-  Short-term memory updates when the agent is invoked or a step (like a tool call) is completed, and the state is read at the start of each step.
+Short-term memory updates when the agent is invoked or a step (like a tool call) is completed, and the state is read at the start of each step.
 </Info>
 
 ```ts {highlight={2,4, 9,14}} theme={null}
-import { createAgent } from "langchain";
-import { MemorySaver } from "@langchain/langgraph";
+import { createAgent } from 'langchain'
+import { MemorySaver } from '@langchain/langgraph'
 
-const checkpointer = new MemorySaver();
+const checkpointer = new MemorySaver()
 
 const agent = createAgent({
-    model: "claude-sonnet-4-5-20250929",
-    tools: [],
-    checkpointer,
-});
+  model: 'claude-sonnet-4-5-20250929',
+  tools: [],
+  checkpointer
+})
 
 await agent.invoke(
-    { messages: [{ role: "user", content: "hi! i am Bob" }] },
-    { configurable: { thread_id: "1" } }
-);
+  { messages: [{ role: 'user', content: 'hi! i am Bob' }] },
+  { configurable: { thread_id: '1' } }
+)
 ```
 
 ### In production
 
 In production, use a checkpointer backed by a database:
 
-```ts  theme={null}
-import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+```ts theme={null}
+import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres'
 
-const DB_URI = "postgresql://postgres:postgres@localhost:5442/postgres?sslmode=disable";
-const checkpointer = PostgresSaver.fromConnString(DB_URI);
+const DB_URI = 'postgresql://postgres:postgres@localhost:5442/postgres?sslmode=disable'
+const checkpointer = PostgresSaver.fromConnString(DB_URI)
 ```
 
 ## Customizing agent memory
 
 You can extend the agent state by creating custom middleware with a state schema. Custom state schemas can be passed using the `stateSchema` parameter in middleware.
 
-```typescript  theme={null}
-import * as z from "zod";
-import { createAgent, createMiddleware } from "langchain";
-import { MemorySaver } from "@langchain/langgraph";
+```typescript theme={null}
+import * as z from 'zod'
+import { createAgent, createMiddleware } from 'langchain'
+import { MemorySaver } from '@langchain/langgraph'
 
-const customStateSchema = z.object({  // [!code highlight]
-    userId: z.string(),  // [!code highlight]
-    preferences: z.record(z.string(), z.any()),  // [!code highlight]
-});  // [!code highlight]
+const customStateSchema = z.object({
+  // [!code highlight]
+  userId: z.string(), // [!code highlight]
+  preferences: z.record(z.string(), z.any()) // [!code highlight]
+}) // [!code highlight]
 
 const stateExtensionMiddleware = createMiddleware({
-    name: "StateExtension",
-    stateSchema: customStateSchema,  // [!code highlight]
-});
+  name: 'StateExtension',
+  stateSchema: customStateSchema // [!code highlight]
+})
 
-const checkpointer = new MemorySaver();
+const checkpointer = new MemorySaver()
 const agent = createAgent({
-    model: "gpt-5",
-    tools: [],
-    middleware: [stateExtensionMiddleware],  // [!code highlight]
-    checkpointer,
-});
+  model: 'gpt-5',
+  tools: [],
+  middleware: [stateExtensionMiddleware], // [!code highlight]
+  checkpointer
+})
 
 // Custom state can be passed in invoke
 const result = await agent.invoke({
-    messages: [{ role: "user", content: "Hello" }],
-    userId: "user_123",  // [!code highlight]
-    preferences: { theme: "dark" },  // [!code highlight]
-});
+  messages: [{ role: 'user', content: 'Hello' }],
+  userId: 'user_123', // [!code highlight]
+  preferences: { theme: 'dark' } // [!code highlight]
+})
 ```
 
 ## Common patterns
@@ -126,41 +127,37 @@ One way to decide when to truncate messages is to count the tokens in the messag
 
 To trim message history in an agent, use [`createMiddleware`](https://reference.langchain.com/javascript/functions/langchain.index.createMiddleware.html) with a `beforeModel` hook:
 
-```typescript  theme={null}
-import { RemoveMessage } from "@langchain/core/messages";
-import { createAgent, createMiddleware } from "langchain";
-import { MemorySaver, REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
+```typescript theme={null}
+import { RemoveMessage } from '@langchain/core/messages'
+import { createAgent, createMiddleware } from 'langchain'
+import { MemorySaver, REMOVE_ALL_MESSAGES } from '@langchain/langgraph'
 
 const trimMessages = createMiddleware({
-  name: "TrimMessages",
+  name: 'TrimMessages',
   beforeModel: (state) => {
-    const messages = state.messages;
+    const messages = state.messages
 
     if (messages.length <= 3) {
-      return; // No changes needed
+      return // No changes needed
     }
 
-    const firstMsg = messages[0];
-    const recentMessages =
-      messages.length % 2 === 0 ? messages.slice(-3) : messages.slice(-4);
-    const newMessages = [firstMsg, ...recentMessages];
+    const firstMsg = messages[0]
+    const recentMessages = messages.length % 2 === 0 ? messages.slice(-3) : messages.slice(-4)
+    const newMessages = [firstMsg, ...recentMessages]
 
     return {
-      messages: [
-        new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
-        ...newMessages,
-      ],
-    };
-  },
-});
+      messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...newMessages]
+    }
+  }
+})
 
-const checkpointer = new MemorySaver();
+const checkpointer = new MemorySaver()
 const agent = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   tools: [],
   middleware: [trimMessages],
-  checkpointer,
-});
+  checkpointer
+})
 ```
 
 ### Delete messages
@@ -173,84 +170,74 @@ To delete messages from the graph state, you can use the `RemoveMessage`. For `R
 
 To remove specific messages:
 
-```typescript  theme={null}
-import { RemoveMessage } from "@langchain/core/messages";
+```typescript theme={null}
+import { RemoveMessage } from '@langchain/core/messages'
 
 const deleteMessages = (state) => {
-    const messages = state.messages;
-    if (messages.length > 2) {
-        // remove the earliest two messages
-        return {
-        messages: messages
-            .slice(0, 2)
-            .map((m) => new RemoveMessage({ id: m.id })),
-        };
+  const messages = state.messages
+  if (messages.length > 2) {
+    // remove the earliest two messages
+    return {
+      messages: messages.slice(0, 2).map((m) => new RemoveMessage({ id: m.id }))
     }
-};
+  }
+}
 ```
 
 <Warning>
   When deleting messages, **make sure** that the resulting message history is valid. Check the limitations of the LLM provider you're using. For example:
 
-  * Some providers expect message history to start with a `user` message
-  * Most providers require `assistant` messages with tool calls to be followed by corresponding `tool` result messages.
+- Some providers expect message history to start with a `user` message
+- Most providers require `assistant` messages with tool calls to be followed by corresponding `tool` result messages.
 </Warning>
 
-```typescript  theme={null}
-import { RemoveMessage } from "@langchain/core/messages";
-import { createAgent, createMiddleware } from "langchain";
-import { MemorySaver } from "@langchain/langgraph";
+```typescript theme={null}
+import { RemoveMessage } from '@langchain/core/messages'
+import { createAgent, createMiddleware } from 'langchain'
+import { MemorySaver } from '@langchain/langgraph'
 
 const deleteOldMessages = createMiddleware({
-  name: "DeleteOldMessages",
+  name: 'DeleteOldMessages',
   afterModel: (state) => {
-    const messages = state.messages;
+    const messages = state.messages
     if (messages.length > 2) {
       // remove the earliest two messages
       return {
-        messages: messages
-          .slice(0, 2)
-          .map((m) => new RemoveMessage({ id: m.id! })),
-      };
+        messages: messages.slice(0, 2).map((m) => new RemoveMessage({ id: m.id! }))
+      }
     }
-    return;
-  },
-});
+    return
+  }
+})
 
 const agent = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   tools: [],
-  systemPrompt: "Please be concise and to the point.",
+  systemPrompt: 'Please be concise and to the point.',
   middleware: [deleteOldMessages],
-  checkpointer: new MemorySaver(),
-});
+  checkpointer: new MemorySaver()
+})
 
-const config = { configurable: { thread_id: "1" } };
+const config = { configurable: { thread_id: '1' } }
 
 const streamA = await agent.stream(
-  { messages: [{ role: "user", content: "hi! I'm bob" }] },
-  { ...config, streamMode: "values" }
-);
+  { messages: [{ role: 'user', content: "hi! I'm bob" }] },
+  { ...config, streamMode: 'values' }
+)
 for await (const event of streamA) {
-  const messageDetails = event.messages.map((message) => [
-    message.getType(),
-    message.content,
-  ]);
-  console.log(messageDetails);
+  const messageDetails = event.messages.map((message) => [message.getType(), message.content])
+  console.log(messageDetails)
 }
 
 const streamB = await agent.stream(
   {
-    messages: [{ role: "user", content: "what's my name?" }],
+    messages: [{ role: 'user', content: "what's my name?" }]
   },
-  { ...config, streamMode: "values" }
-);
+  { ...config, streamMode: 'values' }
+)
 for await (const event of streamB) {
-  const messageDetails = event.messages.map((message) => [
-    message.getType(),
-    message.content,
-  ]);
-  console.log(messageDetails);
+  const messageDetails = event.messages.map((message) => [message.getType(), message.content])
+  console.log(messageDetails)
 }
 ```
 
@@ -270,32 +257,32 @@ Because of this, some applications benefit from a more sophisticated approach of
 
 To summarize message history in an agent, use the built-in [`summarizationMiddleware`](docs/langchain/middleware#summarization):
 
-```typescript  theme={null}
-import { createAgent, summarizationMiddleware } from "langchain";
-import { MemorySaver } from "@langchain/langgraph";
+```typescript theme={null}
+import { createAgent, summarizationMiddleware } from 'langchain'
+import { MemorySaver } from '@langchain/langgraph'
 
-const checkpointer = new MemorySaver();
+const checkpointer = new MemorySaver()
 
 const agent = createAgent({
-  model: "gpt-4o",
+  model: 'gpt-4o',
   tools: [],
   middleware: [
     summarizationMiddleware({
-      model: "gpt-4o-mini",
+      model: 'gpt-4o-mini',
       trigger: { tokens: 4000 },
-      keep: { messages: 20 },
-    }),
+      keep: { messages: 20 }
+    })
   ],
-  checkpointer,
-});
+  checkpointer
+})
 
-const config = { configurable: { thread_id: "1" } };
-await agent.invoke({ messages: "hi, my name is bob" }, config);
-await agent.invoke({ messages: "write a short poem about cats" }, config);
-await agent.invoke({ messages: "now do the same but for dogs" }, config);
-const finalResponse = await agent.invoke({ messages: "what's my name?" }, config);
+const config = { configurable: { thread_id: '1' } }
+await agent.invoke({ messages: 'hi, my name is bob' }, config)
+await agent.invoke({ messages: 'write a short poem about cats' }, config)
+await agent.invoke({ messages: 'now do the same but for dogs' }, config)
+const finalResponse = await agent.invoke({ messages: "what's my name?" }, config)
 
-console.log(finalResponse.messages.at(-1)?.content);
+console.log(finalResponse.messages.at(-1)?.content)
 // Your name is Bob!
 ```
 
@@ -313,43 +300,43 @@ Access short term memory (state) in a tool using the `runtime` parameter (typed 
 
 The `runtime` parameter is hidden from the tool signature (so the model doesn't see it), but the tool can access the state through it.
 
-```typescript  theme={null}
-import * as z from "zod";
-import { createAgent, tool, type ToolRuntime } from "langchain";
+```typescript theme={null}
+import * as z from 'zod'
+import { createAgent, tool, type ToolRuntime } from 'langchain'
 
 const stateSchema = z.object({
-  userId: z.string(),
-});
+  userId: z.string()
+})
 
 const getUserInfo = tool(
   async (_, config: ToolRuntime<z.infer<typeof stateSchema>>) => {
-    const userId = config.state.userId;
-    return userId === "user_123" ? "John Doe" : "Unknown User";
+    const userId = config.state.userId
+    return userId === 'user_123' ? 'John Doe' : 'Unknown User'
   },
   {
-    name: "get_user_info",
-    description: "Get user info",
-    schema: z.object({}),
+    name: 'get_user_info',
+    description: 'Get user info',
+    schema: z.object({})
   }
-);
+)
 
 const agent = createAgent({
-  model: "gpt-5-nano",
+  model: 'gpt-5-nano',
   tools: [getUserInfo],
-  stateSchema,
-});
+  stateSchema
+})
 
 const result = await agent.invoke(
   {
-    messages: [{ role: "user", content: "what's my name?" }],
-    userId: "user_123",
+    messages: [{ role: 'user', content: "what's my name?" }],
+    userId: 'user_123'
   },
   {
-    context: {},
+    context: {}
   }
-);
+)
 
-console.log(result.messages.at(-1)?.content);
+console.log(result.messages.at(-1)?.content)
 // Outputs: "Your name is John Doe."
 ```
 
@@ -359,63 +346,63 @@ To modify the agent's short-term memory (state) during execution, you can return
 
 This is useful for persisting intermediate results or making information accessible to subsequent tools or prompts.
 
-```typescript  theme={null}
-import * as z from "zod";
-import { tool, createAgent, ToolMessage, type ToolRuntime } from "langchain";
-import { Command } from "@langchain/langgraph";
+```typescript theme={null}
+import * as z from 'zod'
+import { tool, createAgent, ToolMessage, type ToolRuntime } from 'langchain'
+import { Command } from '@langchain/langgraph'
 
 const CustomState = z.object({
-  userId: z.string().optional(),
-});
+  userId: z.string().optional()
+})
 
 const updateUserInfo = tool(
   async (_, config: ToolRuntime<typeof CustomState>) => {
-    const userId = config.state.userId;
-    const name = userId === "user_123" ? "John Smith" : "Unknown user";
+    const userId = config.state.userId
+    const name = userId === 'user_123' ? 'John Smith' : 'Unknown user'
     return new Command({
       update: {
         userName: name,
         // update the message history
         messages: [
           new ToolMessage({
-            content: "Successfully looked up user information",
-            tool_call_id: config.toolCall?.id ?? "",
-          }),
-        ],
-      },
-    });
+            content: 'Successfully looked up user information',
+            tool_call_id: config.toolCall?.id ?? ''
+          })
+        ]
+      }
+    })
   },
   {
-    name: "update_user_info",
-    description: "Look up and update user info.",
-    schema: z.object({}),
+    name: 'update_user_info',
+    description: 'Look up and update user info.',
+    schema: z.object({})
   }
-);
+)
 
 const greet = tool(
   async (_, config) => {
-    const userName = config.context?.userName;
-    return `Hello ${userName}!`;
+    const userName = config.context?.userName
+    return `Hello ${userName}!`
   },
   {
-    name: "greet",
-    description: "Use this to greet the user once you found their info.",
-    schema: z.object({}),
+    name: 'greet',
+    description: 'Use this to greet the user once you found their info.',
+    schema: z.object({})
   }
-);
+)
 
 const agent = createAgent({
-  model: "openai:gpt-5-mini",
+  model: 'openai:gpt-5-mini',
   tools: [updateUserInfo, greet],
-  stateSchema: CustomState,
-});
+  stateSchema: CustomState
+})
 
 const result = await agent.invoke({
-  messages: [{ role: "user", content: "greet the user" }],
-  userId: "user_123",
-});
+  messages: [{ role: 'user', content: 'greet the user' }],
+  userId: 'user_123'
+})
 
-console.log(result.messages.at(-1)?.content);
+console.log(result.messages.at(-1)?.content)
 // Output: "Hello! I’m here to help — what would you like to do today?"
 ```
 
@@ -423,52 +410,52 @@ console.log(result.messages.at(-1)?.content);
 
 Access short term memory (state) in middleware to create dynamic prompts based on conversation history or custom state fields.
 
-```typescript  theme={null}
-import * as z from "zod";
-import { createAgent, tool, dynamicSystemPromptMiddleware } from "langchain";
+```typescript theme={null}
+import * as z from 'zod'
+import { createAgent, tool, dynamicSystemPromptMiddleware } from 'langchain'
 
 const contextSchema = z.object({
-  userName: z.string(),
-});
-type ContextSchema = z.infer<typeof contextSchema>;
+  userName: z.string()
+})
+type ContextSchema = z.infer<typeof contextSchema>
 
 const getWeather = tool(
   async ({ city }) => {
-    return `The weather in ${city} is always sunny!`;
+    return `The weather in ${city} is always sunny!`
   },
   {
-    name: "get_weather",
-    description: "Get user info",
+    name: 'get_weather',
+    description: 'Get user info',
     schema: z.object({
-      city: z.string(),
-    }),
+      city: z.string()
+    })
   }
-);
+)
 
 const agent = createAgent({
-  model: "gpt-5-nano",
+  model: 'gpt-5-nano',
   tools: [getWeather],
   contextSchema,
   middleware: [
     dynamicSystemPromptMiddleware<ContextSchema>((_, config) => {
-      return `You are a helpful assistant. Address the user as ${config.context?.userName}.`;
-    }),
-  ],
-});
+      return `You are a helpful assistant. Address the user as ${config.context?.userName}.`
+    })
+  ]
+})
 
 const result = await agent.invoke(
   {
-    messages: [{ role: "user", content: "What is the weather in SF?" }],
+    messages: [{ role: 'user', content: 'What is the weather in SF?' }]
   },
   {
     context: {
-      userName: "John Smith",
-    },
+      userName: 'John Smith'
+    }
   }
-);
+)
 
 for (const message of result.messages) {
-  console.log(message);
+  console.log(message)
 }
 /**
  * HumanMessage {
@@ -503,7 +490,7 @@ for (const message of result.messages) {
 
 ### Before model
 
-```mermaid  theme={null}
+```mermaid theme={null}
 %%{
     init: {
         "fontFamily": "monospace",
@@ -529,40 +516,40 @@ graph TD
     class END blueHighlight;
 ```
 
-```typescript  theme={null}
-import { RemoveMessage } from "@langchain/core/messages";
-import { createAgent, createMiddleware, trimMessages } from "langchain";
-import { MemorySaver } from "@langchain/langgraph";
-import { REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
+```typescript theme={null}
+import { RemoveMessage } from '@langchain/core/messages'
+import { createAgent, createMiddleware, trimMessages } from 'langchain'
+import { MemorySaver } from '@langchain/langgraph'
+import { REMOVE_ALL_MESSAGES } from '@langchain/langgraph'
 
 const trimMessageHistory = createMiddleware({
-  name: "TrimMessages",
+  name: 'TrimMessages',
   beforeModel: async (state) => {
     const trimmed = await trimMessages(state.messages, {
       maxTokens: 384,
-      strategy: "last",
-      startOn: "human",
-      endOn: ["human", "tool"],
-      tokenCounter: (msgs) => msgs.length,
-    });
+      strategy: 'last',
+      startOn: 'human',
+      endOn: ['human', 'tool'],
+      tokenCounter: (msgs) => msgs.length
+    })
     return {
-      messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...trimmed],
-    };
-  },
-});
+      messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...trimmed]
+    }
+  }
+})
 
-const checkpointer = new MemorySaver();
+const checkpointer = new MemorySaver()
 const agent = createAgent({
-  model: "gpt-5-nano",
+  model: 'gpt-5-nano',
   tools: [],
   middleware: [trimMessageHistory],
-  checkpointer,
-});
+  checkpointer
+})
 ```
 
 ### After model
 
-```mermaid  theme={null}
+```mermaid theme={null}
 %%{
     init: {
         "fontFamily": "monospace",
@@ -589,33 +576,27 @@ graph TD
     class POST greenHighlight;
 ```
 
-```typescript  theme={null}
-import { RemoveMessage } from "@langchain/core/messages";
-import { createAgent, createMiddleware } from "langchain";
-import { REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
+```typescript theme={null}
+import { RemoveMessage } from '@langchain/core/messages'
+import { createAgent, createMiddleware } from 'langchain'
+import { REMOVE_ALL_MESSAGES } from '@langchain/langgraph'
 
 const validateResponse = createMiddleware({
-  name: "ValidateResponse",
+  name: 'ValidateResponse',
   afterModel: (state) => {
-    const lastMessage = state.messages.at(-1)?.content;
-    if (
-      typeof lastMessage === "string" &&
-      lastMessage.toLowerCase().includes("confidential")
-    ) {
+    const lastMessage = state.messages.at(-1)?.content
+    if (typeof lastMessage === 'string' && lastMessage.toLowerCase().includes('confidential')) {
       return {
-        messages: [
-          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
-          ...state.messages,
-        ],
-      };
+        messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...state.messages]
+      }
     }
-    return;
-  },
-});
+    return
+  }
+})
 
 const agent = createAgent({
-  model: "gpt-5-nano",
+  model: 'gpt-5-nano',
   tools: [],
-  middleware: [validateResponse],
-});
+  middleware: [validateResponse]
+})
 ```

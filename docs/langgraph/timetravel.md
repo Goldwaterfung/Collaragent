@@ -1,4 +1,5 @@
 > ## Documentation Index
+>
 > Fetch the complete documentation index at: https://docs.langchain.com/llms.txt
 > Use this file to discover all available pages before exploring further.
 
@@ -35,92 +36,93 @@ To build this workflow in this example you need to set up the Anthropic LLM and 
   npm install @langchain/langgraph @langchain/core
   ```
 
-  ```bash pnpm theme={null}
-  pnpm add @langchain/langgraph @langchain/core
-  ```
+```bash pnpm theme={null}
+pnpm add @langchain/langgraph @langchain/core
+```
 
-  ```bash yarn theme={null}
-  yarn add @langchain/langgraph @langchain/core
-  ```
+```bash yarn theme={null}
+yarn add @langchain/langgraph @langchain/core
+```
 
-  ```bash bun theme={null}
-  bun add @langchain/langgraph @langchain/core
-  ```
+```bash bun theme={null}
+bun add @langchain/langgraph @langchain/core
+```
+
 </CodeGroup>
 
 2. Initialize the LLM:
 
-```typescript  theme={null}
-import { ChatAnthropic } from "@langchain/anthropic";
+```typescript theme={null}
+import { ChatAnthropic } from '@langchain/anthropic'
 
 const llm = new ChatAnthropic({
-  model: "claude-sonnet-4-5-20250929",
-  apiKey: "<your_anthropic_key>"
-});
+  model: 'claude-sonnet-4-5-20250929',
+  apiKey: '<your_anthropic_key>'
+})
 ```
 
 3. Implement the workflow
    The implementation of the workflow is a simple graph with two nodes, one for generating a joke topic, another for writing the joke itself and a state to storing the intermediate values.
 
-```typescript  theme={null}
-import { v4 as uuidv4 } from "uuid";
-import * as z from "zod";
-import { StateGraph, StateSchema, GraphNode, START, END, MemorySaver } from "@langchain/langgraph";
-import { ChatAnthropic } from "@langchain/anthropic";
+```typescript theme={null}
+import { v4 as uuidv4 } from 'uuid'
+import * as z from 'zod'
+import { StateGraph, StateSchema, GraphNode, START, END, MemorySaver } from '@langchain/langgraph'
+import { ChatAnthropic } from '@langchain/anthropic'
 
 const State = new StateSchema({
   topic: z.string().optional(),
-  joke: z.string().optional(),
-});
+  joke: z.string().optional()
+})
 
 const model = new ChatAnthropic({
-  model: "claude-sonnet-4-5-20250929",
-  temperature: 0,
-});
+  model: 'claude-sonnet-4-5-20250929',
+  temperature: 0
+})
 
 const generateTopic: GraphNode<typeof State> = async (state) => {
   // LLM call to generate a topic for the joke
-  const msg = await model.invoke("Give me a funny topic for a joke");
-  return { topic: msg.content };
-};
+  const msg = await model.invoke('Give me a funny topic for a joke')
+  return { topic: msg.content }
+}
 
 const writeJoke: GraphNode<typeof State> = async (state) => {
   // LLM call to write a joke based on the topic
-  const msg = await model.invoke(`Write a short joke about ${state.topic}`);
-  return { joke: msg.content };
-};
+  const msg = await model.invoke(`Write a short joke about ${state.topic}`)
+  return { joke: msg.content }
+}
 
 // Build workflow
 const workflow = new StateGraph(State)
   // Add nodes
-  .addNode("generateTopic", generateTopic)
-  .addNode("writeJoke", writeJoke)
+  .addNode('generateTopic', generateTopic)
+  .addNode('writeJoke', writeJoke)
   // Add edges to connect nodes
-  .addEdge(START, "generateTopic")
-  .addEdge("generateTopic", "writeJoke")
-  .addEdge("writeJoke", END);
+  .addEdge(START, 'generateTopic')
+  .addEdge('generateTopic', 'writeJoke')
+  .addEdge('writeJoke', END)
 
 // Compile
-const checkpointer = new MemorySaver();
-const graph = workflow.compile({ checkpointer });
+const checkpointer = new MemorySaver()
+const graph = workflow.compile({ checkpointer })
 ```
 
 ### 1. Run the graph
 
 To start the workflow, [`invoke`](https://reference.langchain.com/javascript/classes/_langchain_langgraph.index.CompiledStateGraph.html#invoke) is called without any inputs. Note the `thread_id` to track this execution and retrieve its checkpoints later.
 
-```typescript  theme={null}
+```typescript theme={null}
 const config = {
   configurable: {
-    thread_id: uuidv4(),
-  },
-};
+    thread_id: uuidv4()
+  }
+}
 
-const state = await graph.invoke({}, config);
+const state = await graph.invoke({}, config)
 
-console.log(state.topic);
-console.log();
-console.log(state.joke);
+console.log(state.topic)
+console.log()
+console.log(state.joke)
 ```
 
 **Output:**
@@ -139,17 +141,17 @@ My blue argyle is now living in Bermuda with a red polka dot, posting vacation p
 
 To continue from a previous point in the graphs run, use [`get_state_history`](https://reference.langchain.com/javascript/classes/_langchain_langgraph.pregel.Pregel.html#getStateHistory) to retrieve all the states and select the one where you want to resume execution.
 
-```typescript  theme={null}
+```typescript theme={null}
 // The states are returned in reverse chronological order.
-const states = [];
+const states = []
 for await (const state of graph.getStateHistory(config)) {
-  states.push(state);
+  states.push(state)
 }
 
 for (const state of states) {
-  console.log(state.next);
-  console.log(state.config.configurable?.checkpoint_id);
-  console.log();
+  console.log(state.next)
+  console.log(state.config.configurable?.checkpoint_id)
+  console.log()
 }
 ```
 
@@ -169,11 +171,11 @@ for (const state of states) {
 1f02ac4a-a4dd-665e-bfff-e6c8c44315d9
 ```
 
-```typescript  theme={null}
+```typescript theme={null}
 // This is the state before last (states are listed in chronological order)
-const selectedState = states[1];
-console.log(selectedState.next);
-console.log(selectedState.values);
+const selectedState = states[1]
+console.log(selectedState.next)
+console.log(selectedState.values)
 ```
 
 **Output:**
@@ -189,11 +191,11 @@ console.log(selectedState.values);
 
 `updateState` will create a new checkpoint. The new checkpoint will be associated with the same thread, but a new checkpoint ID.
 
-```typescript  theme={null}
+```typescript theme={null}
 const newConfig = await graph.updateState(selectedState.config, {
-  topic: "chickens",
-});
-console.log(newConfig);
+  topic: 'chickens'
+})
+console.log(newConfig)
 ```
 
 **Output:**
@@ -206,13 +208,13 @@ console.log(newConfig);
 
 For resumings execution from the selected checkpoint, call [`invoke`](https://reference.langchain.com/javascript/classes/_langchain_langgraph.index.CompiledStateGraph.html#invoke) with the config that points to the new checkpoint.
 
-```typescript  theme={null}
-await graph.invoke(null, newConfig);
+```typescript theme={null}
+await graph.invoke(null, newConfig)
 ```
 
 **Output:**
 
-```typescript  theme={null}
+```typescript theme={null}
 {
   'topic': 'chickens',
   'joke': 'Why did the chicken join a band?\n\nBecause it had excellent drumsticks!'

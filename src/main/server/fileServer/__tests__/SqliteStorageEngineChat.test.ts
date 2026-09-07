@@ -479,5 +479,49 @@ describe('SqliteStorageEngine - Chat, Cascades & Shutdown Lifecycle', () => {
       expect(engine.getCheckpointBundle('bundle-b1')?.id).toBe('bundle-b1')
       expect(engine.getCheckpointBundle('non-existent')).toBeUndefined()
     })
+
+    it('immunizes CAS snapshots against foreign key cascade deletions when instances are deleted', async () => {
+      const project = engine.createProject('CAS Test Project')
+      const instanceA = engine.createInstance('canvas', {
+        projectId: project.id,
+        name: 'Canvas A',
+        content: { type: 'graph-canvas', graph: { nodes: {}, relationships: {} } }
+      })
+      const instanceB = engine.createInstance('canvas', {
+        projectId: project.id,
+        name: 'Canvas B',
+        content: { type: 'graph-canvas', graph: { nodes: {}, relationships: {} } }
+      })
+
+      const sharedContent = { type: 'graph-canvas', payload: 'identical-shared-graph' }
+      const snapshotA = await engine.createWorkspaceSnapshot({
+        instanceId: instanceA.id,
+        instanceType: 'graph-canvas',
+        projectId: project.id,
+        snapshot: sharedContent
+      })
+
+      const snapshotB = await engine.createWorkspaceSnapshot({
+        instanceId: instanceB.id,
+        instanceType: 'graph-canvas',
+        projectId: project.id,
+        snapshot: sharedContent
+      })
+
+      expect(snapshotA.snapshotRef).toBe(snapshotB.snapshotRef)
+
+      // Delete instance A
+      engine.deleteInstance(instanceA.id)
+      expect(engine.getInstanceContent(instanceA.id)).toBeNull()
+      expect(engine.getInstanceContent(instanceB.id)).not.toBeNull()
+
+      // Loading snapshot for instance B must succeed and match shared content
+      const loadedB = await engine.loadWorkspaceSnapshot(snapshotB.id)
+      expect(loadedB).toEqual(sharedContent)
+
+      // Blob in workspace_blobs must still exist
+      const rawBlob = engine.getSnapshot(snapshotB.snapshotRef)
+      expect(rawBlob).not.toBeNull()
+    })
   })
 })

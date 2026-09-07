@@ -1,25 +1,33 @@
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $convertToMarkdownString } from "@lexical/markdown";
-import { TRANSFORMERS } from "../transformers/markdown";
-import { useCallback, JSX } from "react";
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { $convertToMarkdownString, $convertSelectionToMarkdownString } from '@lexical/markdown'
+import { $getSelection, $isRangeSelection } from 'lexical'
+import { TRANSFORMERS } from '../transformers/markdown'
+import { useCallback, JSX } from 'react'
 
 export default function CopyMarkdownPlugin(): JSX.Element {
-  const [editor] = useLexicalComposerContext();
+  const [editor] = useLexicalComposerContext()
 
   const copyMarkdown = useCallback(() => {
     editor.getEditorState().read(() => {
-      const markdown = $convertToMarkdownString(TRANSFORMERS);
+      const selection = $getSelection()
+      const markdown =
+        $isRangeSelection(selection) && !selection.isCollapsed()
+          ? $convertSelectionToMarkdownString(TRANSFORMERS, selection)
+          : $convertToMarkdownString(TRANSFORMERS)
+
+      if (!markdown) return
+
       navigator.clipboard.writeText(markdown).then(
         () => {
           // Optional: Show a toast or feedback
-          console.log("Markdown copied to clipboard");
+          console.log('Markdown copied to clipboard')
         },
         (err) => {
-          console.error("Could not copy markdown: ", err);
+          console.error('Could not copy markdown: ', err)
         }
-      );
-    });
-  }, [editor]);
+      )
+    })
+  }, [editor])
 
   return (
     <button
@@ -30,5 +38,5 @@ export default function CopyMarkdownPlugin(): JSX.Element {
     >
       <i className="format copy" />
     </button>
-  );
+  )
 }

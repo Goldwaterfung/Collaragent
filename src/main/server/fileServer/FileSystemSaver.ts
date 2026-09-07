@@ -56,9 +56,9 @@ function hasPruneWrites(store: ICheckpointStore | CheckpointStore): store is ICh
   )
 }
 
-function hasDeleteThread(
-  store: ICheckpointStore | CheckpointStore
-): store is (ICheckpointStore | CheckpointStore) & {
+function hasDeleteThread(store: ICheckpointStore | CheckpointStore): store is (
+  ICheckpointStore | CheckpointStore
+) & {
   deleteThread(threadId: string): Promise<void>
 } {
   return (

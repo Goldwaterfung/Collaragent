@@ -10,10 +10,10 @@ LangChain's streaming system lets you surface live feedback from agent runs to y
 
 What's possible with LangChain streaming:
 
-* [**Stream agent progress**](#agent-progress) — get state updates after each agent step.
-* [**Stream LLM tokens**](#llm-tokens) — stream language model tokens as they're generated.
-* [**Stream custom updates**](#custom-updates) — emit user-defined signals (e.g., `"Fetched 10/100 records"`).
-* [**Stream multiple modes**](#stream-multiple-modes) — choose from `updates` (agent progress), `messages` (LLM tokens + metadata), or `custom` (arbitrary user data).
+- [**Stream agent progress**](#agent-progress) — get state updates after each agent step.
+- [**Stream LLM tokens**](#llm-tokens) — stream language model tokens as they're generated.
+- [**Stream custom updates**](#custom-updates) — emit user-defined signals (e.g., `"Fetched 10/100 records"`).
+- [**Stream multiple modes**](#stream-multiple-modes) — choose from `updates` (agent progress), `messages` (LLM tokens + metadata), or `custom` (arbitrary user data).
 
 See the [common patterns](#common-patterns) section below for additional end-to-end examples.
 
@@ -33,39 +33,39 @@ To stream agent progress, use the [`stream`](https://reference.langchain.com/jav
 
 For example, if you have an agent that calls a tool once, you should see the following updates:
 
-* **LLM node**: [`AIMessage`](https://reference.langchain.com/javascript/classes/_langchain_core.messages.AIMessage.html) with tool call requests
-* **Tool node**: [`ToolMessage`](https://reference.langchain.com/javascript/classes/_langchain_core.messages.ToolMessage.html) with execution result
-* **LLM node**: Final AI response
+- **LLM node**: [`AIMessage`](https://reference.langchain.com/javascript/classes/_langchain_core.messages.AIMessage.html) with tool call requests
+- **Tool node**: [`ToolMessage`](https://reference.langchain.com/javascript/classes/_langchain_core.messages.ToolMessage.html) with execution result
+- **LLM node**: Final AI response
 
-```typescript  theme={null}
-import z from "zod";
-import { createAgent, tool } from "langchain";
+```typescript theme={null}
+import z from 'zod'
+import { createAgent, tool } from 'langchain'
 
 const getWeather = tool(
-    async ({ city }) => {
-        return `The weather in ${city} is always sunny!`;
-    },
-    {
-        name: "get_weather",
-        description: "Get weather for a given city.",
-        schema: z.object({
-        city: z.string(),
-        }),
-    }
-);
+  async ({ city }) => {
+    return `The weather in ${city} is always sunny!`
+  },
+  {
+    name: 'get_weather',
+    description: 'Get weather for a given city.',
+    schema: z.object({
+      city: z.string()
+    })
+  }
+)
 
 const agent = createAgent({
-    model: "gpt-5-nano",
-    tools: [getWeather],
-});
+  model: 'gpt-5-nano',
+  tools: [getWeather]
+})
 
 for await (const chunk of await agent.stream(
-    { messages: [{ role: "user", content: "what is the weather in sf" }] },
-    { streamMode: "updates" }
+  { messages: [{ role: 'user', content: 'what is the weather in sf' }] },
+  { streamMode: 'updates' }
 )) {
-    const [step, content] = Object.entries(chunk)[0];
-    console.log(`step: ${step}`);
-    console.log(`content: ${JSON.stringify(content, null, 2)}`);
+  const [step, content] = Object.entries(chunk)[0]
+  console.log(`step: ${step}`)
+  console.log(`content: ${JSON.stringify(content, null, 2)}`)
 }
 /**
  * step: model
@@ -119,34 +119,34 @@ for await (const chunk of await agent.stream(
 
 To stream tokens as they are produced by the LLM, use `streamMode: "messages"`:
 
-```typescript  theme={null}
-import z from "zod";
-import { createAgent, tool } from "langchain";
+```typescript theme={null}
+import z from 'zod'
+import { createAgent, tool } from 'langchain'
 
 const getWeather = tool(
-    async ({ city }) => {
-        return `The weather in ${city} is always sunny!`;
-    },
-    {
-        name: "get_weather",
-        description: "Get weather for a given city.",
-        schema: z.object({
-        city: z.string(),
-        }),
-    }
-);
+  async ({ city }) => {
+    return `The weather in ${city} is always sunny!`
+  },
+  {
+    name: 'get_weather',
+    description: 'Get weather for a given city.',
+    schema: z.object({
+      city: z.string()
+    })
+  }
+)
 
 const agent = createAgent({
-    model: "gpt-4o-mini",
-    tools: [getWeather],
-});
+  model: 'gpt-4o-mini',
+  tools: [getWeather]
+})
 
 for await (const [token, metadata] of await agent.stream(
-    { messages: [{ role: "user", content: "what is the weather in sf" }] },
-    { streamMode: "messages" }
+  { messages: [{ role: 'user', content: 'what is the weather in sf' }] },
+  { streamMode: 'messages' }
 )) {
-    console.log(`node: ${metadata.langgraph_node}`);
-    console.log(`content: ${JSON.stringify(token.contentBlocks, null, 2)}`);
+  console.log(`node: ${metadata.langgraph_node}`)
+  console.log(`content: ${JSON.stringify(token.contentBlocks, null, 2)}`)
 }
 ```
 
@@ -154,38 +154,38 @@ for await (const [token, metadata] of await agent.stream(
 
 To stream updates from tools as they are executed, you can use the `writer` parameter from the configuration.
 
-```typescript  theme={null}
-import z from "zod";
-import { tool, createAgent } from "langchain";
-import { LangGraphRunnableConfig } from "@langchain/langgraph";
+```typescript theme={null}
+import z from 'zod'
+import { tool, createAgent } from 'langchain'
+import { LangGraphRunnableConfig } from '@langchain/langgraph'
 
 const getWeather = tool(
-    async (input, config: LangGraphRunnableConfig) => {
-        // Stream any arbitrary data
-        config.writer?.(`Looking up data for city: ${input.city}`);
-        // ... fetch city data
-        config.writer?.(`Acquired data for city: ${input.city}`);
-        return `It's always sunny in ${input.city}!`;
-    },
-    {
-        name: "get_weather",
-        description: "Get weather for a given city.",
-        schema: z.object({
-        city: z.string().describe("The city to get weather for."),
-        }),
-    }
-);
+  async (input, config: LangGraphRunnableConfig) => {
+    // Stream any arbitrary data
+    config.writer?.(`Looking up data for city: ${input.city}`)
+    // ... fetch city data
+    config.writer?.(`Acquired data for city: ${input.city}`)
+    return `It's always sunny in ${input.city}!`
+  },
+  {
+    name: 'get_weather',
+    description: 'Get weather for a given city.',
+    schema: z.object({
+      city: z.string().describe('The city to get weather for.')
+    })
+  }
+)
 
 const agent = createAgent({
-    model: "gpt-4o-mini",
-    tools: [getWeather],
-});
+  model: 'gpt-4o-mini',
+  tools: [getWeather]
+})
 
 for await (const chunk of await agent.stream(
-    { messages: [{ role: "user", content: "what is the weather in sf" }] },
-    { streamMode: "custom" }
+  { messages: [{ role: 'user', content: 'what is the weather in sf' }] },
+  { streamMode: 'custom' }
 )) {
-    console.log(chunk);
+  console.log(chunk)
 }
 ```
 
@@ -204,38 +204,38 @@ You can specify multiple streaming modes by passing streamMode as an array: `str
 
 The streamed outputs will be tuples of `[mode, chunk]` where `mode` is the name of the stream mode and `chunk` is the data streamed by that mode.
 
-```typescript  theme={null}
-import z from "zod";
-import { tool, createAgent } from "langchain";
-import { LangGraphRunnableConfig } from "@langchain/langgraph";
+```typescript theme={null}
+import z from 'zod'
+import { tool, createAgent } from 'langchain'
+import { LangGraphRunnableConfig } from '@langchain/langgraph'
 
 const getWeather = tool(
-    async (input, config: LangGraphRunnableConfig) => {
-        // Stream any arbitrary data
-        config.writer?.(`Looking up data for city: ${input.city}`);
-        // ... fetch city data
-        config.writer?.(`Acquired data for city: ${input.city}`);
-        return `It's always sunny in ${input.city}!`;
-    },
-    {
-        name: "get_weather",
-        description: "Get weather for a given city.",
-        schema: z.object({
-        city: z.string().describe("The city to get weather for."),
-        }),
-    }
-);
+  async (input, config: LangGraphRunnableConfig) => {
+    // Stream any arbitrary data
+    config.writer?.(`Looking up data for city: ${input.city}`)
+    // ... fetch city data
+    config.writer?.(`Acquired data for city: ${input.city}`)
+    return `It's always sunny in ${input.city}!`
+  },
+  {
+    name: 'get_weather',
+    description: 'Get weather for a given city.',
+    schema: z.object({
+      city: z.string().describe('The city to get weather for.')
+    })
+  }
+)
 
 const agent = createAgent({
-    model: "gpt-4o-mini",
-    tools: [getWeather],
-});
+  model: 'gpt-4o-mini',
+  tools: [getWeather]
+})
 
 for await (const [streamMode, chunk] of await agent.stream(
-    { messages: [{ role: "user", content: "what is the weather in sf" }] },
-    { streamMode: ["updates", "messages", "custom"] }
+  { messages: [{ role: 'user', content: 'what is the weather in sf' }] },
+  { streamMode: ['updates', 'messages', 'custom'] }
 )) {
-    console.log(`${streamMode}: ${JSON.stringify(chunk, null, 2)}`);
+  console.log(`${streamMode}: ${JSON.stringify(chunk, null, 2)}`)
 }
 ```
 
@@ -247,16 +247,16 @@ The `useStream` React hook provides seamless integration with LangGraph streamin
 
 Key features:
 
-* **Messages streaming** — Handle a stream of message chunks to form a complete message
-* **Automatic state management** — for messages, interrupts, loading states, and errors
-* **Conversation branching** — Create alternate conversation paths from any point in the chat history
-* **UI-agnostic design** — Bring your own components and styling
+- **Messages streaming** — Handle a stream of message chunks to form a complete message
+- **Automatic state management** — for messages, interrupts, loading states, and errors
+- **Conversation branching** — Create alternate conversation paths from any point in the chat history
+- **UI-agnostic design** — Bring your own components and styling
 
 ### Installation
 
 Install the LangGraph SDK to use the `useStream` hook in your React application:
 
-```bash  theme={null}
+```bash theme={null}
 npm install @langchain/langgraph-sdk
 ```
 
@@ -264,25 +264,23 @@ npm install @langchain/langgraph-sdk
 
 The `useStream` hook connects to any LangGraph graph, whether that's running on from your own endpoint, or deployed using [LangSmith deployments](/langsmith/deployments).
 
-```tsx  theme={null}
-import { useStream } from "@langchain/langgraph-sdk/react";
+```tsx theme={null}
+import { useStream } from '@langchain/langgraph-sdk/react'
 
 function Chat() {
   const stream = useStream({
-    assistantId: "agent",
+    assistantId: 'agent',
     // Local development
-    apiUrl: "http://localhost:2024",
+    apiUrl: 'http://localhost:2024'
     // Production deployment (LangSmith hosted)
     // apiUrl: "https://your-deployment.us.langgraph.app"
-  });
+  })
 
   const handleSubmit = (message: string) => {
     stream.submit({
-      messages: [
-        { content: message, type: "human" }
-      ],
-    });
-  };
+      messages: [{ content: message, type: 'human' }]
+    })
+  }
 
   return (
     <div>
@@ -295,7 +293,7 @@ function Chat() {
       {stream.isLoading && <div>Loading...</div>}
       {stream.error && <div>Error: {stream.error.message}</div>}
     </div>
-  );
+  )
 }
 ```
 
@@ -423,19 +421,19 @@ function Chat() {
 
 Keep track of conversations with built-in thread management. You can access the current thread ID and get notified when new threads are created:
 
-```tsx  theme={null}
-import { useState } from "react";
-import { useStream } from "@langchain/langgraph-sdk/react";
+```tsx theme={null}
+import { useState } from 'react'
+import { useStream } from '@langchain/langgraph-sdk/react'
 
 function Chat() {
-  const [threadId, setThreadId] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null)
 
   const stream = useStream({
-    apiUrl: "http://localhost:2024",
-    assistantId: "agent",
+    apiUrl: 'http://localhost:2024',
+    assistantId: 'agent',
     threadId: threadId,
-    onThreadId: setThreadId,
-  });
+    onThreadId: setThreadId
+  })
 
   // threadId is updated when a new thread is created
   // Store it in URL params or localStorage for persistence
@@ -448,63 +446,60 @@ We recommend storing the `threadId` to let users resume conversations after page
 
 The `useStream` hook can automatically resume an ongoing run upon mounting by setting `reconnectOnMount: true`. This is useful for continuing a stream after a page refresh, ensuring no messages and events generated during the downtime are lost.
 
-```tsx  theme={null}
+```tsx theme={null}
 const stream = useStream({
-  apiUrl: "http://localhost:2024",
-  assistantId: "agent",
-  reconnectOnMount: true,
-});
+  apiUrl: 'http://localhost:2024',
+  assistantId: 'agent',
+  reconnectOnMount: true
+})
 ```
 
 By default the ID of the created run is stored in `window.sessionStorage`, which can be swapped by passing a custom storage function:
 
-```tsx  theme={null}
+```tsx theme={null}
 const stream = useStream({
-  apiUrl: "http://localhost:2024",
-  assistantId: "agent",
-  reconnectOnMount: () => window.localStorage,
-});
+  apiUrl: 'http://localhost:2024',
+  assistantId: 'agent',
+  reconnectOnMount: () => window.localStorage
+})
 ```
 
 For manual control over the resumption process, use the run callbacks to persist metadata and `joinStream` to resume:
 
-```tsx  theme={null}
-import { useStream } from "@langchain/langgraph-sdk/react";
-import { useEffect, useRef } from "react";
+```tsx theme={null}
+import { useStream } from '@langchain/langgraph-sdk/react'
+import { useEffect, useRef } from 'react'
 
 function Chat({ threadId }: { threadId: string | null }) {
   const stream = useStream({
-    apiUrl: "http://localhost:2024",
-    assistantId: "agent",
+    apiUrl: 'http://localhost:2024',
+    assistantId: 'agent',
     threadId,
     onCreated: (run) => {
       // Persist run ID when stream starts
-      window.sessionStorage.setItem(`resume:${run.thread_id}`, run.run_id);
+      window.sessionStorage.setItem(`resume:${run.thread_id}`, run.run_id)
     },
     onFinish: (_, run) => {
       // Clean up when stream completes
-      window.sessionStorage.removeItem(`resume:${run?.thread_id}`);
-    },
-  });
+      window.sessionStorage.removeItem(`resume:${run?.thread_id}`)
+    }
+  })
 
   // Resume stream on mount if there's a stored run ID
-  const joinedThreadId = useRef<string | null>(null);
+  const joinedThreadId = useRef<string | null>(null)
   useEffect(() => {
-    if (!threadId) return;
-    const runId = window.sessionStorage.getItem(`resume:${threadId}`);
+    if (!threadId) return
+    const runId = window.sessionStorage.getItem(`resume:${threadId}`)
     if (runId && joinedThreadId.current !== threadId) {
-      stream.joinStream(runId);
-      joinedThreadId.current = threadId;
+      stream.joinStream(runId)
+      joinedThreadId.current = threadId
     }
-  }, [threadId]);
+  }, [threadId])
 
   const handleSubmit = (text: string) => {
     // Use streamResumable to ensure events aren't lost
-    stream.submit(
-      { messages: [{ type: "human", content: text }] },
-      { streamResumable: true }
-    );
-  };
+    stream.submit({ messages: [{ type: 'human', content: text }] }, { streamResumable: true })
+  }
 }
 ```
 
@@ -516,56 +511,56 @@ function Chat({ threadId }: { threadId: string | null }) {
 
 You can optimistically update the client state before performing a network request, providing immediate feedback to the user:
 
-```tsx  theme={null}
+```tsx theme={null}
 const stream = useStream({
-  apiUrl: "http://localhost:2024",
-  assistantId: "agent",
-});
+  apiUrl: 'http://localhost:2024',
+  assistantId: 'agent'
+})
 
 const handleSubmit = (text: string) => {
-  const newMessage = { type: "human" as const, content: text };
+  const newMessage = { type: 'human' as const, content: text }
 
   stream.submit(
     { messages: [newMessage] },
     {
       optimisticValues(prev) {
-        const prevMessages = prev.messages ?? [];
-        return { ...prev, messages: [...prevMessages, newMessage] };
-      },
+        const prevMessages = prev.messages ?? []
+        return { ...prev, messages: [...prevMessages, newMessage] }
+      }
     }
-  );
-};
+  )
+}
 ```
 
 #### Optimistic thread creation
 
 Use the `threadId` option in `submit` to enable optimistic UI patterns where you need to know the thread ID before the thread is created:
 
-```tsx  theme={null}
-import { useState } from "react";
-import { useStream } from "@langchain/langgraph-sdk/react";
+```tsx theme={null}
+import { useState } from 'react'
+import { useStream } from '@langchain/langgraph-sdk/react'
 
 function Chat() {
-  const [threadId, setThreadId] = useState<string | null>(null);
-  const [optimisticThreadId] = useState(() => crypto.randomUUID());
+  const [threadId, setThreadId] = useState<string | null>(null)
+  const [optimisticThreadId] = useState(() => crypto.randomUUID())
 
   const stream = useStream({
-    apiUrl: "http://localhost:2024",
-    assistantId: "agent",
+    apiUrl: 'http://localhost:2024',
+    assistantId: 'agent',
     threadId,
-    onThreadId: setThreadId,
-  });
+    onThreadId: setThreadId
+  })
 
   const handleSubmit = (text: string) => {
     // Navigate immediately without waiting for thread creation
-    window.history.pushState({}, "", `/threads/${optimisticThreadId}`);
+    window.history.pushState({}, '', `/threads/${optimisticThreadId}`)
 
     // Create thread with the predetermined ID
     stream.submit(
-      { messages: [{ type: "human", content: text }] },
+      { messages: [{ type: 'human', content: text }] },
       { threadId: optimisticThreadId }
-    );
-  };
+    )
+  }
 }
 ```
 
@@ -573,14 +568,14 @@ function Chat() {
 
 Use the `initialValues` option to display cached thread data immediately while the history is being loaded from the server:
 
-```tsx  theme={null}
+```tsx theme={null}
 function Chat({ threadId, cachedData }) {
   const stream = useStream({
-    apiUrl: "http://localhost:2024",
-    assistantId: "agent",
+    apiUrl: 'http://localhost:2024',
+    assistantId: 'agent',
     threadId,
-    initialValues: cachedData?.values,
-  });
+    initialValues: cachedData?.values
+  })
 
   // Shows cached messages instantly, then updates when server responds
 }
@@ -658,14 +653,14 @@ function Chat() {
 export function BranchSwitcher({
   branch,
   branchOptions,
-  onSelect,
+  onSelect
 }: {
-  branch: string | undefined;
-  branchOptions: string[] | undefined;
-  onSelect: (branch: string) => void;
+  branch: string | undefined
+  branchOptions: string[] | undefined
+  onSelect: (branch: string) => void
 }) {
-  if (!branchOptions || !branch) return null;
-  const index = branchOptions.indexOf(branch);
+  if (!branchOptions || !branch) return null
+  const index = branchOptions.indexOf(branch)
 
   return (
     <div className="flex items-center gap-2">
@@ -676,7 +671,9 @@ export function BranchSwitcher({
       >
         ←
       </button>
-      <span>{index + 1} / {branchOptions.length}</span>
+      <span>
+        {index + 1} / {branchOptions.length}
+      </span>
       <button
         type="button"
         disabled={index >= branchOptions.length - 1}
@@ -685,7 +682,7 @@ export function BranchSwitcher({
         →
       </button>
     </div>
-  );
+  )
 }
 ```
 
@@ -704,41 +701,38 @@ The `useStream` hook supports full type inference when used with agents created 
 When using [`createAgent`](https://reference.langchain.com/javascript/functions/langchain.index.createAgent.html), tool call types are automatically inferred from the tools you register to your agent:
 
 ```typescript agent.ts theme={null}
-import { createAgent, tool } from "langchain";
-import { z } from "zod";
+import { createAgent, tool } from 'langchain'
+import { z } from 'zod'
 
-const getWeather = tool(
-  async ({ location }) => `Weather in ${location}: Sunny, 72°F`,
-  {
-    name: "get_weather",
-    description: "Get weather for a location",
-    schema: z.object({
-      location: z.string().describe("The city to get weather for"),
-    }),
-  }
-);
+const getWeather = tool(async ({ location }) => `Weather in ${location}: Sunny, 72°F`, {
+  name: 'get_weather',
+  description: 'Get weather for a location',
+  schema: z.object({
+    location: z.string().describe('The city to get weather for')
+  })
+})
 
 export const agent = createAgent({
-  model: "openai:gpt-4o-mini",
-  tools: [getWeather],
-});
+  model: 'openai:gpt-4o-mini',
+  tools: [getWeather]
+})
 ```
 
 ```tsx Chat.tsx theme={null}
-import { useStream } from "@langchain/langgraph-sdk/react";
-import type { agent } from "./agent";
+import { useStream } from '@langchain/langgraph-sdk/react'
+import type { agent } from './agent'
 
 function Chat() {
   // Tool calls are automatically typed from the agent's tools
   const stream = useStream<typeof agent>({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-  });
+    assistantId: 'agent',
+    apiUrl: 'http://localhost:2024'
+  })
 
   // stream.toolCalls[0].call.name is typed as "get_weather"
   // stream.toolCalls[0].call.args is typed as { location: string }
 }
-  ```
+```
 
 #### With `StateGraph`
 
@@ -749,82 +743,84 @@ For custom [`StateGraph`](https://reference.langchain.com/javascript/classes/_la
   import { StateGraph, MessagesAnnotation, START, END } from "@langchain/langgraph";
   import { ChatOpenAI } from "@langchain/openai";
 
-  const model = new ChatOpenAI({ model: "gpt-4o-mini" });
+const model = new ChatOpenAI({ model: "gpt-4o-mini" });
 
-  const workflow = new StateGraph(MessagesAnnotation)
-    .addNode("agent", async (state) => {
-      const response = await model.invoke(state.messages);
-      return { messages: [response] };
-    })
-    .addEdge(START, "agent")
-    .addEdge("agent", END);
+const workflow = new StateGraph(MessagesAnnotation)
+.addNode("agent", async (state) => {
+const response = await model.invoke(state.messages);
+return { messages: [response] };
+})
+.addEdge(START, "agent")
+.addEdge("agent", END);
 
-  export const graph = workflow.compile();
-  ```
+export const graph = workflow.compile();
 
-  ```tsx Chat.tsx theme={null}
-  import { useStream } from "@langchain/langgraph-sdk/react";
-  import type { graph } from "./graph";
+````
 
-  function Chat() {
-    // State types are automatically inferred from the graph
-    const stream = useStream<typeof graph>({
-      assistantId: "my-graph",
-      apiUrl: "http://localhost:2024",
-    });
+```tsx Chat.tsx theme={null}
+import { useStream } from "@langchain/langgraph-sdk/react";
+import type { graph } from "./graph";
 
-    // stream.values is typed based on the graph's state annotation
-  }
-  ```
+function Chat() {
+  // State types are automatically inferred from the graph
+  const stream = useStream<typeof graph>({
+    assistantId: "my-graph",
+    apiUrl: "http://localhost:2024",
+  });
+
+  // stream.values is typed based on the graph's state annotation
+}
+````
+
 </CodeGroup>
 
 #### With Annotation types
 
 If you're using LangGraph.js, you can reuse your graph's annotation types. Make sure to only import types to avoid importing the entire LangGraph.js runtime:
 
-```tsx  theme={null}
+```tsx theme={null}
 import {
   Annotation,
   MessagesAnnotation,
   type StateType,
-  type UpdateType,
-} from "@langchain/langgraph/web";
+  type UpdateType
+} from '@langchain/langgraph/web'
 
 const AgentState = Annotation.Root({
   ...MessagesAnnotation.spec,
-  context: Annotation<string>(),
-});
+  context: Annotation<string>()
+})
 
 const stream = useStream<
   StateType<typeof AgentState.spec>,
   { UpdateType: UpdateType<typeof AgentState.spec> }
 >({
-  apiUrl: "http://localhost:2024",
-  assistantId: "agent",
-});
+  apiUrl: 'http://localhost:2024',
+  assistantId: 'agent'
+})
 ```
 
 #### Advanced type configuration
 
 You can specify additional type parameters for interrupts, custom events, and configurable options:
 
-```tsx  theme={null}
-import type { Message } from "@langchain/langgraph-sdk";
+```tsx theme={null}
+import type { Message } from '@langchain/langgraph-sdk'
 
-type State = { messages: Message[]; context?: string };
+type State = { messages: Message[]; context?: string }
 
 const stream = useStream<
   State,
   {
-    UpdateType: { messages: Message[] | Message; context?: string };
-    InterruptType: string;
-    CustomEventType: { type: "progress" | "debug"; payload: unknown };
-    ConfigurableType: { model: string };
+    UpdateType: { messages: Message[] | Message; context?: string }
+    InterruptType: string
+    CustomEventType: { type: 'progress' | 'debug'; payload: unknown }
+    ConfigurableType: { model: string }
   }
 >({
-  apiUrl: "http://localhost:2024",
-  assistantId: "agent",
-});
+  apiUrl: 'http://localhost:2024',
+  assistantId: 'agent'
+})
 
 // stream.interrupt is typed as string | undefined
 // onCustomEvent receives typed events
@@ -835,22 +831,22 @@ const stream = useStream<
 Use `getToolCalls` to extract and render tool calls from AI messages. Tool calls include the call details, result (if completed), and state.
 
 ```tsx Chat.tsx
-import { useStream } from "@langchain/langgraph-sdk/react";
-import type { agent } from "./agent";
-import { ToolCallCard } from "./ToolCallCard";
-import { MessageBubble } from "./MessageBubble";
+import { useStream } from '@langchain/langgraph-sdk/react'
+import type { agent } from './agent'
+import { ToolCallCard } from './ToolCallCard'
+import { MessageBubble } from './MessageBubble'
 
 function Chat() {
   const stream = useStream<typeof agent>({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-  });
+    assistantId: 'agent',
+    apiUrl: 'http://localhost:2024'
+  })
 
   return (
     <div className="flex flex-col gap-4">
       {stream.messages.map((message, idx) => {
-        if (message.type === "ai") {
-          const toolCalls = stream.getToolCalls(message);
+        if (message.type === 'ai') {
+          const toolCalls = stream.getToolCalls(message)
 
           if (toolCalls.length > 0) {
             return (
@@ -859,14 +855,14 @@ function Chat() {
                   <ToolCallCard key={toolCall.id} toolCall={toolCall} />
                 ))}
               </div>
-            );
+            )
           }
         }
 
-        return <MessageBubble key={message.id ?? idx} message={message} />;
+        return <MessageBubble key={message.id ?? idx} message={message} />
       })}
     </div>
-  );
+  )
 }
 ```
 
@@ -875,44 +871,40 @@ import type {
   ToolCallWithResult,
   ToolCallFromTool,
   ToolCallState,
-  InferAgentToolCalls,
-} from "@langchain/langgraph-sdk/react";
-import type { ToolMessage } from "@langchain/langgraph-sdk";
-import type { agent } from "./agent";
-import type { getWeather } from "./tools";
-import { parseToolResult } from "./utils";
-import { WeatherCard } from "./WeatherCard";
+  InferAgentToolCalls
+} from '@langchain/langgraph-sdk/react'
+import type { ToolMessage } from '@langchain/langgraph-sdk'
+import type { agent } from './agent'
+import type { getWeather } from './tools'
+import { parseToolResult } from './utils'
+import { WeatherCard } from './WeatherCard'
 
 /**
  * Define tool call types for this component.
  * Use InferAgentToolCalls for agents or ToolCallFromTool for individual tools.
  */
-type AgentToolCalls = InferAgentToolCalls<typeof agent>;
+type AgentToolCalls = InferAgentToolCalls<typeof agent>
 
 /**
  * Component that renders a tool call with its result.
  * Uses typed ToolCallWithResult for discriminated union narrowing.
  */
-export function ToolCallCard({
-  toolCall,
-}: {
-  toolCall: ToolCallWithResult<AgentToolCalls>;
-}) {
-  const { call, result, state } = toolCall;
+export function ToolCallCard({ toolCall }: { toolCall: ToolCallWithResult<AgentToolCalls> }) {
+  const { call, result, state } = toolCall
   // Type narrowing works when call.name is a literal type
-  if (call.name === "get_weather") {
-    return <WeatherCard call={call} result={result} state={state} />;
+  if (call.name === 'get_weather') {
+    return <WeatherCard call={call} result={result} state={state} />
   }
 
   // Fallback for other tools
-  return <GenericToolCallCard call={call} result={result} state={state} />;
+  return <GenericToolCallCard call={call} result={result} state={state} />
 }
 ```
 
 ```tsx GenericToolCallCard.tsx theme={null}
-import type { ToolCallState } from "@langchain/langgraph-sdk/react";
-import type { ToolMessage } from "@langchain/langgraph-sdk";
-import { parseToolResult } from "./utils";
+import type { ToolCallState } from '@langchain/langgraph-sdk/react'
+import type { ToolMessage } from '@langchain/langgraph-sdk'
+import { parseToolResult } from './utils'
 
 /**
  * Generic fallback for unknown or unhandled tools.
@@ -921,24 +913,22 @@ import { parseToolResult } from "./utils";
 export function GenericToolCallCard({
   call,
   result,
-  state,
+  state
 }: {
-  call: { name: string; args: Record<string, unknown> };
-  result?: ToolMessage;
-  state: ToolCallState;
+  call: { name: string; args: Record<string, unknown> }
+  result?: ToolMessage
+  state: ToolCallState
 }) {
-  const isLoading = state === "pending";
-  const parsedResult = parseToolResult(result);
+  const isLoading = state === 'pending'
+  const parsedResult = parseToolResult(result)
 
   return (
     <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-800">
       <div className="flex items-center gap-3 mb-3">
         <div className="flex-1">
-          <div className="text-sm font-medium text-white font-mono">
-            {call.name}
-          </div>
+          <div className="text-sm font-medium text-white font-mono">{call.name}</div>
           <div className="text-xs text-neutral-500">
-            {isLoading ? "Processing..." : "Completed"}
+            {isLoading ? 'Processing...' : 'Completed'}
           </div>
         </div>
       </div>
@@ -951,18 +941,18 @@ export function GenericToolCallCard({
         </div>
       )}
     </div>
-  );
+  )
 }
 ```
 
 ```tsx WeatherCard.tsx
-import type { ToolCallFromTool, ToolCallState } from "@langchain/langgraph-sdk/react";
-import type { ToolMessage } from "@langchain/langgraph-sdk";
-import type { getWeather } from "./tools";
-import { parseToolResult } from "./utils";
+import type { ToolCallFromTool, ToolCallState } from '@langchain/langgraph-sdk/react'
+import type { ToolMessage } from '@langchain/langgraph-sdk'
+import type { getWeather } from './tools'
+import { parseToolResult } from './utils'
 
 // Infer tool call type directly from the tool definition
-type GetWeatherToolCall = ToolCallFromTool<typeof getWeather>;
+type GetWeatherToolCall = ToolCallFromTool<typeof getWeather>
 
 /**
  * Weather-specific tool card with rich UI.
@@ -971,14 +961,14 @@ type GetWeatherToolCall = ToolCallFromTool<typeof getWeather>;
 export function WeatherCard({
   call,
   result,
-  state,
+  state
 }: {
-  call: GetWeatherToolCall;
-  result?: ToolMessage;
-  state: ToolCallState;
+  call: GetWeatherToolCall
+  result?: ToolMessage
+  state: ToolCallState
 }) {
-  const isLoading = state === "pending";
-  const parsedResult = parseToolResult(result);
+  const isLoading = state === 'pending'
+  const parsedResult = parseToolResult(result)
   return (
     <div className="relative overflow-hidden rounded-xl">
       {/* Sky gradient background */}
@@ -989,57 +979,57 @@ export function WeatherCard({
           <span className="font-medium">{call.args.location}</span>
           {isLoading && <span className="ml-auto">Loading...</span>}
         </div>
-        {parsedResult.status === "error" ? (
+        {parsedResult.status === 'error' ? (
           <div className="bg-red-500/20 rounded-lg p-3 text-red-200 text-sm">
             {parsedResult.content}
           </div>
         ) : (
           <div className="text-white text-lg font-medium">
-            {parsedResult.content || "Fetching weather..."}
+            {parsedResult.content || 'Fetching weather...'}
           </div>
         )}
       </div>
     </div>
-  );
+  )
 }
 ```
 
 ```typescript tools.ts
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
+import { tool } from '@langchain/core/tools'
+import { z } from 'zod'
 
 // Define the weather tool with a Zod schema
 export const getWeather = tool(
   async ({ location }) => {
     // Tool implementation
-    return JSON.stringify({ status: "success", content: `Weather in ${location}: Sunny, 72°F` });
+    return JSON.stringify({ status: 'success', content: `Weather in ${location}: Sunny, 72°F` })
   },
   {
-    name: "get_weather",
-    description: "Get the current weather for a location",
+    name: 'get_weather',
+    description: 'Get the current weather for a location',
     schema: z.object({
-      location: z.string().describe("The city and state, e.g. San Francisco, CA"),
-    }),
+      location: z.string().describe('The city and state, e.g. San Francisco, CA')
+    })
   }
-);
+)
 ```
 
 ```typescript utils.ts
-import type { ToolMessage } from "@langchain/langgraph-sdk";
+import type { ToolMessage } from '@langchain/langgraph-sdk'
 
 /**
  * Helper to parse tool result safely.
  * Tool results may be JSON strings or plain text.
  */
 export function parseToolResult(result?: ToolMessage): {
-  status: string;
-  content: string;
+  status: string
+  content: string
 } {
-  if (!result) return { status: "pending", content: "" };
+  if (!result) return { status: 'pending', content: '' }
   try {
-    return JSON.parse(result.content as string);
+    return JSON.parse(result.content as string)
   } catch {
-    return { status: "success", content: result.content as string };
+    return { status: 'success', content: result.content as string }
   }
 }
 ```
@@ -1053,86 +1043,84 @@ export function parseToolResult(result?: ToolMessage): {
 Stream custom data from your agent using the `writer` in your tools or nodes. Handle these events in the UI with the `onCustomEvent` callback.
 
 ```typescript agent.ts
-import { tool, type ToolRuntime } from "langchain";
-import { z } from "zod";
+import { tool, type ToolRuntime } from 'langchain'
+import { z } from 'zod'
 
 // Define your custom event types
 interface ProgressData {
-  type: "progress";
-  id: string;
-  message: string;
-  progress: number;
+  type: 'progress'
+  id: string
+  message: string
+  progress: number
 }
 
 const analyzeDataTool = tool(
   async ({ dataSource }, config: ToolRuntime) => {
-    const steps = ["Connecting...", "Fetching...", "Processing...", "Done!"];
+    const steps = ['Connecting...', 'Fetching...', 'Processing...', 'Done!']
 
     for (let i = 0; i < steps.length; i++) {
       // Emit progress events during execution
       config.writer?.({
-        type: "progress",
+        type: 'progress',
         id: `analysis-${Date.now()}`,
         message: steps[i],
-        progress: ((i + 1) / steps.length) * 100,
-      } satisfies ProgressData);
+        progress: ((i + 1) / steps.length) * 100
+      } satisfies ProgressData)
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
-    return JSON.stringify({ result: "Analysis complete" });
+    return JSON.stringify({ result: 'Analysis complete' })
   },
   {
-    name: "analyze_data",
-    description: "Analyze data with progress updates",
+    name: 'analyze_data',
+    description: 'Analyze data with progress updates',
     schema: z.object({
-      dataSource: z.string().describe("Data source to analyze"),
-    }),
+      dataSource: z.string().describe('Data source to analyze')
+    })
   }
-);
+)
 ```
 
 ```tsx
-import { useState, useCallback } from "react";
-import { useStream } from "@langchain/langgraph-sdk/react";
-import type { agent } from "./agent";
+import { useState, useCallback } from 'react'
+import { useStream } from '@langchain/langgraph-sdk/react'
+import type { agent } from './agent'
 
 interface ProgressData {
-  type: "progress";
-  id: string;
-  message: string;
-  progress: number;
+  type: 'progress'
+  id: string
+  message: string
+  progress: number
 }
 
 function isProgressData(data: unknown): data is ProgressData {
   return (
-    typeof data === "object" &&
+    typeof data === 'object' &&
     data !== null &&
-    "type" in data &&
-    (data as ProgressData).type === "progress"
-  );
+    'type' in data &&
+    (data as ProgressData).type === 'progress'
+  )
 }
 
 function CustomStreamingUI() {
-  const [progressData, setProgressData] = useState<Map<string, ProgressData>>(
-    new Map()
-  );
+  const [progressData, setProgressData] = useState<Map<string, ProgressData>>(new Map())
 
   const handleCustomEvent = useCallback((data: unknown) => {
     if (isProgressData(data)) {
       setProgressData((prev) => {
-        const updated = new Map(prev);
-        updated.set(data.id, data);
-        return updated;
-      });
+        const updated = new Map(prev)
+        updated.set(data.id, data)
+        return updated
+      })
     }
-  }, []);
+  }, [])
 
   const stream = useStream<typeof agent>({
-    assistantId: "custom-streaming",
-    apiUrl: "http://localhost:2024",
-    onCustomEvent: handleCustomEvent,
-  });
+    assistantId: 'custom-streaming',
+    apiUrl: 'http://localhost:2024',
+    onCustomEvent: handleCustomEvent
+  })
 
   return (
     <div>
@@ -1152,7 +1140,7 @@ function CustomStreamingUI() {
         </div>
       ))}
     </div>
-  );
+  )
 }
 ```
 
@@ -1166,33 +1154,33 @@ The `useStream` hook provides callback options that give you access to different
 
 ```tsx
 const stream = useStream({
-  apiUrl: "http://localhost:2024",
-  assistantId: "agent",
+  apiUrl: 'http://localhost:2024',
+  assistantId: 'agent',
 
   // Handle state updates after each graph step
   onUpdateEvent: (update, options) => {
-    console.log("Graph update:", update);
+    console.log('Graph update:', update)
   },
 
   // Handle custom events streamed from your graph
   onCustomEvent: (event, options) => {
-    console.log("Custom event:", event);
+    console.log('Custom event:', event)
   },
 
   // Handle metadata events with run/thread info
   onMetadataEvent: (metadata) => {
-    console.log("Run ID:", metadata.run_id);
-    console.log("Thread ID:", metadata.thread_id);
+    console.log('Run ID:', metadata.run_id)
+    console.log('Thread ID:', metadata.thread_id)
   },
 
   onError: (error) => {
-    console.error("Stream error:", error);
+    console.error('Stream error:', error)
   },
 
   onFinish: (state, options) => {
-    console.log("Stream finished with final state:", state);
-  },
-});
+    console.log('Stream finished with final state:', state)
+  }
+})
 ```
 
 #### Available callbacks
@@ -1210,40 +1198,40 @@ const stream = useStream({
 When working with multi-agent systems or graphs with multiple nodes, use message metadata to identify which node generated each message. This is particularly useful when multiple LLMs run in parallel and you want to display their outputs with distinct visual styling.
 
 ```tsx Chat.tsx theme={null}
-import { useStream } from "@langchain/langgraph-sdk/react";
-import type { agent } from "./agent";
-import { MessageBubble } from "./MessageBubble";
+import { useStream } from '@langchain/langgraph-sdk/react'
+import type { agent } from './agent'
+import { MessageBubble } from './MessageBubble'
 
 // Node configuration for visual display
 const NODE_CONFIG: Record<string, { label: string; color: string }> = {
-  researcher_analytical: { label: "Analytical Research", color: "cyan" },
-  researcher_creative: { label: "Creative Research", color: "purple" },
-  researcher_practical: { label: "Practical Research", color: "emerald" },
-};
+  researcher_analytical: { label: 'Analytical Research', color: 'cyan' },
+  researcher_creative: { label: 'Creative Research', color: 'purple' },
+  researcher_practical: { label: 'Practical Research', color: 'emerald' }
+}
 
 function MultiAgentChat() {
   const stream = useStream<typeof agent>({
-    assistantId: "parallel-research",
-    apiUrl: "http://localhost:2024",
-  });
+    assistantId: 'parallel-research',
+    apiUrl: 'http://localhost:2024'
+  })
 
   return (
     <div className="flex flex-col gap-4">
       {stream.messages.map((message, idx) => {
-        if (message.type !== "ai") {
-          return <MessageBubble key={message.id ?? idx} message={message} />;
+        if (message.type !== 'ai') {
+          return <MessageBubble key={message.id ?? idx} message={message} />
         }
 
         // Get streaming metadata to identify the source node
-        const metadata = stream.getMessagesMetadata?.(message);
+        const metadata = stream.getMessagesMetadata?.(message)
         const nodeName =
           (metadata?.streamMetadata?.langgraph_node as string) ||
-          (message as { name?: string }).name;
+          (message as { name?: string }).name
 
-        const config = nodeName ? NODE_CONFIG[nodeName] : null;
+        const config = nodeName ? NODE_CONFIG[nodeName] : null
 
         if (!config) {
-          return <MessageBubble key={message.id ?? idx} message={message} />;
+          return <MessageBubble key={message.id ?? idx} message={message} />
         }
 
         return (
@@ -1255,86 +1243,91 @@ function MultiAgentChat() {
               {config.label}
             </div>
             <div className="text-neutral-200 whitespace-pre-wrap">
-              {typeof message.content === "string" ? message.content : ""}
+              {typeof message.content === 'string' ? message.content : ''}
             </div>
           </div>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 ```
 
 ```typescript
-import { ChatOpenAI } from "@langchain/openai";
-import { StateGraph, START, END, Send } from "@langchain/langgraph";
-import { withLangGraph } from "@langchain/langgraph/zod";
-import { BaseMessage, AIMessage } from "@langchain/core/messages";
-import { z } from "zod";
+import { ChatOpenAI } from '@langchain/openai'
+import { StateGraph, START, END, Send } from '@langchain/langgraph'
+import { withLangGraph } from '@langchain/langgraph/zod'
+import { BaseMessage, AIMessage } from '@langchain/core/messages'
+import { z } from 'zod'
 
 // Use different model instances for variety
-const analyticalModel = new ChatOpenAI({ model: "gpt-4o-mini", temperature: 0.3 });
-const creativeModel = new ChatOpenAI({ model: "gpt-4o-mini", temperature: 0.9 });
-const practicalModel = new ChatOpenAI({ model: "gpt-4o-mini", temperature: 0.5 });
+const analyticalModel = new ChatOpenAI({ model: 'gpt-4o-mini', temperature: 0.3 })
+const creativeModel = new ChatOpenAI({ model: 'gpt-4o-mini', temperature: 0.9 })
+const practicalModel = new ChatOpenAI({ model: 'gpt-4o-mini', temperature: 0.5 })
 
 // Define the state schema
 const StateAnnotation = z.object({
   messages: withLangGraph(z.custom<BaseMessage[]>(), {
     reducer: {
       fn: (left: BaseMessage[], right: BaseMessage | BaseMessage[]) =>
-        Array.isArray(right) ? left.concat(right) : left.concat([right]),
+        Array.isArray(right) ? left.concat(right) : left.concat([right])
     },
-    default: () => [],
+    default: () => []
   }),
-  topic: z.string().default(""),
-  analyticalResearch: z.string().default(""),
-  creativeResearch: z.string().default(""),
-  practicalResearch: z.string().default(""),
-});
+  topic: z.string().default(''),
+  analyticalResearch: z.string().default(''),
+  creativeResearch: z.string().default(''),
+  practicalResearch: z.string().default('')
+})
 
-type State = z.infer<typeof StateAnnotation>;
+type State = z.infer<typeof StateAnnotation>
 
 // Fan-out to parallel researchers
 function fanOutToResearchers(state: State): Send[] {
   return [
-    new Send("researcher_analytical", state),
-    new Send("researcher_creative", state),
-    new Send("researcher_practical", state),
-  ];
+    new Send('researcher_analytical', state),
+    new Send('researcher_creative', state),
+    new Send('researcher_practical', state)
+  ]
 }
 
 async function dispatcherNode(state: State): Promise<Partial<State>> {
-  const lastMessage = state.messages.at(-1);
-  const topic = typeof lastMessage?.content === "string" ? lastMessage.content : "";
-  return { topic };
+  const lastMessage = state.messages.at(-1)
+  const topic = typeof lastMessage?.content === 'string' ? lastMessage.content : ''
+  return { topic }
 }
 
 async function analyticalResearcherNode(state: State): Promise<Partial<State>> {
   const response = await analyticalModel.invoke([
-    { role: "system", content: "You are an analytical research expert. Focus on data and evidence." },
-    { role: "user", content: `Research: ${state.topic}` },
-  ]);
+    {
+      role: 'system',
+      content: 'You are an analytical research expert. Focus on data and evidence.'
+    },
+    { role: 'user', content: `Research: ${state.topic}` }
+  ])
   return {
     analyticalResearch: response.content as string,
-    messages: [new AIMessage({ content: response.content as string, name: "researcher_analytical" })],
-  };
+    messages: [
+      new AIMessage({ content: response.content as string, name: 'researcher_analytical' })
+    ]
+  }
 }
 
 // Similar nodes for creative and practical researchers...
 
 // Build the graph with parallel execution
 const workflow = new StateGraph(StateAnnotation)
-  .addNode("dispatcher", dispatcherNode)
-  .addNode("researcher_analytical", analyticalResearcherNode)
-  .addNode("researcher_creative", creativeResearcherNode)
-  .addNode("researcher_practical", practicalResearcherNode)
-  .addEdge(START, "dispatcher")
-  .addConditionalEdges("dispatcher", fanOutToResearchers)
-  .addEdge("researcher_analytical", END)
-  .addEdge("researcher_creative", END)
-  .addEdge("researcher_practical", END);
+  .addNode('dispatcher', dispatcherNode)
+  .addNode('researcher_analytical', analyticalResearcherNode)
+  .addNode('researcher_creative', creativeResearcherNode)
+  .addNode('researcher_practical', practicalResearcherNode)
+  .addEdge(START, 'dispatcher')
+  .addConditionalEdges('dispatcher', fanOutToResearchers)
+  .addEdge('researcher_analytical', END)
+  .addEdge('researcher_creative', END)
+  .addEdge('researcher_practical', END)
 
-export const agent = workflow.compile();
+export const agent = workflow.compile()
 ```
 
 <Card title="Try the parallel research example" icon="users" href="https://github.com/langchain-ai/langgraphjs/tree/main/examples/ui-react/src/examples/parallel-research">
@@ -1346,64 +1339,62 @@ export const agent = workflow.compile();
 Handle interrupts when the agent requires human approval for tool execution. Learn more in the [How to handle interrupts](/oss/javascript/langgraph/interrupts#pause-using-interrupt) guide.
 
 ```tsx
-import { useState } from "react";
-import { useStream } from "@langchain/langgraph-sdk/react";
-import type { HITLRequest, HITLResponse } from "langchain";
-import type { agent } from "./agent";
-import { MessageBubble } from "./MessageBubble";
+import { useState } from 'react'
+import { useStream } from '@langchain/langgraph-sdk/react'
+import type { HITLRequest, HITLResponse } from 'langchain'
+import type { agent } from './agent'
+import { MessageBubble } from './MessageBubble'
 
 function HumanInTheLoopChat() {
   const stream = useStream<typeof agent, { InterruptType: HITLRequest }>({
-    assistantId: "human-in-the-loop",
-    apiUrl: "http://localhost:2024",
-  });
+    assistantId: 'human-in-the-loop',
+    apiUrl: 'http://localhost:2024'
+  })
 
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false)
 
   // Type assertion for interrupt value
-  const hitlRequest = stream.interrupt?.value as HITLRequest | undefined;
+  const hitlRequest = stream.interrupt?.value as HITLRequest | undefined
 
   const handleApprove = async (index: number) => {
-    if (!hitlRequest) return;
-    setIsProcessing(true);
+    if (!hitlRequest) return
+    setIsProcessing(true)
 
     try {
-      const decisions: HITLResponse["decisions"] =
-        hitlRequest.actionRequests.map((_, i) =>
-          i === index ? { type: "approve" } : { type: "approve" }
-        );
+      const decisions: HITLResponse['decisions'] = hitlRequest.actionRequests.map((_, i) =>
+        i === index ? { type: 'approve' } : { type: 'approve' }
+      )
 
       await stream.submit(null, {
         command: {
-          resume: { decisions } as HITLResponse,
-        },
-      });
+          resume: { decisions } as HITLResponse
+        }
+      })
     } finally {
-      setIsProcessing(false);
+      setIsProcessing(false)
     }
-  };
+  }
 
   const handleReject = async (index: number, reason: string) => {
-    if (!hitlRequest) return;
-    setIsProcessing(true);
+    if (!hitlRequest) return
+    setIsProcessing(true)
 
     try {
-      const decisions: HITLResponse["decisions"] =
-        hitlRequest.actionRequests.map((_, i) =>
-          i === index
-            ? { type: "reject", message: reason }
-            : { type: "reject", message: "Rejected along with other actions" }
-        );
+      const decisions: HITLResponse['decisions'] = hitlRequest.actionRequests.map((_, i) =>
+        i === index
+          ? { type: 'reject', message: reason }
+          : { type: 'reject', message: 'Rejected along with other actions' }
+      )
 
       await stream.submit(null, {
         command: {
-          resume: { decisions } as HITLResponse,
-        },
-      });
+          resume: { decisions } as HITLResponse
+        }
+      })
     } finally {
-      setIsProcessing(false);
+      setIsProcessing(false)
     }
-  };
+  }
 
   return (
     <div>
@@ -1415,19 +1406,12 @@ function HumanInTheLoopChat() {
       {/* Render approval UI when interrupted */}
       {hitlRequest && hitlRequest.actionRequests.length > 0 && (
         <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 mt-4">
-          <h3 className="text-amber-400 font-semibold mb-4">
-            Action requires approval
-          </h3>
+          <h3 className="text-amber-400 font-semibold mb-4">Action requires approval</h3>
 
           {hitlRequest.actionRequests.map((action, idx) => (
-            <div
-              key={idx}
-              className="bg-neutral-900 rounded-lg p-4 mb-4 last:mb-0"
-            >
+            <div key={idx} className="bg-neutral-900 rounded-lg p-4 mb-4 last:mb-0">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-mono text-white">
-                  {action.name}
-                </span>
+                <span className="text-sm font-mono text-white">{action.name}</span>
               </div>
 
               <pre className="text-xs bg-black rounded p-2 mb-3 overflow-x-auto">
@@ -1443,7 +1427,7 @@ function HumanInTheLoopChat() {
                   Approve
                 </button>
                 <button
-                  onClick={() => handleReject(idx, "User rejected")}
+                  onClick={() => handleReject(idx, 'User rejected')}
                   disabled={isProcessing}
                   className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded disabled:opacity-50"
                 >
@@ -1455,63 +1439,64 @@ function HumanInTheLoopChat() {
         </div>
       )}
     </div>
-  );
+  )
 }
 ```
-```typescript agent.ts theme={null}
-import { createAgent, tool, humanInTheLoopMiddleware } from "langchain";
-import { ChatOpenAI } from "@langchain/openai";
-import { MemorySaver } from "@langchain/langgraph";
-import { z } from "zod";
 
-const model = new ChatOpenAI({ model: "gpt-4o-mini" });
+```typescript agent.ts theme={null}
+import { createAgent, tool, humanInTheLoopMiddleware } from 'langchain'
+import { ChatOpenAI } from '@langchain/openai'
+import { MemorySaver } from '@langchain/langgraph'
+import { z } from 'zod'
+
+const model = new ChatOpenAI({ model: 'gpt-4o-mini' })
 
 // Tool that requires human approval
 const sendEmail = tool(
   async ({ to, subject, body }) => {
     return {
-      status: "success",
-      content: `Email sent to ${to} with subject "${subject}"`,
-    };
+      status: 'success',
+      content: `Email sent to ${to} with subject "${subject}"`
+    }
   },
   {
-    name: "send_email",
-    description: "Send an email. Requires human approval.",
+    name: 'send_email',
+    description: 'Send an email. Requires human approval.',
     schema: z.object({
-      to: z.string().describe("Recipient email address"),
-      subject: z.string().describe("Email subject"),
-      body: z.string().describe("Email body"),
-    }),
+      to: z.string().describe('Recipient email address'),
+      subject: z.string().describe('Email subject'),
+      body: z.string().describe('Email body')
+    })
   }
-);
+)
 
 // Tool that requires approval with limited options
 const deleteFile = tool(
   async ({ path }) => {
-    return { status: "success", content: `File "${path}" deleted` };
+    return { status: 'success', content: `File "${path}" deleted` }
   },
   {
-    name: "delete_file",
-    description: "Delete a file. Requires human approval.",
+    name: 'delete_file',
+    description: 'Delete a file. Requires human approval.',
     schema: z.object({
-      path: z.string().describe("File path to delete"),
-    }),
+      path: z.string().describe('File path to delete')
+    })
   }
-);
+)
 
 // Safe tool - no approval needed
 const readFile = tool(
   async ({ path }) => {
-    return { status: "success", content: `Contents of ${path}...` };
+    return { status: 'success', content: `Contents of ${path}...` }
   },
   {
-    name: "read_file",
-    description: "Read file contents. No approval needed.",
+    name: 'read_file',
+    description: 'Read file contents. No approval needed.',
     schema: z.object({
-      path: z.string().describe("File path to read"),
-    }),
+      path: z.string().describe('File path to read')
+    })
   }
-);
+)
 
 // Create agent with HITL middleware
 export const agent = createAgent({
@@ -1522,22 +1507,22 @@ export const agent = createAgent({
       interruptOn: {
         // Email requires all decision types
         send_email: {
-          allowedDecisions: ["approve", "edit", "reject"],
-          description: "📧 Review email before sending",
+          allowedDecisions: ['approve', 'edit', 'reject'],
+          description: '📧 Review email before sending'
         },
         // Deletion only allows approve/reject
         delete_file: {
-          allowedDecisions: ["approve", "reject"],
-          description: "🗑️ Confirm file deletion",
+          allowedDecisions: ['approve', 'reject'],
+          description: '🗑️ Confirm file deletion'
         },
         // Reading is safe - auto-approved
-        read_file: false,
-      },
-    }),
+        read_file: false
+      }
+    })
   ],
   // Required for HITL - persists state across interrupts
-  checkpointer: new MemorySaver(),
-});
+  checkpointer: new MemorySaver()
+})
 ```
 
 <Card title="Try the human-in-the-loop example" icon="hand" href="https://github.com/langchain-ai/langgraphjs/tree/main/examples/ui-react/src/examples/human-in-the-loop">
@@ -1553,66 +1538,60 @@ export const agent = createAgent({
 When using models with extended reasoning capabilities (like OpenAI's reasoning models or Anthropic's extended thinking), the thinking process is embedded in the message content. You'll need to extract and display it separately.
 
 ```tsx
-import { useStream } from "@langchain/langgraph-sdk/react";
-import type { Message } from "@langchain/langgraph-sdk";
-import type { agent } from "./agent";
-import { getReasoningFromMessage, getTextContent } from "./utils";
-  
+import { useStream } from '@langchain/langgraph-sdk/react'
+import type { Message } from '@langchain/langgraph-sdk'
+import type { agent } from './agent'
+import { getReasoningFromMessage, getTextContent } from './utils'
+
 function ReasoningChat() {
   const stream = useStream<typeof agent>({
-    assistantId: "reasoning-agent",
-    apiUrl: "http://localhost:2024",
-  });
-  
+    assistantId: 'reasoning-agent',
+    apiUrl: 'http://localhost:2024'
+  })
+
   return (
     <div className="flex flex-col gap-4">
       {stream.messages.map((message, idx) => {
-        if (message.type === "ai") {
-          const reasoning = getReasoningFromMessage(message);
-          const textContent = getTextContent(message);
-  
+        if (message.type === 'ai') {
+          const reasoning = getReasoningFromMessage(message)
+          const textContent = getTextContent(message)
+
           return (
             <div key={message.id ?? idx}>
               {/* Render reasoning bubble if present */}
               {reasoning && (
                 <div className="mb-4">
-                  <div className="text-xs font-medium text-amber-400/80 mb-2">
-                    Reasoning
-                  </div>
+                  <div className="text-xs font-medium text-amber-400/80 mb-2">Reasoning</div>
                   <div className="bg-amber-950/50 border border-amber-500/20 rounded-2xl px-4 py-3">
-                    <div className="text-sm text-amber-100/90 whitespace-pre-wrap">
-                      {reasoning}
-                    </div>
+                    <div className="text-sm text-amber-100/90 whitespace-pre-wrap">{reasoning}</div>
                   </div>
                 </div>
               )}
-  
+
               {/* Render text content */}
               {textContent && (
-                <div className="text-neutral-100 whitespace-pre-wrap">
-                  {textContent}
-                </div>
+                <div className="text-neutral-100 whitespace-pre-wrap">{textContent}</div>
               )}
             </div>
-          );
+          )
         }
-  
-        return <MessageBubble key={message.id ?? idx} message={message} />;
+
+        return <MessageBubble key={message.id ?? idx} message={message} />
       })}
-  
+
       {stream.isLoading && (
         <div className="flex items-center gap-2 text-amber-400/70">
           <span className="text-sm">Thinking...</span>
         </div>
       )}
     </div>
-  );
+  )
 }
 ```
-  
+
 ```typescript utils.ts theme={null}
-import type { Message, AIMessage } from "@langchain/langgraph-sdk";
-  
+import type { Message, AIMessage } from '@langchain/langgraph-sdk'
+
 /**
  * Extracts reasoning/thinking content from an AI message.
  * Supports both OpenAI reasoning (additional_kwargs.reasoning.summary)
@@ -1622,63 +1601,64 @@ export function getReasoningFromMessage(message: Message): string | undefined {
   type MessageWithExtras = AIMessage & {
     additional_kwargs?: {
       reasoning?: {
-        summary?: Array<{ type: string; text: string }>;
-      };
-    };
-    contentBlocks?: Array<{ type: string; thinking?: string }>;
-  };
-  
-  const msg = message as MessageWithExtras;
-  
+        summary?: Array<{ type: string; text: string }>
+      }
+    }
+    contentBlocks?: Array<{ type: string; thinking?: string }>
+  }
+
+  const msg = message as MessageWithExtras
+
   // Check for OpenAI reasoning in additional_kwargs
   if (msg.additional_kwargs?.reasoning?.summary) {
     const content = msg.additional_kwargs.reasoning.summary
-      .filter((item) => item.type === "summary_text")
+      .filter((item) => item.type === 'summary_text')
       .map((item) => item.text)
-      .join("");
-  
-    if (content.trim()) return content;
+      .join('')
+
+    if (content.trim()) return content
   }
-  
+
   // Check for Anthropic thinking in contentBlocks
   if (msg.contentBlocks?.length) {
     const thinking = msg.contentBlocks
-      .filter((b) => b.type === "thinking" && b.thinking)
+      .filter((b) => b.type === 'thinking' && b.thinking)
       .map((b) => b.thinking)
-      .join("\n");
-  
-    if (thinking) return thinking;
+      .join('\n')
+
+    if (thinking) return thinking
   }
-  
+
   // Check for thinking in message.content array
   if (Array.isArray(msg.content)) {
     const thinking = msg.content
-      .filter((b): b is { type: "thinking"; thinking: string } =>
-        typeof b === "object" && b?.type === "thinking" && "thinking" in b
+      .filter(
+        (b): b is { type: 'thinking'; thinking: string } =>
+          typeof b === 'object' && b?.type === 'thinking' && 'thinking' in b
       )
       .map((b) => b.thinking)
-      .join("\n");
-  
-    if (thinking) return thinking;
+      .join('\n')
+
+    if (thinking) return thinking
   }
-  
-  return undefined;
+
+  return undefined
 }
-  
+
 /**
  * Extracts text content from a message.
  */
 export function getTextContent(message: Message): string {
-  if (typeof message.content === "string") return message.content;
-  
+  if (typeof message.content === 'string') return message.content
+
   if (Array.isArray(message.content)) {
     return message.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
+      .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
       .map((c) => c.text)
-      .join("");
+      .join('')
   }
-  
-  return "";
+
+  return ''
 }
 ```
 
@@ -1686,26 +1666,26 @@ export function getTextContent(message: Message): string {
 
 For custom LangGraph applications, embed your tool call types in your state's messages property.
 
-```tsx  theme={null}
-import { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "@langchain/langgraph-sdk/react";
+```tsx theme={null}
+import { Message } from '@langchain/langgraph-sdk'
+import { useStream } from '@langchain/langgraph-sdk/react'
 
 // Define your tool call types as a discriminated union
 type MyToolCalls =
-  | { name: "search"; args: { query: string }; id?: string }
-  | { name: "calculate"; args: { expression: string }; id?: string };
+  | { name: 'search'; args: { query: string }; id?: string }
+  | { name: 'calculate'; args: { expression: string }; id?: string }
 
 // Embed tool call types in your state's messages
 interface MyGraphState {
-  messages: Message<MyToolCalls>[];
-  context?: string;
+  messages: Message<MyToolCalls>[]
+  context?: string
 }
 
 function CustomGraphChat() {
   const stream = useStream<MyGraphState>({
-    assistantId: "my-graph",
-    apiUrl: "http://localhost:2024",
-  });
+    assistantId: 'my-graph',
+    apiUrl: 'http://localhost:2024'
+  })
 
   // stream.values is typed as MyGraphState
   // stream.toolCalls[0].call.name is typed as "search" | "calculate"
@@ -1714,22 +1694,22 @@ function CustomGraphChat() {
 
 You can also specify additional type configuration for interrupts and configurable options:
 
-```tsx  theme={null}
+```tsx theme={null}
 interface MyGraphState {
-  messages: Message<MyToolCalls>[];
+  messages: Message<MyToolCalls>[]
 }
 
 function CustomGraphChat() {
   const stream = useStream<
     MyGraphState,
     {
-      InterruptType: { question: string };
-      ConfigurableType: { userId: string };
+      InterruptType: { question: string }
+      ConfigurableType: { userId: string }
     }
   >({
-    assistantId: "my-graph",
-    apiUrl: "http://localhost:2024",
-  });
+    assistantId: 'my-graph',
+    apiUrl: 'http://localhost:2024'
+  })
 
   // stream.interrupt is typed as { question: string } | undefined
 }

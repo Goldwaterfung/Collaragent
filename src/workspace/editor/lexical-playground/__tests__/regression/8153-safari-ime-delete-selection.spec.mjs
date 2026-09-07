@@ -6,15 +6,15 @@
  *
  */
 
-import {selectAll} from '../keyboardShortcuts/index.mjs';
+import { selectAll } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   assertSelection,
   focusEditor,
   html,
   initialize,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 /**
  * Safari fires compositionend before keydown (unlike Chrome/Firefox).
@@ -27,71 +27,69 @@ async function dispatchCompositionEnd(page) {
       new CompositionEvent('compositionend', {
         bubbles: true,
         cancelable: false,
-        data: 'あああ',
-      }),
-    );
-  });
+        data: 'あああ'
+      })
+    )
+  })
 }
 
 test.describe('Regression #8153', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
 
   test('Can delete all text selected with Cmd+A after IME composition end on Safari', async ({
     page,
     browserName,
     isPlainText,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(browserName !== 'webkit');
-    test.skip(isPlainText);
-    test.skip(isCollab);
+    test.skip(browserName !== 'webkit')
+    test.skip(isPlainText)
+    test.skip(isCollab)
 
-    await focusEditor(page);
-    await page.keyboard.type('Hello');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('World');
+    await focusEditor(page)
+    await page.keyboard.type('Hello')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('World')
 
-    await dispatchCompositionEnd(page);
+    await dispatchCompositionEnd(page)
 
-    await selectAll(page);
-    await page.keyboard.press('Backspace');
+    await selectAll(page)
+    await page.keyboard.press('Backspace')
 
     await assertHTML(
       page,
-      html`
-        <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-      `,
-    );
+      html` <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p> `
+    )
     await assertSelection(page, {
       anchorOffset: 0,
       anchorPath: [0],
       focusOffset: 0,
-      focusPath: [0],
-    });
-  });
+      focusPath: [0]
+    })
+  })
 
   test('Can delete multi-paragraph selection with Shift+ArrowUp after IME composition end on Safari', async ({
     page,
     browserName,
     isPlainText,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(browserName !== 'webkit');
-    test.skip(isPlainText);
-    test.skip(isCollab);
+    test.skip(browserName !== 'webkit')
+    test.skip(isPlainText)
+    test.skip(isCollab)
 
-    await focusEditor(page);
-    await page.keyboard.type('Hello');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('World');
-    await page.keyboard.press('Enter');
-    await page.keyboard.type('あああ');
+    await focusEditor(page)
+    await page.keyboard.type('Hello')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('World')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('あああ')
 
-    await dispatchCompositionEnd(page);
+    await dispatchCompositionEnd(page)
 
-    await page.keyboard.press('Shift+ArrowUp');
-    await page.keyboard.press('Shift+ArrowUp');
-    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Shift+ArrowUp')
+    await page.keyboard.press('Shift+ArrowUp')
+    await page.keyboard.press('Backspace')
 
     await assertHTML(
       page,
@@ -99,7 +97,7 @@ test.describe('Regression #8153', () => {
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">Hello</span>
         </p>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

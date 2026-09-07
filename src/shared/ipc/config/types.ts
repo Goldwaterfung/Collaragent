@@ -1,4 +1,10 @@
-import { AppConfig, SubAgentConfig, ModelInfo, MCPServerConfig } from '../../config/types'
+import {
+  AppConfig,
+  SubAgentConfig,
+  ModelInfo,
+  MCPServerConfig,
+  ModelProvider
+} from '../../config/types'
 
 // ============================================================================
 // CONFIG IPC REQUEST TYPES
@@ -52,7 +58,7 @@ export interface ConfigToggleToolRequest {
  * Set model request
  */
 export interface ConfigSetModelRequest {
-  provider: 'openai' | 'anthropic' | 'google' | 'ollama'
+  provider: ModelProvider
   modelId: string
   name?: string
   apiKey?: string

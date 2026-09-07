@@ -1,83 +1,84 @@
-import fs from "fs";
-import path from "path";
-import { app } from "electron";
+import fs from 'fs'
+import path from 'path'
+import { app } from 'electron'
 
 export enum LogLevel {
-  DEBUG = "DEBUG",
-  INFO = "INFO",
-  WARN = "WARN",
-  ERROR = "ERROR",
+  DEBUG = 'DEBUG',
+  INFO = 'INFO',
+  WARN = 'WARN',
+  ERROR = 'ERROR'
 }
 
 export class LoggerService {
-  private logPath: string;
-  private logStream: fs.WriteStream;
+  private logPath: string
+  private logStream: fs.WriteStream
 
   constructor() {
-    const logDir = path.join(app.getPath("home"), ".collaragent");
+    const logDir = path.join(app.getPath('home'), '.collaragent')
     if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
+      fs.mkdirSync(logDir, { recursive: true })
     }
-    
-    this.logPath = path.join(logDir, "agent.log");
-    this.logStream = fs.createWriteStream(this.logPath, { flags: "a" });
+
+    this.logPath = path.join(logDir, 'agent.log')
+    this.logStream = fs.createWriteStream(this.logPath, { flags: 'a' })
   }
 
   private formatMessage(level: LogLevel, message: string, data?: any): string {
-    const timestamp = new Date().toISOString();
-    let logLine = `[${timestamp}] [${level}] ${message}`;
-    
+    const timestamp = new Date().toISOString()
+    let logLine = `[${timestamp}] [${level}] ${message}`
+
     if (data) {
       try {
-        const serialized = data instanceof Error 
-          ? JSON.stringify({ message: data.message, stack: data.stack }) 
-          : JSON.stringify(data);
-        logLine += ` ${serialized}`;
+        const serialized =
+          data instanceof Error
+            ? JSON.stringify({ message: data.message, stack: data.stack })
+            : JSON.stringify(data)
+        logLine += ` ${serialized}`
       } catch (err) {
-        logLine += ` [Circular/Unserializable Data]`;
+        logLine += ` [Circular/Unserializable Data]`
       }
     }
-    
-    return logLine + "\n";
+
+    return logLine + '\n'
   }
 
   log(level: LogLevel, message: string, data?: any) {
-    const logLine = this.formatMessage(level, message, data);
-    
+    const logLine = this.formatMessage(level, message, data)
+
     // Write to file
-    this.logStream.write(logLine);
-    
+    this.logStream.write(logLine)
+
     // Also log to console in development
     if (process.env.NODE_ENV === 'development') {
-      const consoleMsg = `[${level}] ${message}`;
+      const consoleMsg = `[${level}] ${message}`
       switch (level) {
         case LogLevel.ERROR:
-          console.error(consoleMsg, data || "");
-          break;
+          console.error(consoleMsg, data || '')
+          break
         case LogLevel.WARN:
-          console.warn(consoleMsg, data || "");
-          break;
+          console.warn(consoleMsg, data || '')
+          break
         default:
-          console.log(consoleMsg, data || "");
+          console.log(consoleMsg, data || '')
       }
     }
   }
 
   debug(message: string, data?: any) {
-    this.log(LogLevel.DEBUG, message, data);
+    this.log(LogLevel.DEBUG, message, data)
   }
 
   info(message: string, data?: any) {
-    this.log(LogLevel.INFO, message, data);
+    this.log(LogLevel.INFO, message, data)
   }
 
   warn(message: string, data?: any) {
-    this.log(LogLevel.WARN, message, data);
+    this.log(LogLevel.WARN, message, data)
   }
 
   error(message: string, data?: any) {
-    this.log(LogLevel.ERROR, message, data);
+    this.log(LogLevel.ERROR, message, data)
   }
 }
 
-export const logger = new LoggerService();
+export const logger = new LoggerService()

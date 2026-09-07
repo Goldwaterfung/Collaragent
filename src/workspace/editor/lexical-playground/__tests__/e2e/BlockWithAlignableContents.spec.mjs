@@ -6,7 +6,7 @@
  *
  */
 
-import {selectAll} from '../keyboardShortcuts/index.mjs';
+import { selectAll } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   focusEditor,
@@ -15,28 +15,25 @@ import {
   insertYouTubeEmbed,
   selectFromAlignDropdown,
   test,
-  YOUTUBE_SAMPLE_URL,
-} from '../utils/index.mjs';
+  YOUTUBE_SAMPLE_URL
+} from '../utils/index.mjs'
 
 test.describe('BlockWithAlignableContents', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
 
-  test('Can create full width blocks for YouTube videos', async ({
-    page,
-    isPlainText,
-  }) => {
-    test.skip(isPlainText);
-    await focusEditor(page);
-    await page.keyboard.type('Hello world');
+  test('Can create full width blocks for YouTube videos', async ({ page, isPlainText }) => {
+    test.skip(isPlainText)
+    await focusEditor(page)
+    await page.keyboard.type('Hello world')
     await assertHTML(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
           <span data-lexical-text="true">Hello world</span>
         </p>
-      `,
-    );
-    await insertYouTubeEmbed(page, YOUTUBE_SAMPLE_URL);
+      `
+    )
+    await insertYouTubeEmbed(page, YOUTUBE_SAMPLE_URL)
     await assertHTML(
       page,
       html`
@@ -52,22 +49,20 @@ test.describe('BlockWithAlignableContents', () => {
               height="315"
               src="${YOUTUBE_SAMPLE_URL}"
               title="YouTube video"
-              width="560"></iframe>
+              width="560"
+            ></iframe>
           </div>
         </div>
         <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
-  test('Can align contents within full width blocks', async ({
-    page,
-    isPlainText,
-  }) => {
-    test.skip(isPlainText);
-    await focusEditor(page);
-    await page.keyboard.type('Hello world');
-    await insertYouTubeEmbed(page, YOUTUBE_SAMPLE_URL);
+  test('Can align contents within full width blocks', async ({ page, isPlainText }) => {
+    test.skip(isPlainText)
+    await focusEditor(page)
+    await page.keyboard.type('Hello world')
+    await insertYouTubeEmbed(page, YOUTUBE_SAMPLE_URL)
     await assertHTML(
       page,
       html`
@@ -83,27 +78,26 @@ test.describe('BlockWithAlignableContents', () => {
               height="315"
               src="${YOUTUBE_SAMPLE_URL}"
               title="YouTube video"
-              width="560"></iframe>
+              width="560"
+            ></iframe>
           </div>
         </div>
         <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-      `,
-    );
-    await selectAll(page);
-    await selectFromAlignDropdown(page, '.center-align');
+      `
+    )
+    await selectAll(page)
+    await selectFromAlignDropdown(page, '.center-align')
     await assertHTML(
       page,
       html`
-        <p
-          class="PlaygroundEditorTheme__paragraph"
-          dir="auto"
-          style="text-align: center">
+        <p class="PlaygroundEditorTheme__paragraph" dir="auto" style="text-align: center">
           <span data-lexical-text="true">Hello world</span>
         </p>
         <div contenteditable="false" data-lexical-decorator="true">
           <div
             class="PlaygroundEditorTheme__embedBlock PlaygroundEditorTheme__embedBlockFocus"
-            style="text-align: center">
+            style="text-align: center"
+          >
             <iframe
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowfullscreen=""
@@ -111,18 +105,16 @@ test.describe('BlockWithAlignableContents', () => {
               height="315"
               src="${YOUTUBE_SAMPLE_URL}"
               title="YouTube video"
-              width="560"></iframe>
+              width="560"
+            ></iframe>
           </div>
         </div>
-        <p
-          class="PlaygroundEditorTheme__paragraph"
-          dir="auto"
-          style="text-align: center">
+        <p class="PlaygroundEditorTheme__paragraph" dir="auto" style="text-align: center">
           <br />
         </p>
       `,
       undefined,
-      {ignoreClasses: true},
-    );
-  });
-});
+      { ignoreClasses: true }
+    )
+  })
+})

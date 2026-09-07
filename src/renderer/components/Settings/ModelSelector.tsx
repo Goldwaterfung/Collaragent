@@ -97,7 +97,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
     }
   }
 
-  const providers: ModelConfig['provider'][] = ['openai', 'anthropic', 'google', 'ollama']
+  const providers: { id: ModelConfig['provider']; label: string }[] = [
+    { id: 'openai', label: 'OpenAI' },
+    { id: 'anthropic', label: 'Anthropic' },
+    { id: 'google', label: 'Google' },
+    { id: 'ollama', label: 'Ollama' },
+    { id: 'opencode-go', label: 'OpenCode Go' }
+  ]
   const filteredModels = availableModels.filter((m) => m.provider === provider)
   const selectedModelInfo = !isManual
     ? availableModels.find((m) => m.id === modelId && m.provider === provider)
@@ -129,8 +135,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
             className="w-full p-3 border border-surface-200 rounded-xl bg-surface-50 text-black text-sm sm:text-base focus:outline-none transition-shadow"
           >
             {providers.map((p) => (
-              <option key={p} value={p}>
-                {p.charAt(0).toUpperCase() + p.slice(1)}
+              <option key={p.id} value={p.id}>
+                {p.label}
               </option>
             ))}
           </select>
@@ -152,7 +158,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
             className="w-full p-3 border border-surface-200 rounded-xl bg-surface-50 text-black text-sm sm:text-base focus:outline-none transition-shadow"
           >
             {filteredModels.length > 0 && (
-              <optgroup label="Catalog Models (pi-ai)">
+              <optgroup
+                label={
+                  provider === 'opencode-go'
+                    ? 'OpenCode Go Models (pi-ai)'
+                    : 'Catalog Models (pi-ai)'
+                }
+              >
                 {filteredModels.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
@@ -209,6 +221,26 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
           </div>
         )}
 
+        {(provider === 'opencode-go' || baseUrl.includes('opencode.ai')) && (
+          <div className="lg:col-span-2 p-3.5 sm:p-4 rounded-xl border border-surface-200 bg-surface-50 text-xs sm:text-sm text-black flex items-start gap-2.5">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-black">OpenCode Go Session Routing Active</p>
+              <p className="text-black/70 mt-0.5 leading-relaxed">
+                CollarAgent automatically manages per-conversation routing headers (
+                <code className="font-mono text-xs bg-surface-200 px-1 py-0.5 rounded">
+                  x-opencode-session
+                </code>
+                ) and agent identification (
+                <code className="font-mono text-xs bg-surface-200 px-1 py-0.5 rounded">
+                  User-Agent: collaragent/1.0.0
+                </code>
+                ) on every turn to optimize prompt caching and meet OpenCode routing policies.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="lg:col-span-2">
           <label className="block text-sm font-medium mb-2 text-black">API Key</label>
           <input
@@ -216,7 +248,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             className="w-full p-3 border border-surface-200 rounded-xl bg-surface-50 text-black text-sm sm:text-base placeholder:text-black/40 focus:outline-none transition-shadow"
-            placeholder={apiKey ? '(Unchanged)' : 'Enter new API key to update'}
+            placeholder={
+              apiKey
+                ? '(Unchanged)'
+                : provider === 'opencode-go'
+                  ? 'Enter OpenCode API key'
+                  : 'Enter new API key to update'
+            }
           />
           <p className="text-xs sm:text-sm text-black/50 mt-2">
             Stored securely in system keychain. Leave blank to keep existing key.
@@ -230,7 +268,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             className="w-full p-3 border border-surface-200 rounded-xl bg-surface-50 text-black text-sm sm:text-base placeholder:text-black/40 focus:outline-none transition-shadow"
-            placeholder="https://api.example.com/v1"
+            placeholder={
+              provider === 'opencode-go'
+                ? 'Default: Managed automatically per model protocol'
+                : 'https://api.example.com/v1'
+            }
           />
         </div>
 

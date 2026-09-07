@@ -226,15 +226,13 @@ describe('FilesystemCard - React component rendering', () => {
     expect(html).toContain('Error: File not found')
   })
 
-  it('renders read_file of SKILL.md as a clean Skill card without raw payload', async () => {
+  it('renders read_file of SKILL.md as a standard Read card without raw payload', async () => {
     const React = await import('react')
     const { renderToString } = await import('react-dom/server')
-    const { FilesystemCard, isSkillFilePath, extractSkillName } = await import('../FilesystemCard')
+    const { FilesystemCard } = await import('../FilesystemCard')
 
     const skillPath =
       '/Users/goldenfung/Documents/apply-jobs/.agents/skills/executive-candidate-dossier-analyzer/SKILL.md'
-    expect(isSkillFilePath(skillPath)).toBe(true)
-    expect(extractSkillName(skillPath)).toBe('executive-candidate-dossier-analyzer')
 
     const toolCall = {
       id: 'call_f1ef1f3c73c7465cbb5572af',
@@ -246,15 +244,15 @@ describe('FilesystemCard - React component rendering', () => {
       result: [
         {
           type: 'text',
-          text: '--- \n name: executive-candidate-dossier-analyzer \n description: Detailed instructions... \n --- \n 500 lines of raw text'
+          text: '--- \n name: executive-candidate-dossier-analyzer \n description: Detailed instructions with error handling... \n --- \n 500 lines of raw text'
         }
       ],
       status: 'completed' as const
     }
 
     const html = renderToString(React.createElement(FilesystemCard, { tool: toolCall }))
-    expect(html).toContain('Skill:')
-    expect(html).toContain('executive-candidate-dossier-analyzer')
+    expect(html).toContain('Read:')
+    expect(html).toContain('executive-candidate-dossier-analyzer/SKILL.md')
     expect(html).not.toContain('500 lines of raw text')
     expect(html).not.toContain('Detailed instructions')
   })
@@ -270,17 +268,17 @@ describe('FilesystemCard - React component rendering', () => {
       args: {
         path: '/Users/goldenfung/.agents/skills/neuro-economics-product-design/SKILL.md'
       },
-      result: 'raw skill content',
+      result: 'raw skill content with error guidelines',
       status: 'completed' as const
     }
 
     const html = renderToString(React.createElement(FilesystemCard, { tool: toolCall }))
-    expect(html).toContain('Skill:')
-    expect(html).toContain('neuro-economics-product-design')
+    expect(html).toContain('Read:')
+    expect(html).toContain('neuro-economics-product-design/SKILL.md')
     expect(html).not.toContain('raw skill content')
   })
 
-  it('renders direct skill tool calls cleanly without raw payload', async () => {
+  it('renders direct skill tool calls cleanly with standard Read card without raw payload', async () => {
     const React = await import('react')
     const { renderToString } = await import('react-dom/server')
     const { FilesystemCard } = await import('../FilesystemCard')
@@ -291,12 +289,12 @@ describe('FilesystemCard - React component rendering', () => {
       args: {
         name: 'apa-research-execution-specialist'
       },
-      result: 'Skill markdown content here',
+      result: 'Skill markdown content here with error notes',
       status: 'completed' as const
     }
 
     const html = renderToString(React.createElement(FilesystemCard, { tool: toolCall }))
-    expect(html).toContain('Skill:')
+    expect(html).toContain('Read:')
     expect(html).toContain('apa-research-execution-specialist')
     expect(html).not.toContain('Skill markdown content here')
   })

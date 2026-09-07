@@ -6,7 +6,7 @@
  *
  */
 
-import {moveLeft, selectAll, toggleBold} from '../keyboardShortcuts/index.mjs';
+import { moveLeft, selectAll, toggleBold } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   click,
@@ -14,20 +14,17 @@ import {
   html,
   initialize,
   selectFromInsertDropdown,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 test.describe('DateTime', () => {
-  test.beforeEach(({isCollab, page}) => initialize({isCollab, page}));
+  test.beforeEach(({ isCollab, page }) => initialize({ isCollab, page }))
 
-  test('can insert a DateTime node via the Insert dropdown', async ({
-    page,
-    isPlainText,
-  }) => {
-    test.skip(isPlainText);
-    await focusEditor(page);
+  test('can insert a DateTime node via the Insert dropdown', async ({ page, isPlainText }) => {
+    test.skip(isPlainText)
+    await focusEditor(page)
     // Insert DateTime using the Insert dropdown
-    await selectFromInsertDropdown(page, '.item .calendar');
+    await selectFromInsertDropdown(page, '.item .calendar')
 
     // The DateTime node will render as a span with a class and the date text (today's date at midnight)
     // We'll match the output using a regex for the date string (YYYY-MM-DD or locale string)
@@ -40,58 +37,51 @@ test.describe('DateTime', () => {
             class="PlaygroundEditorTheme__dateTime"
             contenteditable="false"
             data-lexical-datetime="*"
-            data-lexical-decorator="true">
+            data-lexical-decorator="true"
+          >
             <div class="dateTimePill">*</div>
           </span>
           <br />
         </p>
       `,
       undefined,
-      {ignoreClasses: true, ignoreInlineStyles: true},
+      { ignoreClasses: true, ignoreInlineStyles: true },
       // Custom modification: replace the date text and data-lexical-datetime value with wildcards for matching
       (actualHtml) =>
         actualHtml
           .replace(/(<div[^>]*>)(.*?)(<\/div>)/, '$1*$3')
-          .replace(
-            /data-lexical-datetime="[^"]*"/,
-            'data-lexical-datetime="*"',
-          ),
-    );
-  });
+          .replace(/data-lexical-datetime="[^"]*"/, 'data-lexical-datetime="*"')
+    )
+  })
 
-  test('Datetime should be inserted into the link', async ({
-    page,
-    isPlainText,
-  }) => {
-    test.skip(isPlainText);
-    await focusEditor(page);
-    await page.keyboard.type('Hello world');
-    await selectAll(page);
+  test('Datetime should be inserted into the link', async ({ page, isPlainText }) => {
+    test.skip(isPlainText)
+    await focusEditor(page)
+    await page.keyboard.type('Hello world')
+    await selectAll(page)
 
     // link
-    await click(page, '.link');
-    await click(page, '.link-confirm');
+    await click(page, '.link')
+    await click(page, '.link-confirm')
     // Move caret to end of link
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight')
     // Move care to 'Hello '
-    await moveLeft(page, 5);
+    await moveLeft(page, 5)
     // Insert DateTime using the Insert dropdown
-    await selectFromInsertDropdown(page, '.item .calendar');
+    await selectFromInsertDropdown(page, '.item .calendar')
 
     await assertHTML(
       page,
       html`
         <p class="PlaygroundEditorTheme__paragraph" dir="auto">
-          <a
-            class="PlaygroundEditorTheme__link"
-            href="https://"
-            rel="noreferrer">
+          <a class="PlaygroundEditorTheme__link" href="https://" rel="noreferrer">
             <span data-lexical-text="true">Hello</span>
             <span
               class="PlaygroundEditorTheme__dateTime"
               contenteditable="false"
               data-lexical-datetime="*"
-              data-lexical-decorator="true">
+              data-lexical-decorator="true"
+            >
               <div class="dateTimePill">*</div>
             </span>
             <span data-lexical-text="true">world</span>
@@ -99,28 +89,22 @@ test.describe('DateTime', () => {
         </p>
       `,
       undefined,
-      {ignoreClasses: true, ignoreInlineStyles: true},
+      { ignoreClasses: true, ignoreInlineStyles: true },
       // Custom modification: replace the date text and data-lexical-datetime value with wildcards for matching
       (actualHtml) =>
         actualHtml
           .replace(/(<div[^>]*>)(.*?)(<\/div>)/, '$1*$3')
-          .replace(
-            /data-lexical-datetime="[^"]*"/,
-            'data-lexical-datetime="*"',
-          ),
-    );
-  });
+          .replace(/data-lexical-datetime="[^"]*"/, 'data-lexical-datetime="*"')
+    )
+  })
 
-  test('Datetime should apply the current selection format', async ({
-    page,
-    isPlainText,
-  }) => {
-    test.skip(isPlainText);
-    await focusEditor(page);
-    await toggleBold(page);
+  test('Datetime should apply the current selection format', async ({ page, isPlainText }) => {
+    test.skip(isPlainText)
+    await focusEditor(page)
+    await toggleBold(page)
 
     // Insert DateTime using the Insert dropdown
-    await selectFromInsertDropdown(page, '.item .calendar');
+    await selectFromInsertDropdown(page, '.item .calendar')
 
     await assertHTML(
       page,
@@ -130,22 +114,20 @@ test.describe('DateTime', () => {
             class="PlaygroundEditorTheme__dateTime"
             contenteditable="false"
             data-lexical-datetime="*"
-            data-lexical-decorator="true">
+            data-lexical-decorator="true"
+          >
             <div class="dateTimePill bold">*</div>
           </span>
           <br />
         </p>
       `,
       undefined,
-      {ignoreClasses: true, ignoreInlineStyles: true},
+      { ignoreClasses: true, ignoreInlineStyles: true },
       // Custom modification: replace the date text and data-lexical-datetime value with wildcards for matching
       (actualHtml) =>
         actualHtml
           .replace(/(<div[^>]*>)(.*?)(<\/div>)/, '$1*$3')
-          .replace(
-            /data-lexical-datetime="[^"]*"/,
-            'data-lexical-datetime="*"',
-          ),
-    );
-  });
-});
+          .replace(/data-lexical-datetime="[^"]*"/, 'data-lexical-datetime="*"')
+    )
+  })
+})

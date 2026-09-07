@@ -253,9 +253,13 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
    */
   async sendBatch(commands: TCommand[], options?: SendOptions): Promise<number[]> {
     const serverSeqs: number[] = []
+    let currentOptions = options
     for (const cmd of commands) {
-      const seq = await this.send(cmd, options)
+      const seq = await this.send(cmd, currentOptions)
       serverSeqs.push(seq)
+      if (currentOptions?.baseVersion !== undefined) {
+        currentOptions = { ...currentOptions, baseVersion: seq }
+      }
     }
     return serverSeqs
   }

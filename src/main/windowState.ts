@@ -36,7 +36,9 @@ export function saveWindowState(bounds: Bounds): void {
   }
 }
 
-export function applyStateToOptions(opts: Electron.BrowserWindowConstructorOptions): Electron.BrowserWindowConstructorOptions {
+export function applyStateToOptions(
+  opts: Electron.BrowserWindowConstructorOptions
+): Electron.BrowserWindowConstructorOptions {
   const state = loadWindowState()
   if (!state) return opts
   const copy = { ...opts }

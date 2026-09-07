@@ -16,34 +16,28 @@ import {
   insertTableColumnAfter,
   insertTableColumnBefore,
   selectCellsFromTableCords,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 test.describe('Regression test #4661', () => {
-  test.beforeEach(({isCollab, page}) =>
-    initialize({isCollab, page, tableHorizontalScroll: false}),
-  );
+  test.beforeEach(({ isCollab, page }) =>
+    initialize({ isCollab, page, tableHorizontalScroll: false })
+  )
   test('inserting 2 columns before inserts before selection', async ({
     page,
     isPlainText,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isPlainText);
+    test.skip(isPlainText)
 
-    await focusEditor(page);
+    await focusEditor(page)
 
-    await insertTable(page, 2, 2);
+    await insertTable(page, 2, 2)
 
-    await click(page, '.PlaygroundEditorTheme__tableCell');
-    await selectCellsFromTableCords(
-      page,
-      {x: 0, y: 0},
-      {x: 1, y: 0},
-      true,
-      true,
-    );
+    await click(page, '.PlaygroundEditorTheme__tableCell')
+    await selectCellsFromTableCords(page, { x: 0, y: 0 }, { x: 1, y: 0 }, true, true)
 
-    await insertTableColumnBefore(page);
+    await insertTableColumnBefore(page)
 
     await assertHTML(
       page,
@@ -57,20 +51,16 @@ test.describe('Regression test #4661', () => {
             <col style="width: 92px" />
           </colgroup>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
           </tr>
@@ -81,8 +71,7 @@ test.describe('Regression test #4661', () => {
             <td class="PlaygroundEditorTheme__tableCell">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </td>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <td class="PlaygroundEditorTheme__tableCell">
@@ -91,31 +80,25 @@ test.describe('Regression test #4661', () => {
           </tr>
         </table>
         <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-      `,
-    );
-  });
+      `
+    )
+  })
 
   test('inserting 2 columns after inserts after selection', async ({
     page,
     isPlainText,
-    isCollab,
+    isCollab
   }) => {
-    test.skip(isPlainText);
+    test.skip(isPlainText)
 
-    await focusEditor(page);
+    await focusEditor(page)
 
-    await insertTable(page, 2, 2);
+    await insertTable(page, 2, 2)
 
-    await click(page, '.PlaygroundEditorTheme__tableCell');
-    await selectCellsFromTableCords(
-      page,
-      {x: 1, y: 0},
-      {x: 0, y: 0},
-      true,
-      true,
-    );
+    await click(page, '.PlaygroundEditorTheme__tableCell')
+    await selectCellsFromTableCords(page, { x: 1, y: 0 }, { x: 0, y: 0 }, true, true)
 
-    await insertTableColumnAfter(page);
+    await insertTableColumnAfter(page)
 
     await assertHTML(
       page,
@@ -129,26 +112,21 @@ test.describe('Regression test #4661', () => {
             <col style="width: 92px" />
           </colgroup>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
           </tr>
           <tr>
-            <th
-              class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
+            <th class="PlaygroundEditorTheme__tableCell PlaygroundEditorTheme__tableCellHeader">
               <p class="PlaygroundEditorTheme__paragraph"><br /></p>
             </th>
             <td class="PlaygroundEditorTheme__tableCell">
@@ -163,7 +141,7 @@ test.describe('Regression test #4661', () => {
           </tr>
         </table>
         <p class="PlaygroundEditorTheme__paragraph" dir="auto"><br /></p>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

@@ -3,10 +3,10 @@ import fixPath from 'fix-path'
 
 // Fix PATH for macOS GUI apps
 try {
-  const init = typeof fixPath === 'function' ? fixPath : (fixPath as any).default;
-  init?.();
+  const init = typeof fixPath === 'function' ? fixPath : (fixPath as any).default
+  init?.()
 } catch (e) {
-  console.error("fixPath failed:", e);
+  console.error('fixPath failed:', e)
 }
 
 import { app, shell, BrowserWindow, ipcMain, Menu, MenuItemConstructorOptions } from 'electron'
@@ -72,7 +72,6 @@ function createWindow(): void {
   }
 }
 
-
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -88,20 +87,22 @@ app.whenReady().then(async () => {
   })
 
   // Initialize Services
-  const secureStorage = new SecureStorage();
-  const modelManager = new ModelManager();
-  const configManager = new ConfigManager(secureStorage, modelManager);
-  const persistenceManager = new PersistenceManager(); // Persistence layer
-  await persistenceManager.setup().catch(err => console.error("Failed to setup persistence:", err));
+  const secureStorage = new SecureStorage()
+  const modelManager = new ModelManager()
+  const configManager = new ConfigManager(secureStorage, modelManager)
+  const persistenceManager = new PersistenceManager() // Persistence layer
+  await persistenceManager
+    .setup()
+    .catch((err) => console.error('Failed to setup persistence:', err))
 
-  const agentFactory = new AgentFactory(configManager, persistenceManager);
+  const agentFactory = new AgentFactory(configManager, persistenceManager)
 
   // Initialize Chat History
   // Register Handlers
-  registerConfigHandlers(configManager, modelManager);
-  registerAgentHandlers(agentFactory);
-  registerCheckpointHandlers(persistenceManager);
-  registerSkillsHandlers(configManager);
+  registerConfigHandlers(configManager, modelManager)
+  registerAgentHandlers(agentFactory)
+  registerCheckpointHandlers(persistenceManager)
+  registerSkillsHandlers(configManager)
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
@@ -111,7 +112,6 @@ app.whenReady().then(async () => {
 
   // On app start show the Welcome screen (no project).
   createWindow()
-
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
@@ -124,14 +124,16 @@ app.whenReady().then(async () => {
 
   // Set up the dock menu for macOS
   if (process.platform === 'darwin' && app.dock) {
-    app.dock.setMenu(Menu.buildFromTemplate([
-      {
-        label: 'New Window',
-        click() {
-          createWindow()
+    app.dock.setMenu(
+      Menu.buildFromTemplate([
+        {
+          label: 'New Window',
+          click() {
+            createWindow()
+          }
         }
-      }
-    ]))
+      ])
+    )
   }
 })
 
@@ -140,22 +142,24 @@ function createMenu(): void {
 
   const template: MenuItemConstructorOptions[] = [
     // { role: 'appMenu' }
-    ...(isMac
-      ? [{
-          label: app.name,
-          submenu: [
-            { role: 'about' },
-            { type: 'separator' },
-            { role: 'services' },
-            { type: 'separator' },
-            { role: 'hide' },
-            { role: 'hideOthers' },
-            { role: 'unhide' },
-            { type: 'separator' },
-            { role: 'quit' }
-          ]
-        }]
-      : []) as MenuItemConstructorOptions[],
+    ...((isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' }
+            ]
+          }
+        ]
+      : []) as MenuItemConstructorOptions[]),
     // { role: 'fileMenu' }
     {
       label: 'File',
@@ -188,17 +192,10 @@ function createMenu(): void {
               { type: 'separator' },
               {
                 label: 'Speech',
-                submenu: [
-                  { role: 'startSpeaking' },
-                  { role: 'stopSpeaking' }
-                ]
+                submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }]
               }
             ]
-          : [
-              { role: 'delete' },
-              { type: 'separator' },
-              { role: 'selectAll' }
-            ])
+          : [{ role: 'delete' }, { type: 'separator' }, { role: 'selectAll' }])
       ]
     } as MenuItemConstructorOptions,
     // { role: 'viewMenu' }
@@ -223,15 +220,8 @@ function createMenu(): void {
         { role: 'minimize' },
         { role: 'zoom' },
         ...(isMac
-          ? [
-              { type: 'separator' },
-              { role: 'front' },
-              { type: 'separator' },
-              { role: 'window' }
-            ]
-          : [
-              { role: 'close' }
-            ])
+          ? [{ type: 'separator' }, { role: 'front' }, { type: 'separator' }, { role: 'window' }]
+          : [{ role: 'close' }])
       ]
     } as MenuItemConstructorOptions,
     {

@@ -6,25 +6,21 @@
  *
  */
 
-import type { JSX } from 'react';
+import type { JSX } from 'react'
 
-import './ColorPicker.css';
+import './ColorPicker.css'
 
-import { MouseEvent, useRef, useState } from 'react';
+import { MouseEvent, useRef, useState } from 'react'
 
-import { isKeyboardInput } from '../utils/focusUtils';
+import { isKeyboardInput } from '../utils/focusUtils'
 
 interface ColorPickerProps {
-  color: string;
-  onChange?: (
-    value: string,
-    skipHistoryStack: boolean,
-    skipRefocus: boolean,
-  ) => void;
+  color: string
+  onChange?: (value: string, skipHistoryStack: boolean, skipRefocus: boolean) => void
 }
 
 export function parseAllowedColor(input: string) {
-  return /^rgb\(\d+, \d+, \d+\)$/.test(input) ? input : '';
+  return /^rgb\(\d+, \d+, \d+\)$/.test(input) ? input : ''
 }
 
 const basicColors = [
@@ -42,27 +38,22 @@ const basicColors = [
   '#000000',
   '#4a4a4a',
   '#9b9b9b',
-  '#ffffff',
-];
+  '#ffffff'
+]
 
-export default function ColorPicker({
-  color,
-  onChange,
-}: Readonly<ColorPickerProps>): JSX.Element {
-  const [selfColor, setSelfColor] = useState(toHex(color));
-  const innerDivRef = useRef(null);
+export default function ColorPicker({ color, onChange }: Readonly<ColorPickerProps>): JSX.Element {
+  const [selfColor, setSelfColor] = useState(toHex(color))
+  const innerDivRef = useRef(null)
 
   const onBasicColorClick = (e: MouseEvent, basicColor: string) => {
-    setSelfColor(basicColor);
+    setSelfColor(basicColor)
     if (onChange) {
-      onChange(basicColor, false, isKeyboardInput(e));
+      onChange(basicColor, false, isKeyboardInput(e))
     }
-  };
+  }
 
   return (
-    <div
-      className="color-picker-wrapper"
-      ref={innerDivRef}>
+    <div className="color-picker-wrapper" ref={innerDivRef}>
       <div className="color-picker-basic-color">
         {basicColors.map((basicColor) => (
           <button
@@ -74,30 +65,30 @@ export default function ColorPicker({
         ))}
       </div>
     </div>
-  );
+  )
 }
 
 export function toHex(value: string): string {
   if (!value.startsWith('#')) {
-    const ctx = document.createElement('canvas').getContext('2d');
+    const ctx = document.createElement('canvas').getContext('2d')
 
     if (!ctx) {
-      throw new Error('2d context not supported or canvas already initialized');
+      throw new Error('2d context not supported or canvas already initialized')
     }
 
-    ctx.fillStyle = value;
+    ctx.fillStyle = value
 
-    return ctx.fillStyle;
+    return ctx.fillStyle
   } else if (value.length === 4 || value.length === 5) {
     value = value
       .split('')
       .map((v, i) => (i ? v + v : '#'))
-      .join('');
+      .join('')
 
-    return value;
+    return value
   } else if (value.length === 7 || value.length === 9) {
-    return value;
+    return value
   }
 
-  return '#000000';
+  return '#000000'
 }

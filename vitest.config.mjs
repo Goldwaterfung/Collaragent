@@ -1,19 +1,14 @@
-import { defineConfig } from 'vitest/config';
-import { resolve } from 'path';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config'
+import { resolve } from 'path'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'evals/**/*.test.ts'],
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/*.spec.mjs',
-      '**/lexical-playground/**'
-    ]
+    include: ['src/**/*.test.{ts,tsx}', 'evals/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/*.spec.mjs', '**/lexical-playground/**']
   },
   resolve: {
     alias: {
@@ -22,7 +17,7 @@ export default defineConfig({
       '@shared': resolve(import.meta.dirname, 'src/shared'),
       '@main': resolve(import.meta.dirname, 'src/main'),
       '@renderer': resolve(import.meta.dirname, 'src/renderer'),
-      '@evals': resolve(import.meta.dirname, 'evals'),
-    },
-  },
-});
+      '@evals': resolve(import.meta.dirname, 'evals')
+    }
+  }
+})

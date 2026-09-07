@@ -11,81 +11,73 @@ import {
   ClearEditorExtension,
   DecoratorTextExtension,
   HorizontalRuleExtension,
-  SelectionAlwaysOnDisplayExtension,
-} from '@lexical/extension';
-import {HashtagExtension} from '@lexical/hashtag';
-import {HistoryExtension} from '@lexical/history';
-import {
-  $createLinkNode,
-  ClickableLinkExtension,
-  LinkExtension,
-} from '@lexical/link';
+  SelectionAlwaysOnDisplayExtension
+} from '@lexical/extension'
+import { HashtagExtension } from '@lexical/hashtag'
+import { HistoryExtension } from '@lexical/history'
+import { $createLinkNode, ClickableLinkExtension, LinkExtension } from '@lexical/link'
 import {
   $createListItemNode,
   $createListNode,
   CheckListExtension,
-  ListExtension,
-} from '@lexical/list';
-import {PlainTextExtension} from '@lexical/plain-text';
-import {LexicalCollaboration} from '@lexical/react/LexicalCollaborationContext';
-import {LexicalExtensionComposer} from '@lexical/react/LexicalExtensionComposer';
-import {
-  $createHeadingNode,
-  $createQuoteNode,
-  RichTextExtension,
-} from '@lexical/rich-text';
+  ListExtension
+} from '@lexical/list'
+import { PlainTextExtension } from '@lexical/plain-text'
+import { LexicalCollaboration } from '@lexical/react/LexicalCollaborationContext'
+import { LexicalExtensionComposer } from '@lexical/react/LexicalExtensionComposer'
+import { $createHeadingNode, $createQuoteNode, RichTextExtension } from '@lexical/rich-text'
 import {
   $createParagraphNode,
   $createTextNode,
   $getRoot,
   configExtension,
-  defineExtension,
-} from 'lexical';
-import {type JSX, useMemo} from 'react';
+  defineExtension
+} from 'lexical'
+import { type JSX, useMemo } from 'react'
 
-import {isDevPlayground} from './appSettings';
-import {buildHTMLConfig} from './buildHTMLConfig';
-import {FlashMessageContext} from './context/FlashMessageContext';
-import {SettingsContext, useSettings} from './context/SettingsContext';
-import {ToolbarContext} from './context/ToolbarContext';
-import Editor from './Editor';
-import logo from './images/logo.svg';
-import {KeywordsExtension} from './nodes/KeywordNode';
-import PlaygroundNodes from './nodes/PlaygroundNodes';
-import {PlaygroundAutoLinkExtension} from './plugins/AutoLinkExtension';
-import {DateTimeExtension} from './plugins/DateTimeExtension';
-import DocsPlugin from './plugins/DocsPlugin';
-import {DragDropPasteExtension} from './plugins/DragDropPasteExtension';
-import {EmojisExtension} from './plugins/EmojisExtension';
-import {ImagesExtension} from './plugins/ImagesExtension';
-import {PlaygroundMarkdownShortcutsExtension} from './plugins/MarkdownShortcutsExtension';
-import {MaxLengthExtension} from './plugins/MaxLengthPlugin';
-import PasteLogPlugin from './plugins/PasteLogPlugin';
-import TestRecorderPlugin from './plugins/TestRecorderPlugin';
-import TypingPerfPlugin from './plugins/TypingPerfPlugin';
-import Settings from './Settings';
-import PlaygroundEditorTheme from './themes/PlaygroundEditorTheme';
-import {validateUrl} from './utils/url';
+import { isDevPlayground } from './appSettings'
+import { buildHTMLConfig } from './buildHTMLConfig'
+import { FlashMessageContext } from './context/FlashMessageContext'
+import { SettingsContext, useSettings } from './context/SettingsContext'
+import { ToolbarContext } from './context/ToolbarContext'
+import Editor from './Editor'
+import logo from './images/logo.svg'
+import { KeywordsExtension } from './nodes/KeywordNode'
+import PlaygroundNodes from './nodes/PlaygroundNodes'
+import { PlaygroundAutoLinkExtension } from './plugins/AutoLinkExtension'
+import { DateTimeExtension } from './plugins/DateTimeExtension'
+import DocsPlugin from './plugins/DocsPlugin'
+import { DragDropPasteExtension } from './plugins/DragDropPasteExtension'
+import { EmojisExtension } from './plugins/EmojisExtension'
+import { ImagesExtension } from './plugins/ImagesExtension'
+import { PlaygroundMarkdownShortcutsExtension } from './plugins/MarkdownShortcutsExtension'
+import { MaxLengthExtension } from './plugins/MaxLengthPlugin'
+import PasteLogPlugin from './plugins/PasteLogPlugin'
+import TestRecorderPlugin from './plugins/TestRecorderPlugin'
+import TypingPerfPlugin from './plugins/TypingPerfPlugin'
+import Settings from './Settings'
+import PlaygroundEditorTheme from './themes/PlaygroundEditorTheme'
+import { validateUrl } from './utils/url'
 
 console.warn(
-  'If you are profiling the playground app, please ensure you turn off the debug view. You can disable it by pressing on the settings control in the bottom-left of your screen and toggling the debug view setting.',
-);
+  'If you are profiling the playground app, please ensure you turn off the debug view. You can disable it by pressing on the settings control in the bottom-left of your screen and toggling the debug view setting.'
+)
 
 function $prepopulatedRichText() {
-  const root = $getRoot();
+  const root = $getRoot()
   if (root.getFirstChild() === null) {
-    const heading = $createHeadingNode('h1');
-    heading.append($createTextNode('Welcome to the playground'));
-    root.append(heading);
-    const quote = $createQuoteNode();
+    const heading = $createHeadingNode('h1')
+    heading.append($createTextNode('Welcome to the playground'))
+    root.append(heading)
+    const quote = $createQuoteNode()
     quote.append(
       $createTextNode(
         `In case you were wondering what the black box at the bottom is – it's the debug view, showing the current state of the editor. ` +
-          `You can disable it by pressing on the settings control in the bottom-left of your screen and toggling the debug view setting.`,
-      ),
-    );
-    root.append(quote);
-    const paragraph = $createParagraphNode();
+          `You can disable it by pressing on the settings control in the bottom-left of your screen and toggling the debug view setting.`
+      )
+    )
+    root.append(quote)
+    const paragraph = $createParagraphNode()
     paragraph.append(
       $createTextNode('The playground is a demo environment built with '),
       $createTextNode('@lexical/react').toggleFormat('code'),
@@ -94,60 +86,56 @@ function $prepopulatedRichText() {
       $createTextNode('some text').toggleFormat('bold'),
       $createTextNode(' with '),
       $createTextNode('different').toggleFormat('italic'),
-      $createTextNode(' formats.'),
-    );
-    root.append(paragraph);
-    const paragraph2 = $createParagraphNode();
+      $createTextNode(' formats.')
+    )
+    root.append(paragraph)
+    const paragraph2 = $createParagraphNode()
     paragraph2.append(
       $createTextNode(
-        'Make sure to check out the various plugins in the toolbar. You can also use #hashtags or @-mentions too!',
-      ),
-    );
-    root.append(paragraph2);
-    const paragraph3 = $createParagraphNode();
-    paragraph3.append(
-      $createTextNode(`If you'd like to find out more about Lexical, you can:`),
-    );
-    root.append(paragraph3);
-    const list = $createListNode('bullet');
+        'Make sure to check out the various plugins in the toolbar. You can also use #hashtags or @-mentions too!'
+      )
+    )
+    root.append(paragraph2)
+    const paragraph3 = $createParagraphNode()
+    paragraph3.append($createTextNode(`If you'd like to find out more about Lexical, you can:`))
+    root.append(paragraph3)
+    const list = $createListNode('bullet')
     list.append(
       $createListItemNode().append(
         $createTextNode(`Visit the `),
-        $createLinkNode('https://lexical.dev/').append(
-          $createTextNode('Lexical website'),
-        ),
-        $createTextNode(` for documentation and more information.`),
+        $createLinkNode('https://lexical.dev/').append($createTextNode('Lexical website')),
+        $createTextNode(` for documentation and more information.`)
       ),
       $createListItemNode().append(
         $createTextNode(`Check out the code on our `),
         $createLinkNode('https://github.com/facebook/lexical').append(
-          $createTextNode('GitHub repository'),
+          $createTextNode('GitHub repository')
         ),
-        $createTextNode(`.`),
+        $createTextNode(`.`)
       ),
       $createListItemNode().append(
         $createTextNode(`Playground code can be found `),
         $createLinkNode(
-          'https://github.com/facebook/lexical/tree/main/packages/lexical-playground',
+          'https://github.com/facebook/lexical/tree/main/packages/lexical-playground'
         ).append($createTextNode('here')),
-        $createTextNode(`.`),
+        $createTextNode(`.`)
       ),
       $createListItemNode().append(
         $createTextNode(`Join our `),
         $createLinkNode('https://discord.com/invite/KmG4wQnnD9').append(
-          $createTextNode('Discord Server'),
+          $createTextNode('Discord Server')
         ),
-        $createTextNode(` and chat with the team.`),
-      ),
-    );
-    root.append(list);
-    const paragraph4 = $createParagraphNode();
+        $createTextNode(` and chat with the team.`)
+      )
+    )
+    root.append(list)
+    const paragraph4 = $createParagraphNode()
     paragraph4.append(
       $createTextNode(
-        `Lastly, we're constantly adding cool new features to this playground. So make sure you check back here when you next get a chance :).`,
-      ),
-    );
-    root.append(paragraph4);
+        `Lastly, we're constantly adding cool new features to this playground. So make sure you check back here when you next get a chance :).`
+      )
+    )
+    root.append(paragraph4)
   }
 }
 
@@ -157,12 +145,12 @@ const PlaygroundRichTextExtension = defineExtension({
     RichTextExtension,
     ImagesExtension,
     HorizontalRuleExtension,
-    configExtension(ListExtension, {shouldPreserveNumbering: false}),
+    configExtension(ListExtension, { shouldPreserveNumbering: false }),
     CheckListExtension,
-    PlaygroundMarkdownShortcutsExtension,
+    PlaygroundMarkdownShortcutsExtension
   ],
-  name: '@lexical/playground/RichText',
-});
+  name: '@lexical/playground/RichText'
+})
 
 const AppExtension = defineExtension({
   dependencies: [
@@ -176,17 +164,17 @@ const AppExtension = defineExtension({
     MaxLengthExtension,
     DragDropPasteExtension,
     EmojisExtension,
-    configExtension(LinkExtension, {validateUrl}),
+    configExtension(LinkExtension, { validateUrl }),
     PlaygroundAutoLinkExtension,
     ClickableLinkExtension,
-    SelectionAlwaysOnDisplayExtension,
+    SelectionAlwaysOnDisplayExtension
   ],
   html: buildHTMLConfig(),
   name: '@lexical/playground',
   namespace: 'Playground',
   nodes: PlaygroundNodes,
-  theme: PlaygroundEditorTheme,
-});
+  theme: PlaygroundEditorTheme
+})
 
 /**
  * This is not a recommended pattern, extensions should be as static as
@@ -194,34 +182,30 @@ const AppExtension = defineExtension({
  * different editor configurations based on the query string.
  */
 function buildExtensionFromSettings(
-  settings: Record<'isCollab' | 'emptyEditor' | 'isRichText', boolean>,
+  settings: Record<'isCollab' | 'emptyEditor' | 'isRichText', boolean>
 ) {
-  const {isCollab, emptyEditor, isRichText} = settings;
+  const { isCollab, emptyEditor, isRichText } = settings
   return defineExtension({
-    $initialEditorState: isCollab
-      ? null
-      : emptyEditor
-        ? undefined
-        : $prepopulatedRichText,
+    $initialEditorState: isCollab ? null : emptyEditor ? undefined : $prepopulatedRichText,
     dependencies: [
       AppExtension,
-      configExtension(HistoryExtension, {disabled: isCollab}),
-      isRichText ? PlaygroundRichTextExtension : PlainTextExtension,
+      configExtension(HistoryExtension, { disabled: isCollab }),
+      isRichText ? PlaygroundRichTextExtension : PlainTextExtension
     ],
     html: buildHTMLConfig(),
-    name: '@lexical/playground/dynamic-config',
-  });
+    name: '@lexical/playground/dynamic-config'
+  })
 }
 
 function App(): JSX.Element {
   const {
-    settings: {isCollab, emptyEditor, isRichText, measureTypingPerf},
-  } = useSettings();
+    settings: { isCollab, emptyEditor, isRichText, measureTypingPerf }
+  } = useSettings()
 
   const app = useMemo(
-    () => buildExtensionFromSettings({emptyEditor, isCollab, isRichText}),
-    [emptyEditor, isCollab, isRichText],
-  );
+    () => buildExtensionFromSettings({ emptyEditor, isCollab, isRichText }),
+    [emptyEditor, isCollab, isRichText]
+  )
 
   return (
     <LexicalCollaboration>
@@ -244,7 +228,7 @@ function App(): JSX.Element {
         </ToolbarContext>
       </LexicalExtensionComposer>
     </LexicalCollaboration>
-  );
+  )
 }
 
 export default function PlaygroundApp(): JSX.Element {
@@ -256,7 +240,8 @@ export default function PlaygroundApp(): JSX.Element {
       <a
         href="https://github.com/facebook/lexical/tree/main/packages/lexical-playground"
         className="github-corner"
-        aria-label="View source on GitHub">
+        aria-label="View source on GitHub"
+      >
         <svg
           width="80"
           height="80"
@@ -268,15 +253,16 @@ export default function PlaygroundApp(): JSX.Element {
             left: '0',
             position: 'absolute',
             top: '0',
-            transform: 'scale(-1,1)',
+            transform: 'scale(-1,1)'
           }}
-          aria-hidden="true">
+          aria-hidden="true"
+        >
           <path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z" />
           <path
             d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2"
             fill="currentColor"
             style={{
-              transformOrigin: '130px 106px',
+              transformOrigin: '130px 106px'
             }}
             className="octo-arm"
           />
@@ -288,5 +274,5 @@ export default function PlaygroundApp(): JSX.Element {
         </svg>
       </a>
     </SettingsContext>
-  );
+  )
 }

@@ -531,7 +531,7 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
         await window.checkpointIPC.restore({
           threadId: targetId,
           bundleId,
-          createAutoCheckpoint: true,
+          createAutoCheckpoint: false,
           reason: 'restore'
         })
 

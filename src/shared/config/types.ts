@@ -52,11 +52,16 @@ export interface RecentFile {
 }
 
 /**
+ * Supported model provider types
+ */
+export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'ollama' | 'opencode-go'
+
+/**
  * Model configuration
  */
 export interface ModelConfig {
   /** Provider selection */
-  provider: 'openai' | 'anthropic' | 'google' | 'ollama'
+  provider: ModelProvider
 
   /** Model identifier (e.g., gpt-4, claude-3-5-sonnet) */
   modelId: string
@@ -102,7 +107,7 @@ export interface SubAgentConfig {
 
   /** Override main agent model (optional) */
   model?: {
-    provider: 'openai' | 'anthropic' | 'google' | 'ollama'
+    provider: ModelProvider
     modelId: string
   }
 }
@@ -213,7 +218,13 @@ export interface ModelInfo {
   name: string
 
   /** Provider */
-  provider: 'openai' | 'anthropic' | 'google' | 'ollama'
+  provider: ModelProvider
+
+  /** Wire protocol from catalog (e.g. openai-completions, anthropic-messages) */
+  api?: string
+
+  /** Default Base URL from catalog */
+  baseUrl?: string
 
   /** Model description */
   description?: string

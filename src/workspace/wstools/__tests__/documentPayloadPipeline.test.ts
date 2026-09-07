@@ -1,9 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import http from 'node:http';
-import { listDocumentInstances } from '../listDocumentInstances';
-import { SyncClient } from '../../sync/SyncClient';
-import { convertBlocksToPatchView } from '../../editor/schemas/htmlContentConversion';
-import type { Block } from '@workspace/persistence/editorContent';
+import { describe, it, expect, vi } from 'vitest'
+import http from 'node:http'
+import { listDocumentInstances } from '../listDocumentInstances'
+import { SyncClient } from '../../sync/SyncClient'
+import { convertBlocksToPatchView } from '../../editor/schemas/htmlContentConversion'
+import { executeWriteDocument, executeDocumentCommands } from '../manageDocument'
+import * as ClientConnection from '@workspace/sync/ClientConnection'
+import type { Block, DocumentPayload } from '@workspace/persistence/editorContent'
+import type { EditorCommand } from '@shared/commands'
 
 describe('Document Payload Pipeline & Identity Tests', () => {
   describe('listDocumentInstances REST Response Handling', () => {
@@ -25,7 +28,7 @@ describe('Document Payload Pipeline & Identity Tests', () => {
             updatedAt: '2026-08-30T12:00:00.000Z'
           }
         ]
-      };
+      }
 
       const mockProjectsPayload = {
         projects: [
@@ -36,91 +39,95 @@ describe('Document Payload Pipeline & Identity Tests', () => {
             updatedAt: '2026-08-30T12:00:00.000Z'
           }
         ]
-      };
+      }
 
       // Mock http.request to simulate REST API responses
       vi.spyOn(http, 'request').mockImplementation((options: unknown, callback?: unknown) => {
-        const reqOptions = options as http.RequestOptions;
-        const cb = callback as ((res: http.IncomingMessage) => void) | undefined;
-        const path = reqOptions.path;
-        const res = new (require('events').EventEmitter)();
-        (res as unknown as { statusCode: number }).statusCode = 200;
+        const reqOptions = options as http.RequestOptions
+        const cb = callback as ((res: http.IncomingMessage) => void) | undefined
+        const path = reqOptions.path
+        const res = new (require('events').EventEmitter)()
+        ;(res as unknown as { statusCode: number }).statusCode = 200
 
         process.nextTick(() => {
-          if (cb) cb(res as unknown as http.IncomingMessage);
+          if (cb) cb(res as unknown as http.IncomingMessage)
           if (path === '/api/instances') {
-            res.emit('data', JSON.stringify(mockInstancesPayload));
+            res.emit('data', JSON.stringify(mockInstancesPayload))
           } else if (path === '/api/projects') {
-            res.emit('data', JSON.stringify(mockProjectsPayload));
+            res.emit('data', JSON.stringify(mockProjectsPayload))
           }
-          res.emit('end');
-        });
+          res.emit('end')
+        })
 
-        const req = new (require('events').EventEmitter)();
-        (req as unknown as { write: unknown; end: unknown }).write = vi.fn();
-        (req as unknown as { write: unknown; end: unknown }).end = vi.fn();
-        return req as unknown as http.ClientRequest;
-      });
+        const req = new (require('events').EventEmitter)()
+        ;(req as unknown as { write: unknown; end: unknown }).write = vi.fn()
+        ;(req as unknown as { write: unknown; end: unknown }).end = vi.fn()
+        return req as unknown as http.ClientRequest
+      })
 
-      const result = await listDocumentInstances({ apiPort: 4567 });
+      const result = await listDocumentInstances({ apiPort: 4567 })
 
-      expect(result.instances).toHaveLength(2);
-      expect(result.instances[0].instanceId).toBe('doc-uuid-1');
-      expect(result.instances[0].name).toBe('Architecture Spec');
-      expect(result.projects).toHaveLength(1);
-      expect(result.projects[0].name).toBe('Core Project');
+      expect(result.instances).toHaveLength(2)
+      expect(result.instances[0].instanceId).toBe('doc-uuid-1')
+      expect(result.instances[0].name).toBe('Architecture Spec')
+      expect(result.projects).toHaveLength(1)
+      expect(result.projects[0].name).toBe('Core Project')
 
-      vi.restoreAllMocks();
-    });
+      vi.restoreAllMocks()
+    })
 
     it('rejects with error when REST API returns invalid schema', async () => {
       vi.spyOn(http, 'request').mockImplementation((_options: unknown, callback?: unknown) => {
-        const cb = callback as ((res: http.IncomingMessage) => void) | undefined;
-        const res = new (require('events').EventEmitter)();
-        (res as unknown as { statusCode: number }).statusCode = 200;
+        const cb = callback as ((res: http.IncomingMessage) => void) | undefined
+        const res = new (require('events').EventEmitter)()
+        ;(res as unknown as { statusCode: number }).statusCode = 200
 
         process.nextTick(() => {
-          if (cb) cb(res as unknown as http.IncomingMessage);
-          res.emit('data', JSON.stringify({ invalidField: "corrupted" }));
-          res.emit('end');
-        });
+          if (cb) cb(res as unknown as http.IncomingMessage)
+          res.emit('data', JSON.stringify({ invalidField: 'corrupted' }))
+          res.emit('end')
+        })
 
-        const req = new (require('events').EventEmitter)();
-        (req as unknown as { write: unknown; end: unknown }).write = vi.fn();
-        (req as unknown as { write: unknown; end: unknown }).end = vi.fn();
-        return req as unknown as http.ClientRequest;
-      });
+        const req = new (require('events').EventEmitter)()
+        ;(req as unknown as { write: unknown; end: unknown }).write = vi.fn()
+        ;(req as unknown as { write: unknown; end: unknown }).end = vi.fn()
+        return req as unknown as http.ClientRequest
+      })
 
       await expect(listDocumentInstances({ apiPort: 4567 })).rejects.toThrow(
         'Invalid /api/instances schema'
-      );
+      )
 
-      vi.restoreAllMocks();
-    });
-  });
+      vi.restoreAllMocks()
+    })
+  })
 
   describe('SyncClient Error Handling & Determinism', () => {
     it('rejects readyPromise immediately when receiving an error message', async () => {
-      const client = new SyncClient({ host: 'localhost:9999' });
+      const client = new SyncClient({ host: 'localhost:9999' })
 
       // Simulate connection and message dispatch
       const wsMessage = {
         type: 'error' as const,
         code: 'WORKSPACE_INSTANCE_NOT_FOUND',
         message: 'Instance "non-existent" could not be found'
-      };
+      }
 
       // Dispatch error message via onMessage handler or message listener
-      client.onMessage(() => {});
-      (client as unknown as { handleMessage: (msg: typeof wsMessage) => void }).handleMessage(wsMessage);
+      client.onMessage(() => {})
+      ;(client as unknown as { handleMessage: (msg: typeof wsMessage) => void }).handleMessage(
+        wsMessage
+      )
 
       await expect(client.waitForReady()).rejects.toThrow(
         '[WORKSPACE_INSTANCE_NOT_FOUND] Instance "non-existent" could not be found'
-      );
-    });
+      )
+    })
 
     it('resolves readyPromise and populates snapshot on sync-snapshot', async () => {
-      const client = new SyncClient<{ type: string }, { blocks: Block[] }>({ host: 'localhost:9999' });
+      const client = new SyncClient<{ type: string }, { blocks: Block[] }>({
+        host: 'localhost:9999'
+      })
 
       const snapshotMsg = {
         type: 'sync-snapshot' as const,
@@ -132,17 +139,19 @@ describe('Document Payload Pipeline & Identity Tests', () => {
             children: [{ text: 'Hello Collaragent' }]
           }
         ]
-      };
+      }
 
-      (client as unknown as { handleMessage: (msg: typeof snapshotMsg) => void }).handleMessage(snapshotMsg);
+      ;(client as unknown as { handleMessage: (msg: typeof snapshotMsg) => void }).handleMessage(
+        snapshotMsg
+      )
 
-      await expect(client.waitForReady()).resolves.toBeUndefined();
-      const snapshot = client.getSnapshot();
-      expect(snapshot).toBeDefined();
-      expect(snapshot?.blocks).toHaveLength(1);
-      expect(snapshot?.blocks[0].id).toBe('block-1');
-    });
-  });
+      await expect(client.waitForReady()).resolves.toBeUndefined()
+      const snapshot = client.getSnapshot()
+      expect(snapshot).toBeDefined()
+      expect(snapshot?.blocks).toHaveLength(1)
+      expect(snapshot?.blocks[0].id).toBe('block-1')
+    })
+  })
 
   describe('Block Identity and Patch View Conversion', () => {
     it('converts blocks to patch view while preserving stable block IDs', () => {
@@ -157,12 +166,80 @@ describe('Document Payload Pipeline & Identity Tests', () => {
           type: 'paragraph',
           children: [{ text: 'Paragraph body.' }]
         }
-      ];
+      ]
 
-      const patchView = convertBlocksToPatchView(blocks);
+      const patchView = convertBlocksToPatchView(blocks)
       expect(patchView).toBe(
         '<h1 data-block-id="heading-1">Document Title</h1>\n<p data-block-id="p-2">Paragraph body.</p>'
-      );
-    });
-  });
-});
+      )
+    })
+  })
+
+  describe('manageDocument - executeWriteDocument & executeDocumentCommands', () => {
+    const initialPayload: DocumentPayload = {
+      blocks: [{ id: 'b1', type: 'paragraph', content: 'Hello' }]
+    }
+
+    it('defaults staged: false on executeWriteDocument batch commands', async () => {
+      const mockSendBatch = vi.fn().mockResolvedValue([1])
+      const mockDisconnect = vi.fn()
+
+      vi.spyOn(ClientConnection, 'connectToEditor').mockResolvedValue({
+        getSnapshot: vi.fn().mockReturnValue(initialPayload),
+        getServerVersion: vi.fn().mockReturnValue(1),
+        sendBatch: mockSendBatch,
+        disconnect: mockDisconnect
+      } as unknown as Awaited<ReturnType<typeof ClientConnection.connectToEditor>>)
+
+      const targetPayload: DocumentPayload = {
+        blocks: [
+          { id: 'b1', type: 'paragraph', content: 'Hello' },
+          { id: 'b2', type: 'paragraph', content: 'World' }
+        ]
+      }
+
+      const result = await executeWriteDocument({
+        instanceId: 'test-doc-id',
+        payload: targetPayload
+      })
+
+      expect(result.status).toBe('success')
+      expect(mockSendBatch).toHaveBeenCalled()
+      const sentCommands = mockSendBatch.mock.calls[0][0] as Array<{ staged?: boolean }>
+      expect(sentCommands.length).toBeGreaterThan(0)
+      for (const cmd of sentCommands) {
+        expect(cmd.staged).toBe(false)
+      }
+      expect(mockDisconnect).toHaveBeenCalledTimes(1)
+    })
+
+    it('defaults staged: false on executeDocumentCommands batch commands', async () => {
+      const mockSendBatch = vi.fn().mockResolvedValue([1])
+      const mockDisconnect = vi.fn()
+
+      vi.spyOn(ClientConnection, 'connectToEditor').mockResolvedValue({
+        getServerVersion: vi.fn().mockReturnValue(1),
+        sendBatch: mockSendBatch,
+        disconnect: mockDisconnect
+      } as unknown as Awaited<ReturnType<typeof ClientConnection.connectToEditor>>)
+
+      const command: EditorCommand = {
+        type: 'editor:insert_block',
+        index: 1,
+        block: { id: 'b2', type: 'paragraph', content: 'Appended' }
+      }
+
+      const result = await executeDocumentCommands({
+        instanceId: 'test-doc-id',
+        commands: [command]
+      })
+
+      expect(result.status).toBe('success')
+      expect(mockSendBatch).toHaveBeenCalled()
+      const sentCommands = mockSendBatch.mock.calls[0][0] as Array<{ staged?: boolean }>
+      expect(sentCommands.length).toBe(1)
+      expect(sentCommands[0].staged).toBe(false)
+      expect(mockDisconnect).toHaveBeenCalledTimes(1)
+    })
+  })
+})

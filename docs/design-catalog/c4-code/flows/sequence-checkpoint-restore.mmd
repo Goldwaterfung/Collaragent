@@ -6,33 +6,46 @@ sequenceDiagram
     participant Main as ⚙️ Main Host (CheckpointOrchestrator)
     participant Registry as ⏱️ AgentCheckpointRegistry
     participant Server as 🗄️ Storage Utility Process
-    participant Storage as 📦 SqliteStorageEngine
+    participant Storage as 📦 SqliteStorageEngine (CAS)
+    participant WSS as ⚡ In-Process WS Server
 
     User->>UI: Clicks "Restore to this point" on CheckpointMarker
-    UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId })
+    UI->>Preload: window.checkpointIPC.restore({ threadId, bundleId, createAutoCheckpoint: false })
     Preload->>Main: IPC invoke(CHECKPOINT_RESTORE)
     
     Main->>UI: IPC send(checkpoint:quiesce) -> Activate SyncPause mutex
     Main->>Main: abortAgentStream(threadId)
-    Main->>Registry: setPendingBranch(threadId, agentCheckpointId)
-    Main->>Registry: setEffective(threadId, agentCheckpointId)
     Main->>Server: POST /api/checkpoints/restore { bundleId, threadId, projectId }
     
-    Server->>Storage: Read CheckpointBundle & target snapshot MsgPack
-    Storage-->>Server: Hydrated Snapshot + Log Cursors
-    
-    alt bundle.chat.messageId === '__start__'
-        Server->>Storage: Clear full chat session (clearChatSession)
-    else Regular Message ID
-        Server->>Storage: Truncate chat messages to bundle.chat.messageId (truncateChatSession)
+    Server->>Storage: Read CheckpointBundle & resolve snapshots via blob_hash
+    alt Any snapshot missing or corrupt in workspace_blobs
+        Storage-->>Server: Payload undefined / null
+        Server-->>Main: Throw STORAGE_CHECKPOINT_NOT_FOUND (fail-closed, preserve live state)
+        Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
+        Main-->>Preload: Error response
+        Preload-->>UI: Display restore error notification
+    else Snapshots validated & resolved from CAS
+        Storage-->>Server: Hydrated Snapshot + target cursors
+        Server->>Storage: updateInstance(instanceId, { payload: restoredPayload })
+        Server->>WSS: WebSocket broadcast (clientId: 'system-checkpoint-restore', sequenceNumber)
+        WSS->>WSS: commandSequences.set(instanceId, seq); proposals.delete(instanceId)
+        WSS-->>UI: WebSocket push: instance update & reset proposals
+        
+        alt bundle.chat.messageId === '__start__'
+            Server->>Storage: Clear full chat session (clearChatSession)
+        else Regular Message ID
+            Server->>Storage: Truncate chat messages to bundle.chat.messageId (truncateChatSession)
+        end
+        
+        Server-->>Main: Restore completed { status: "restored", bundleId }
+        Main->>Registry: setPendingBranch(threadId, bundle.agentCheckpointId)
+        Main->>Registry: setEffective(threadId, bundle.agentCheckpointId)
+        Main->>Registry: setEffectiveBundleId(threadId, bundle.id)
+        
+        Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
+        Main-->>Preload: Restore response
+        Preload-->>UI: Success
+        
+        UI->>UI: Reload messages via ChatService.getMessages & refreshBundles()
+        UI->>UI: Re-render Canvas and Lexical Editor at exact historical state
     end
-    Server->>Storage: Set restore head in SqliteCheckpointStore
-    Server-->>UI: WebSocket broadcast: update instance & chat:restored
-    Server-->>Main: Restore completed { status: "restored", bundleId }
-    
-    Main->>UI: IPC send(checkpoint:resume) -> Release SyncPause
-    Main-->>Preload: Restore response
-    Preload-->>UI: Success
-    
-    UI->>UI: Reload messages via ChatService.getMessages & refreshBundles()
-    UI->>UI: Re-render Canvas and Lexical Editor at exact historical state

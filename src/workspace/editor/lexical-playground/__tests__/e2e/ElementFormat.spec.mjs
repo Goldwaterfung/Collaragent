@@ -6,7 +6,7 @@
  *
  */
 
-import {moveLeft} from '../keyboardShortcuts/index.mjs';
+import { moveLeft } from '../keyboardShortcuts/index.mjs'
 import {
   assertHTML,
   click,
@@ -14,25 +14,22 @@ import {
   html,
   initialize,
   selectFromAlignDropdown,
-  test,
-} from '../utils/index.mjs';
+  test
+} from '../utils/index.mjs'
 
 test.describe('Element format', () => {
-  test.beforeEach(({isCollab, isPlainText, page}) => {
-    test.skip(isPlainText);
-    return initialize({isCollab, page});
-  });
+  test.beforeEach(({ isCollab, isPlainText, page }) => {
+    test.skip(isPlainText)
+    return initialize({ isCollab, page })
+  })
 
-  test('Can indent/align paragraph when caret is within link', async ({
-    page,
-    isPlainText,
-  }) => {
-    await focusEditor(page);
-    await page.keyboard.type('Hello https://lexical.io world');
-    await moveLeft(page, 10);
-    await selectFromAlignDropdown(page, '.indent');
-    await selectFromAlignDropdown(page, '.indent');
-    await selectFromAlignDropdown(page, '.center-align');
+  test('Can indent/align paragraph when caret is within link', async ({ page, isPlainText }) => {
+    await focusEditor(page)
+    await page.keyboard.type('Hello https://lexical.io world')
+    await moveLeft(page, 10)
+    await selectFromAlignDropdown(page, '.indent')
+    await selectFromAlignDropdown(page, '.indent')
+    await selectFromAlignDropdown(page, '.center-align')
 
     await assertHTML(
       page,
@@ -40,7 +37,8 @@ test.describe('Element format', () => {
         <p
           class="PlaygroundEditorTheme__paragraph PlaygroundEditorTheme__indent"
           dir="auto"
-          style="padding-inline-start: calc(80px); text-align: center;">
+          style="padding-inline-start: calc(80px); text-align: center;"
+        >
           <span data-lexical-text="true">Hello</span>
           <a class="PlaygroundEditorTheme__link" href="https://lexical.io">
             <span data-lexical-text="true">https://lexical.io</span>
@@ -51,26 +49,23 @@ test.describe('Element format', () => {
       undefined,
       {
         ignoreClasses: false,
-        ignoreInlineStyles: false,
-      },
-    );
-  });
+        ignoreInlineStyles: false
+      }
+    )
+  })
 
-  test('Can center align an empty paragraph', async ({page, isPlainText}) => {
-    await focusEditor(page);
-    await click(page, '.alignment');
-    await click(page, '.center-align');
+  test('Can center align an empty paragraph', async ({ page, isPlainText }) => {
+    await focusEditor(page)
+    await click(page, '.alignment')
+    await click(page, '.center-align')
 
     await assertHTML(
       page,
       html`
-        <p
-          class="PlaygroundEditorTheme__paragraph"
-          dir="auto"
-          style="text-align: center">
+        <p class="PlaygroundEditorTheme__paragraph" dir="auto" style="text-align: center">
           <br />
         </p>
-      `,
-    );
-  });
-});
+      `
+    )
+  })
+})

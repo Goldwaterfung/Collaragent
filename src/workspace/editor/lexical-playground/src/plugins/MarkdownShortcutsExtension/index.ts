@@ -6,15 +6,14 @@
  *
  */
 
-import {registerMarkdownShortcuts} from '@lexical/markdown';
-import {defineExtension} from 'lexical';
+import { registerMarkdownShortcuts } from '@lexical/markdown'
+import { defineExtension } from 'lexical'
 
-import {PLAYGROUND_TRANSFORMERS} from '../MarkdownTransformers';
+import { PLAYGROUND_TRANSFORMERS } from '../MarkdownTransformers'
 
 // This is not a published extension because markdown transformers
 // should get a refactor to require less manual configuration
 export const PlaygroundMarkdownShortcutsExtension = defineExtension({
   name: '@lexical/playground/MarkdownShortcuts',
-  register: (editor) =>
-    registerMarkdownShortcuts(editor, PLAYGROUND_TRANSFORMERS),
-});
+  register: (editor) => registerMarkdownShortcuts(editor, PLAYGROUND_TRANSFORMERS)
+})

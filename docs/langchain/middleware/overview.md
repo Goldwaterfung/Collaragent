@@ -4,14 +4,14 @@
 
 Middleware provides a way to more tightly control what happens inside the agent. Middleware is useful for the following:
 
-* Tracking agent behavior with logging, analytics, and debugging.
-* Transforming prompts, [tool selection](docs/langchain/middleware/built-in#llm-tool-selector), and output formatting.
-* Adding [retries](docs/langchain/middleware/built-in#tool-retry), [fallbacks](docs/langchain/middleware/built-in#model-fallback), and early termination logic.
-* Applying [rate limits](docs/langchain/middleware/built-in#model-call-limit), guardrails, and [PII detection](docs/langchain/middleware/built-in#pii-detection).
+- Tracking agent behavior with logging, analytics, and debugging.
+- Transforming prompts, [tool selection](docs/langchain/middleware/built-in#llm-tool-selector), and output formatting.
+- Adding [retries](docs/langchain/middleware/built-in#tool-retry), [fallbacks](docs/langchain/middleware/built-in#model-fallback), and early termination logic.
+- Applying [rate limits](docs/langchain/middleware/built-in#model-call-limit), guardrails, and [PII detection](docs/langchain/middleware/built-in#pii-detection).
 
 Add middleware by passing them to `createAgent`:
 
-```typescript  theme={null}
+```typescript theme={null}
 import {
   createAgent,
   summarizationMiddleware,
@@ -47,14 +47,14 @@ Middleware exposes hooks before and after each of those steps:
 graph TD
     A[request] --> B[before_agent]
     B --> C[before_model]
-    
+
     C --> E[wrap_model_call]
-    
+
     E -->|model| F[after_model]
-    
+
     F --> G[after_agent]
     G --> H[result]
-    
+
     D[wrap_tool_call] -.-> C
     F -.->|tools| D
 ```

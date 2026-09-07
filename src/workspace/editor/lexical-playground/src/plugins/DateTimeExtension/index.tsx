@@ -6,7 +6,7 @@
  *
  */
 
-import {$insertNodeIntoLeaf, $wrapNodeInElement} from '@lexical/utils';
+import { $insertNodeIntoLeaf, $wrapNodeInElement } from '@lexical/utils'
 import {
   $createParagraphNode,
   $getSelection,
@@ -15,20 +15,17 @@ import {
   COMMAND_PRIORITY_EDITOR,
   createCommand,
   defineExtension,
-  LexicalCommand,
-} from 'lexical';
+  LexicalCommand
+} from 'lexical'
 
-import {
-  $createDateTimeNode,
-  DateTimeNode,
-} from '../../nodes/DateTimeNode/DateTimeNode';
+import { $createDateTimeNode, DateTimeNode } from '../../nodes/DateTimeNode/DateTimeNode'
 
 type CommandPayload = {
-  dateTime: Date;
-};
+  dateTime: Date
+}
 
 export const INSERT_DATETIME_COMMAND: LexicalCommand<CommandPayload> =
-  createCommand('INSERT_DATETIME_COMMAND');
+  createCommand('INSERT_DATETIME_COMMAND')
 
 export const DateTimeExtension = defineExtension({
   name: '@lexical/playground/DateTime',
@@ -37,20 +34,20 @@ export const DateTimeExtension = defineExtension({
     editor.registerCommand<CommandPayload>(
       INSERT_DATETIME_COMMAND,
       (payload) => {
-        const {dateTime} = payload;
-        const dateTimeNode = $createDateTimeNode(dateTime);
+        const { dateTime } = payload
+        const dateTimeNode = $createDateTimeNode(dateTime)
 
-        const selection = $getSelection();
+        const selection = $getSelection()
         if ($isRangeSelection(selection)) {
-          dateTimeNode.setFormat(selection.format);
+          dateTimeNode.setFormat(selection.format)
         }
-        $insertNodeIntoLeaf(dateTimeNode);
+        $insertNodeIntoLeaf(dateTimeNode)
         if ($isRootOrShadowRoot(dateTimeNode.getParentOrThrow())) {
-          $wrapNodeInElement(dateTimeNode, $createParagraphNode).selectEnd();
+          $wrapNodeInElement(dateTimeNode, $createParagraphNode).selectEnd()
         }
 
-        return true;
+        return true
       },
-      COMMAND_PRIORITY_EDITOR,
-    ),
-});
+      COMMAND_PRIORITY_EDITOR
+    )
+})
