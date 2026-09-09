@@ -523,5 +523,46 @@ describe('SqliteStorageEngine - Chat, Cascades & Shutdown Lifecycle', () => {
       const rawBlob = engine.getSnapshot(snapshotB.snapshotRef)
       expect(rawBlob).not.toBeNull()
     })
+
+    it('prunes session checkpoint bundles and triggers incremental vacuum on deleteChatSession', async () => {
+      const project = engine.createProject('Vacuum Pruning Test')
+      const session = engine.createChatSession(project.id, 'Session To Delete')
+
+      // Create a dummy checkpoint bundle for this session
+      engine.createCheckpointBundle({
+        id: 'bundle-del-1',
+        createdAt: new Date().toISOString(),
+        sessionId: session.id,
+        threadId: session.id,
+        projectId: project.id,
+        chat: { messageId: 'msg-1' },
+        instances: []
+      })
+
+      // Create a dummy bundle for another session
+      engine.createCheckpointBundle({
+        id: 'bundle-keep-2',
+        createdAt: new Date().toISOString(),
+        sessionId: 'other-session',
+        threadId: 'other-session',
+        projectId: project.id,
+        chat: { messageId: 'msg-2' },
+        instances: []
+      })
+
+      expect(engine.getCheckpointBundle('bundle-del-1')).toBeDefined()
+      expect(engine.getCheckpointBundle('bundle-keep-2')).toBeDefined()
+
+      // Delete session
+      engine.deleteChatSession(session.id)
+
+      // bundle-del-1 must be pruned, bundle-keep-2 must remain
+      expect(engine.getCheckpointBundle('bundle-del-1')).toBeUndefined()
+      expect(engine.getCheckpointBundle('bundle-keep-2')).toBeDefined()
+
+      // Reclaim pages via prepareClose
+      await engine.prepareClose()
+      expect(engine.getFreelistCount()).toBe(0)
+    })
   })
 })

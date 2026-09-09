@@ -80,7 +80,8 @@ describe('MessageList & CheckpointMarker rendering', () => {
     const markers = container?.querySelectorAll('[role="separator"]') || []
     expect(markers.length).toBe(2)
     expect(markers[0].textContent).toContain('Initial checkpoint')
-    expect(markers[1].textContent).toContain('Turn checkpoint')
+    expect(markers[1].textContent).toContain('Restore')
+    expect(markers[1].textContent).not.toContain('Turn checkpoint')
   })
 
   it('filters out internal auto-restore checkpoints (reason: restore)', async () => {
@@ -133,7 +134,8 @@ describe('MessageList & CheckpointMarker rendering', () => {
     const markers = container?.querySelectorAll('[role="separator"]') || []
     // Only the turn checkpoint should be rendered, not the restore snapshot
     expect(markers.length).toBe(1)
-    expect(markers[0].textContent).toContain('Turn checkpoint')
+    expect(markers[0].textContent).toContain('Restore')
+    expect(markers[0].textContent).not.toContain('Turn checkpoint')
     expect(markers[0].textContent).not.toContain('Auto before restore')
   })
 
@@ -189,7 +191,8 @@ describe('MessageList & CheckpointMarker rendering', () => {
     const markers = container?.querySelectorAll('[role="separator"]') || []
     // Only cp-1 should be rendered. cp-2 must NOT be anchored to msg-2 as an added marker!
     expect(markers.length).toBe(1)
-    expect(markers[0].textContent).toContain('Turn checkpoint')
+    expect(markers[0].textContent).toContain('Restore')
+    expect(markers[0].textContent).not.toContain('Turn checkpoint')
   })
 
   it('passes the next user message to restoreContent for re-drafting', async () => {
@@ -245,5 +248,87 @@ describe('MessageList & CheckpointMarker rendering', () => {
     })
 
     expect(onRestoreMock).toHaveBeenCalledWith('cp-1', 'Second turn to be re-drafted')
+  })
+
+  it('renders alternate branch switcher and handles branch switching', async () => {
+    const onRestoreMock = vi.fn()
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Question 1',
+        timestamp: new Date('2026-09-06T10:00:00Z')
+      },
+      {
+        id: 'msg-2',
+        role: 'assistant',
+        content: 'Answer 1',
+        timestamp: new Date('2026-09-06T10:00:05Z')
+      },
+      {
+        id: 'msg-3b',
+        role: 'user',
+        content: 'Question 2 Branch B',
+        timestamp: new Date('2026-09-06T10:04:00Z')
+      },
+      {
+        id: 'msg-4b',
+        role: 'assistant',
+        content: 'Answer 2 Branch B',
+        timestamp: new Date('2026-09-06T10:05:00Z')
+      }
+    ]
+
+    const checkpointBundles: CheckpointBundleSummary[] = [
+      {
+        id: 'cp-1',
+        createdAt: '2026-09-06T10:00:06Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-2',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      },
+      {
+        id: 'cp-2a',
+        createdAt: '2026-09-06T10:02:00Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-4a', // Alternate branch message not in active messages
+        parentBundleId: 'cp-1',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      },
+      {
+        id: 'cp-2b',
+        createdAt: '2026-09-06T10:05:00Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-4b', // Active branch message
+        parentBundleId: 'cp-1',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      }
+    ]
+
+    await act(async () => {
+      root?.render(
+        <MessageList
+          messages={messages}
+          checkpointBundles={checkpointBundles}
+          onRestoreCheckpoint={onRestoreMock}
+        />
+      )
+    })
+
+    // Find the Branch 2 button
+    const branchButtons = Array.from(container?.querySelectorAll('button') || []).filter((btn) =>
+      btn.textContent?.includes('Branch 2')
+    )
+    expect(branchButtons.length).toBe(1)
+
+    act(() => {
+      branchButtons[0].click()
+    })
+
+    // Clicking Branch 2 triggers restore of the alternate branch head bundle cp-2a
+    expect(onRestoreMock).toHaveBeenCalledWith('cp-2a')
   })
 })

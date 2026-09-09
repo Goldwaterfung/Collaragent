@@ -1,25 +1,29 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useCanvas } from '@workspace/canvas/store'
 import { useInstanceContext } from '@workspace/contexts/instance/InstanceContext'
 import { CanvasHydrationError, deserializeCanvas } from '@workspace/persistence/canvasSerialization'
 import { createCardinalPorts } from '@workspace/canvas/domain/portUtils'
+import type { NodeId } from '@workspace/canvas/domain'
+import type { NodeLayout } from '@workspace/canvas/types'
 import { useSyncSession } from '@workspace/hooks/useSyncSession'
 import type { CanvasCommand } from '@workspace/canvas/commands/types'
 import type { CanvasCommand as SharedCanvasCommand } from '@shared/commands'
 import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '@shared/constants'
+import { COLLAR_CHECKPOINT_RESTORED_EVENT } from '@shared/checkpoints/events'
 
 export default function CanvasWebSocketSyncPlugin() {
   const { dispatch, subscribe } = useCanvas()
   const { instanceId, wsPort } = useInstanceContext()
 
   const handleSnapshot = useCallback(
-    (msg: any) => {
+    (msg: unknown) => {
       // Convert DTO format to Domain Graph format
+      const snapshotRecord = (msg && typeof msg === 'object' ? msg : {}) as Record<string, unknown>
       const dto = {
         schemaVersion: 1 as const,
         type: 'graph-canvas' as const,
-        graph: msg.graph as any,
-        layout: { layoutByNodeId: msg.layout as any },
+        graph: snapshotRecord.graph,
+        layout: { layoutByNodeId: snapshotRecord.layout },
         meta: {}
       }
       try {
@@ -28,7 +32,7 @@ export default function CanvasWebSocketSyncPlugin() {
           type: 'HYDRATE_CANVAS',
           payload: {
             graph,
-            layoutByNodeId: layoutByNodeId as any
+            layoutByNodeId: layoutByNodeId as unknown as Record<NodeId, NodeLayout>
           }
         })
       } catch (error) {
@@ -62,7 +66,7 @@ export default function CanvasWebSocketSyncPlugin() {
     [dispatch]
   )
 
-  useSyncSession<SharedCanvasCommand, any, CanvasCommand>({
+  const { client } = useSyncSession<SharedCanvasCommand, unknown, CanvasCommand>({
     instanceId,
     path: 'ws/canvas',
     host: wsPort ? `localhost:${wsPort}` : undefined,
@@ -72,6 +76,17 @@ export default function CanvasWebSocketSyncPlugin() {
     subscribeToLocal: subscribe,
     mapLocalToShared
   })
+
+  useEffect(() => {
+    const handleCheckpointRestored = () => {
+      client?.requestSync()
+    }
+
+    window.addEventListener(COLLAR_CHECKPOINT_RESTORED_EVENT, handleCheckpointRestored)
+    return () => {
+      window.removeEventListener(COLLAR_CHECKPOINT_RESTORED_EVENT, handleCheckpointRestored)
+    }
+  }, [client])
 
   return null
 }

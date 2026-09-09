@@ -12,8 +12,13 @@ import * as Channels from '@shared/ipc/agent/channels'
 import * as Types from '@shared/ipc/agent/types'
 import { useProjectSession } from '@workspace/contexts/project/ProjectSession'
 import { useInstanceContext } from '@workspace/contexts/instance/InstanceContext'
+import { useSkillsContext } from '@workspace/contexts/skills/SkillsContext'
 import * as ChatService from '@shared/services/ChatService'
 import type { CheckpointBundleSummary } from '@shared/ipc/checkpoints/types'
+import {
+  COLLAR_CHECKPOINT_RESTORED_EVENT,
+  type CheckpointRestoredDetail
+} from '@shared/checkpoints/events'
 import { getStreamErrorPresentation } from '../../utils/streamErrors'
 import { ChatIcon } from '../../assets/icons/ChatIcon'
 
@@ -42,6 +47,7 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
 
   const { activeProjectId, instanceId, openInstanceIds, projects } = useInstanceContext()
   const { wsPort, apiPort, hasSession } = useProjectSession()
+  const { skills } = useSkillsContext()
 
   const activeProjectIdRef = useRef(activeProjectId)
   const instanceIdRef = useRef(instanceId)
@@ -431,8 +437,19 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
       // That is now removed because the backend Agent automatically persists the input message
       // when processing AGENT_STREAM. Keeping addThreadMessage above ensures immediate UI feedback (Optimistic Update).
 
+      let promptForAgent = userMessage.content
+      const slashMatch = userMessage.content.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/)
+      if (slashMatch) {
+        const skillName = slashMatch[1]
+        const promptText = slashMatch[2] || ''
+        const targetSkill = skills.find((s) => s.name.toLowerCase() === skillName.toLowerCase())
+        if (targetSkill) {
+          promptForAgent = `<SKILL>The user requested you read and use the "${targetSkill.name}" skill. The path to the skill file is:\n${targetSkill.skillMdPath}</SKILL>\n\n${promptText || `Please apply the ${targetSkill.name} skill to assist me.`}`
+        }
+      }
+
       const request: Types.AgentStreamRequest = {
-        message: userMessage.content,
+        message: promptForAgent,
         threadId: sid || undefined,
         wsPort: wsPort || undefined,
         apiPort: apiPort || undefined,
@@ -453,6 +470,7 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
       sessionId,
       setStreaming,
       setThreadId,
+      skills,
       startStream,
       threadId,
       wsPort
@@ -534,6 +552,16 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
           createAutoCheckpoint: false,
           reason: 'restore'
         })
+
+        window.dispatchEvent(
+          new CustomEvent<CheckpointRestoredDetail>(COLLAR_CHECKPOINT_RESTORED_EVENT, {
+            detail: {
+              threadId: targetId,
+              bundleId,
+              timestamp: Date.now()
+            }
+          })
+        )
 
         const history = await ChatService.getMessages(targetId)
         setThreadMessages(targetId, history as unknown as ChatMessage[])

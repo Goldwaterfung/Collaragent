@@ -8,7 +8,6 @@ import {
 import type { ClientTool, ServerTool, StructuredTool } from '@langchain/core/tools'
 import type { InteropZodObject } from '@langchain/core/utils/types'
 import {
-  createFilesystemMiddleware,
   createPatchToolCallsMiddleware,
   createSummarizationMiddleware,
   StateBackend,
@@ -23,6 +22,7 @@ import {
   type CreateDeepAgentParams as UpstreamCreateDeepAgentParams
 } from 'deepagents'
 import {
+  createFilesystemMiddleware,
   createWorkspaceMiddleware,
   dateMiddleware,
   createModelResponseNormalizerMiddleware,

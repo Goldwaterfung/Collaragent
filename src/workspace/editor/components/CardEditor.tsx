@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
 import QissaTheme from '../themes/QissaTheme'
 import { LexicalComposer, type InitialConfigType } from '@lexical/react/LexicalComposer'
@@ -35,6 +35,9 @@ import PageBreakPlugin from '../plugins/PageBreakPlugin'
 import FindPlugin from '../plugins/FindPlugin'
 import { EquationNode } from '../nodes/EquationNode'
 import EquationsPlugin from '../plugins/EquationsPlugin'
+import { InlineClaimBadgeNode } from '../nodes/InlineClaimBadgeNode'
+import BlockIdPlugin from '../plugins/BlockIdPlugin'
+import UnanchoredLinksTray from './UnanchoredLinksTray'
 
 function Placeholder() {
   return <div className="editor-placeholder">Enter some rich text...</div>
@@ -60,7 +63,8 @@ const editorConfig: InitialConfigType = {
     LinkNode,
     MarkNode,
     PageBreakNode,
-    EquationNode
+    EquationNode,
+    InlineClaimBadgeNode
   ]
 }
 
@@ -68,9 +72,11 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
   const { instanceId: activeInstanceId } = useInstanceContext()
   const [floatingAnchorElem, setFloatingAnchorElem] = useState<HTMLDivElement | null>(null)
 
-  const onRef = (anchorElem: HTMLDivElement | null) => {
-    setFloatingAnchorElem(anchorElem)
-  }
+  const onRef = useCallback((anchorElem: HTMLDivElement | null) => {
+    if (anchorElem !== null) {
+      setFloatingAnchorElem(anchorElem)
+    }
+  }, [])
 
   const config = useMemo(() => {
     const baseConfig = { ...editorConfig }
@@ -113,6 +119,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
               style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
             >
               <DocumentWebSocketSyncPlugin />
+              <UnanchoredLinksTray instanceId={instanceId} />
               <div className="editor-inner" ref={onRef} style={{ flex: 1, outline: 'none' }}>
                 <RichTextPlugin
                   contentEditable={
@@ -146,6 +153,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
                 <HighlightCommentPlugin />
                 <PageBreakPlugin />
                 <EquationsPlugin />
+                <BlockIdPlugin />
               </div>
             </div>
           </div>
@@ -168,6 +176,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
             className="editor-container"
             style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
           >
+            {instanceId && <UnanchoredLinksTray instanceId={instanceId} />}
             <div className="editor-inner" ref={onRef} style={{ flex: 1, outline: 'none' }}>
               <RichTextPlugin
                 contentEditable={
@@ -201,6 +210,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
               <HighlightCommentPlugin />
               <PageBreakPlugin />
               <EquationsPlugin />
+              <BlockIdPlugin />
             </div>
           </div>
         </div>

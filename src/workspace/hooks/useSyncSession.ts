@@ -38,11 +38,16 @@ export function useSyncSession<TCommand, TSnapshot, TLocalCommand>(
   const clientRef = useRef<SyncClient<TCommand, TSnapshot> | null>(null)
   const isApplyingRemoteRef = useRef(false)
   const isPausedRef = useRef(isSyncPaused())
+  const pendingSnapshotRef = useRef<TSnapshot | null>(null)
+  const onSnapshotRef = useRef(onSnapshot)
+  onSnapshotRef.current = onSnapshot
 
   // 1. Connection lifecycle and inbound message handling
   useEffect(() => {
     // Skip if no instanceId or host (ports not yet available from session)
     if (!instanceId || !clientConfig.host) return
+
+    pendingSnapshotRef.current = null
 
     const clientInstance = new SyncClient<TCommand, TSnapshot>(clientConfig)
     clientRef.current = clientInstance
@@ -56,18 +61,24 @@ export function useSyncSession<TCommand, TSnapshot, TLocalCommand>(
     })
 
     const unsubscribeMsg = clientInstance.onMessage((msg) => {
-      if (isPausedRef.current) return
       if (msg.type === 'sync-snapshot') {
         // Remove type/version from message to get pure snapshot
-        const { type, version, ...snapshot } = msg as any
+        const { type: _type, version: _version, ...snapshot } = msg as Record<string, unknown>
+        const typedSnapshot = snapshot as unknown as TSnapshot
+
+        if (isPausedRef.current) {
+          pendingSnapshotRef.current = typedSnapshot
+          return
+        }
 
         isApplyingRemoteRef.current = true
         try {
-          onSnapshot(snapshot as TSnapshot)
+          onSnapshotRef.current(typedSnapshot)
         } finally {
           isApplyingRemoteRef.current = false
         }
       } else if (msg.type === 'sync-changes') {
+        if (isPausedRef.current) return
         if (onStagedChanges) {
           onStagedChanges(msg.commands, msg.threadId)
         }
@@ -92,6 +103,7 @@ export function useSyncSession<TCommand, TSnapshot, TLocalCommand>(
       } finally {
         clientRef.current = null
         setClient(null)
+        pendingSnapshotRef.current = null
       }
     }
   }, [
@@ -127,6 +139,16 @@ export function useSyncSession<TCommand, TSnapshot, TLocalCommand>(
     return subscribeSyncPause((paused) => {
       isPausedRef.current = paused
       if (!paused) {
+        if (pendingSnapshotRef.current) {
+          const buffered = pendingSnapshotRef.current
+          pendingSnapshotRef.current = null
+          isApplyingRemoteRef.current = true
+          try {
+            onSnapshotRef.current(buffered)
+          } finally {
+            isApplyingRemoteRef.current = false
+          }
+        }
         clientRef.current?.requestSync()
       }
     })

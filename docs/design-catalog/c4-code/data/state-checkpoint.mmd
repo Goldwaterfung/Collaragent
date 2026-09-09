@@ -5,8 +5,9 @@ stateDiagram-v2
 
     state SnapshotCapturing {
         [*] --> FlushWSBuffers : wsHandle.flush() (commit dirty memory state)
-        FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
-        CaptureLangGraphHead --> DeduplicateCASBlob : SHA-256 hash & upsert workspace_blobs
+        FlushWSBuffers --> CaptureLangGraphHead : Persist self-contained ChatCheckpointSaver tuple
+        CaptureLangGraphHead --> AdvanceRestoreHead : Unconditionally advance langgraph_restore_heads
+        AdvanceRestoreHead --> DeduplicateCASBlob : SHA-256 hash & upsert workspace_blobs
         DeduplicateCASBlob --> LinkSnapshotV5 : Insert workspace_snapshots with blob_hash
         LinkSnapshotV5 --> AssembleDAGBundle : Create CheckpointBundle with parentBundleId & branchName
     }
@@ -18,9 +19,9 @@ stateDiagram-v2
 
     state QuiescingRestore {
         [*] --> ValidateTargetBundle : Verify bundle existence
-        ValidateTargetBundle --> RollbackChat : Clear session (__start__) OR truncate to messageId
-        RollbackChat --> UpdateDAGRegistry : setEffectiveBundleId(parent) & setPendingBranch()
-        UpdateDAGRegistry --> HydrateFromCAS : Reconstitute instances from workspace_blobs via blob_hash
+        ValidateTargetBundle --> SwitchActiveBranch : Clear session (__start__) OR setActiveBranch pointer in SQLite (zero data loss)
+        SwitchActiveBranch --> SyncRestoreHead : setRestoreHead & setEffectiveBundleId/pendingBranch
+        SyncRestoreHead --> HydrateFromCAS : Reconstitute instances from workspace_blobs via blob_hash
         HydrateFromCAS --> FailClosedGuard : Check payload integrity
         FailClosedGuard --> ResetOCCSequences : Payload valid: emit system-checkpoint-restore & reset commandSequences
         FailClosedGuard --> AbortRestore : Missing/corrupt: Throw STORAGE_CHECKPOINT_NOT_FOUND (safe fail-closed)

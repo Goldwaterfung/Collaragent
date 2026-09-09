@@ -15,7 +15,14 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ onSelectSession, curre
     setLoading(true)
     try {
       const data = await ChatService.getSessions()
-      setSessions(data as any)
+      setSessions(
+        data.map((s) => ({
+          id: s.id,
+          title: s.title,
+          lastMessageAt: new Date(s.updatedAt),
+          messageCount: s.messageCount
+        }))
+      )
     } catch (error) {
       console.error('Failed to load sessions:', error)
     } finally {

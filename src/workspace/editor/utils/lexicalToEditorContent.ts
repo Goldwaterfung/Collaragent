@@ -13,6 +13,8 @@ import { $isCodeNode } from '@lexical/code'
 import { $isTableNode, $isTableRowNode, $isTableCellNode } from '@lexical/table'
 import { $isPageBreakNode } from '../nodes/PageBreakNode'
 import { $isEquationNode } from '../nodes/EquationNode'
+import { $isInlineClaimBadgeNode } from '../nodes/InlineClaimBadgeNode'
+import type { ClaimRelation } from '@shared/wiki/types'
 import { getOrCreateStoredBlockId } from './blockIdentityRegistry'
 import type {
   Align,
@@ -336,6 +338,32 @@ class RunCollector {
     this.runs.push(run)
   }
 
+  addClaimBadge(
+    badge: {
+      badgeId: string
+      targetEntityId: string
+      rel: ClaimRelation
+      justification: string
+    },
+    commentIds: string[]
+  ): void {
+    this.commit()
+    const run: InlineRun = {
+      text: '',
+      claimBadge: {
+        badgeId: badge.badgeId,
+        targetEntityId: badge.targetEntityId,
+        rel: badge.rel,
+        justification: badge.justification
+      }
+    }
+    const uniqueComments = dedupeArray(commentIds)
+    if (uniqueComments.length > 0) {
+      run.commentIds = uniqueComments
+    }
+    this.runs.push(run)
+  }
+
   addText(
     text: string,
     bold?: boolean,
@@ -457,6 +485,20 @@ function visitNode(
     const equation = node.getEquation()
     const inline = node.getInline()
     collector.addEquation(equation, inline, [...activeCommentIds])
+    return
+  }
+
+  // Handle Claim Badge
+  if ($isInlineClaimBadgeNode(node)) {
+    collector.addClaimBadge(
+      {
+        badgeId: node.getBadgeId(),
+        targetEntityId: node.getTargetEntityId(),
+        rel: node.getRel(),
+        justification: node.getJustification()
+      },
+      [...activeCommentIds]
+    )
     return
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import type { DocumentPayload } from '@workspace/persistence/editorContent'
 import { applyDocumentToEditor } from '../editor/utils/editorContentToLexical'
@@ -6,20 +6,33 @@ import { readDocumentFromEditor } from '../editor/utils/lexicalToEditorContent'
 import { useInstanceContext } from '@workspace/contexts/instance/InstanceContext'
 import { useSyncSession } from '@workspace/hooks/useSyncSession'
 import { EditorCommand } from '@shared/commands'
+import { COLLAR_CHECKPOINT_RESTORED_EVENT } from '@shared/checkpoints/events'
 import { DocumentDiffEngine } from '../../collaragent/runtime/DocumentDiffEngine'
 import { computeDiffState } from '../editor/utils/diffRendering'
 
 import { $convertFromMarkdownString, TRANSFORMERS } from '@lexical/markdown'
 import { TABLE } from '../editor/transformers/markdown/TableTransformer'
+import { syncDocumentClaimsToLedger } from '@workspace/wiki/LinkExtractor'
+import { RelationalLedgerStore } from '@workspace/wiki/RelationalLedgerStore'
+import { useOptionalRelationalLedger } from '@workspace/contexts/ledger/RelationalLedgerContext'
 
-export default function DocumentWebSocketSyncPlugin() {
+export interface DocumentWebSocketSyncPluginProps {
+  ledgerStore?: RelationalLedgerStore
+}
+
+export default function DocumentWebSocketSyncPlugin({
+  ledgerStore: propLedgerStore
+}: DocumentWebSocketSyncPluginProps = {}) {
   const [editor] = useLexicalComposerContext()
-  const { instanceId, wsPort, consumePendingMarkdown } = useInstanceContext()
+  const ledgerContext = useOptionalRelationalLedger()
+  const ledgerStore = propLedgerStore ?? ledgerContext?.ledgerStore
+  const { instanceId, instanceSummaries, wsPort, consumePendingMarkdown } = useInstanceContext()
+  const entityName = instanceSummaries?.find((s) => s.instanceId === instanceId)?.name || instanceId
   const lastSentDocRef = useRef<DocumentPayload | null>(null)
   const lastAppliedDocRef = useRef<string | null>(null)
 
   const handleSnapshot = useCallback(
-    (snapshot: any) => {
+    (snapshot: unknown) => {
       // Check for pending local content (e.g. from drag-and-drop import)
       // If present, we prioritize it over the initial (likely empty) server snapshot
       const pendingMarkdown = consumePendingMarkdown(instanceId)
@@ -35,14 +48,35 @@ export default function DocumentWebSocketSyncPlugin() {
       }
 
       // Determine the payload based on incoming snapshot structure
-      const payload = (snapshot.blocks ? snapshot : snapshot.payload) as DocumentPayload
+      const snapshotObj = snapshot && typeof snapshot === 'object' ? snapshot : {}
+      const payload = (
+        'blocks' in snapshotObj
+          ? snapshotObj
+          : 'payload' in snapshotObj
+            ? (snapshotObj as { payload: unknown }).payload
+            : undefined
+      ) as DocumentPayload | undefined
       if (!payload) return
 
-      lastSentDocRef.current = payload
-
       const serialized = JSON.stringify(payload)
-      if (lastAppliedDocRef.current === serialized) return
+      let currentEditorDoc: DocumentPayload | null = null
+      try {
+        editor.getEditorState().read(() => {
+          currentEditorDoc = readDocumentFromEditor(editor)
+        })
+      } catch {
+        // If reading editor state fails, proceed without deduplication
+      }
+
+      const isAlreadyMatching =
+        lastAppliedDocRef.current === serialized &&
+        currentEditorDoc !== null &&
+        JSON.stringify(currentEditorDoc) === serialized
+
+      if (isAlreadyMatching) return
+
       lastAppliedDocRef.current = serialized
+      lastSentDocRef.current = payload
 
       // Preserve scroll position across full document replace (e.g. triggered by
       // checkpoint resume → requestSync → sync-snapshot). Lexical's root.clear()
@@ -51,6 +85,9 @@ export default function DocumentWebSocketSyncPlugin() {
       const savedScrollTop = scrollContainer?.scrollTop ?? 0
 
       applyDocumentToEditor(editor, payload, { tag: 'sync' })
+      if (ledgerStore) {
+        syncDocumentClaimsToLedger(entityName, payload, ledgerStore)
+      }
 
       // Restore after Lexical's async reconciliation settles.
       if (scrollContainer && savedScrollTop > 0) {
@@ -59,7 +96,7 @@ export default function DocumentWebSocketSyncPlugin() {
         })
       }
     },
-    [editor, instanceId, consumePendingMarkdown]
+    [editor, instanceId, entityName, consumePendingMarkdown, ledgerStore]
   )
 
   const handleRemoteCommand = useCallback(
@@ -86,13 +123,16 @@ export default function DocumentWebSocketSyncPlugin() {
 
               lastSentDocRef.current = nextDoc
               applyDocumentToEditor(editor, nextDoc, { tag: 'sync' })
+              if (ledgerStore) {
+                syncDocumentClaimsToLedger(entityName, nextDoc, ledgerStore)
+              }
             }
           },
           { tag: 'sync' }
         )
       }
     },
-    [editor]
+    [editor, instanceId, entityName, ledgerStore]
   )
 
   const subscribeToLocal = useCallback(
@@ -109,10 +149,13 @@ export default function DocumentWebSocketSyncPlugin() {
           }
 
           lastSentDocRef.current = doc
+          if (ledgerStore) {
+            syncDocumentClaimsToLedger(entityName, doc, ledgerStore)
+          }
         })
       })
     },
-    [editor]
+    [editor, instanceId, entityName, ledgerStore]
   )
 
   const mapLocalToShared = useCallback((cmd: EditorCommand): EditorCommand => {
@@ -122,7 +165,7 @@ export default function DocumentWebSocketSyncPlugin() {
   const [stagedCommands, setStagedCommands] = useState<EditorCommand[]>([])
   const [isReviewing, setIsReviewing] = useState(false)
 
-  const { client } = useSyncSession<EditorCommand, any, EditorCommand>({
+  const { client } = useSyncSession<EditorCommand, unknown, EditorCommand>({
     instanceId,
     path: 'ws/editor',
     host: wsPort ? `localhost:${wsPort}` : undefined,
@@ -137,6 +180,20 @@ export default function DocumentWebSocketSyncPlugin() {
     mapLocalToShared
   })
 
+  useEffect(() => {
+    const handleCheckpointRestored = () => {
+      // Invalidate stale deduplication state
+      lastAppliedDocRef.current = null
+      // Explicitly request latest snapshot from ws-server
+      client?.requestSync()
+    }
+
+    window.addEventListener(COLLAR_CHECKPOINT_RESTORED_EVENT, handleCheckpointRestored)
+    return () => {
+      window.removeEventListener(COLLAR_CHECKPOINT_RESTORED_EVENT, handleCheckpointRestored)
+    }
+  }, [client])
+
   const handleReview = useCallback(() => {
     setIsReviewing(true)
     const currentDoc = lastSentDocRef.current
@@ -145,7 +202,10 @@ export default function DocumentWebSocketSyncPlugin() {
     }
 
     const diffState = computeDiffState(currentDoc, stagedCommands)
-    applyDocumentToEditor(editor, diffState as any, { tag: 'diff', diffMode: true })
+    applyDocumentToEditor(editor, diffState as unknown as DocumentPayload, {
+      tag: 'diff',
+      diffMode: true
+    })
   }, [editor, stagedCommands])
 
   const handleDiscard = useCallback(() => {

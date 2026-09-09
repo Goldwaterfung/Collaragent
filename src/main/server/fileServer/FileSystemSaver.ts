@@ -12,7 +12,6 @@ import { SqliteCheckpointStore } from './SqliteCheckpointStore'
 import {
   ICheckpointStore,
   CheckpointRecord,
-  CheckpointBlobRecord,
   CheckpointWriteRecord
 } from './interfaces/ICheckpointStore'
 
@@ -175,28 +174,60 @@ export class FileSystemSaver extends BaseCheckpointSaver {
     if (!record) return undefined
 
     const channel_values: Record<string, unknown> = {}
-    const channelVersions = (
-      record.checkpoint as { channel_versions?: Record<string, string | number> }
-    ).channel_versions
-    if (channelVersions) {
-      for (const [channel, version] of Object.entries(channelVersions)) {
-        const blobKey = `${thread_id}:${channel}:${version}`
-        const blobRecord = await this.store.getBlob(blobKey)
-        if (blobRecord && blobRecord.type !== 'empty') {
-          if (blobRecord.type && blobRecord.blob !== undefined && blobRecord.blob !== null) {
+    const rawChannelValues = (record.checkpoint as { channel_values?: Record<string, unknown> })
+      .channel_values
+
+    if (
+      rawChannelValues &&
+      typeof rawChannelValues === 'object' &&
+      Object.keys(rawChannelValues).length > 0
+    ) {
+      for (const [channel, val] of Object.entries(rawChannelValues)) {
+        if (isPreCalculatedBlob(val)) {
+          if (val.type !== 'empty' && val.blob !== undefined && val.blob !== null) {
             try {
-              if (blobRecord.serialized) {
+              if (val.serialized) {
                 const blobData =
-                  typeof blobRecord.blob === 'string'
-                    ? new TextEncoder().encode(blobRecord.blob)
-                    : (blobRecord.blob as Uint8Array)
-                channel_values[channel] = await this.serde.loadsTyped(blobRecord.type, blobData)
+                  typeof val.blob === 'string'
+                    ? new TextEncoder().encode(val.blob)
+                    : (val.blob as Uint8Array)
+                channel_values[channel] = await this.serde.loadsTyped(val.type, blobData)
               } else {
-                channel_values[channel] = blobRecord.blob
+                channel_values[channel] = val.blob
               }
             } catch (e) {
-              console.error(`[FileSystemSaver] Failed to deserialize blob for ${channel}:`, e)
+              console.error(`[FileSystemSaver] Failed to deserialize channel ${channel}:`, e)
               throw e
+            }
+          }
+        } else {
+          channel_values[channel] = val
+        }
+      }
+    } else {
+      const channelVersions = (
+        record.checkpoint as { channel_versions?: Record<string, string | number> }
+      ).channel_versions
+      if (channelVersions) {
+        for (const [channel, version] of Object.entries(channelVersions)) {
+          const blobKey = `${thread_id}:${channel}:${version}`
+          const blobRecord = await this.store.getBlob(blobKey)
+          if (blobRecord && blobRecord.type !== 'empty') {
+            if (blobRecord.type && blobRecord.blob !== undefined && blobRecord.blob !== null) {
+              try {
+                if (blobRecord.serialized) {
+                  const blobData =
+                    typeof blobRecord.blob === 'string'
+                      ? new TextEncoder().encode(blobRecord.blob)
+                      : (blobRecord.blob as Uint8Array)
+                  channel_values[channel] = await this.serde.loadsTyped(blobRecord.type, blobData)
+                } else {
+                  channel_values[channel] = blobRecord.blob
+                }
+              } catch (e) {
+                console.error(`[FileSystemSaver] Failed to deserialize blob for ${channel}:`, e)
+                throw e
+              }
             }
           }
         }
@@ -289,18 +320,39 @@ export class FileSystemSaver extends BaseCheckpointSaver {
     if (!record) return undefined
 
     const channel_values: Record<string, unknown> = {}
-    const channelVersions = (
-      record.checkpoint as { channel_versions?: Record<string, string | number> }
-    ).channel_versions
-    if (channelVersions) {
-      for (const [channel, version] of Object.entries(channelVersions)) {
-        const blobKey = `${thread_id}:${channel}:${version}`
-        const blobRecord = await this.store.getBlob(blobKey)
-        if (blobRecord) {
+    const rawChannelValues = (record.checkpoint as { channel_values?: Record<string, unknown> })
+      .channel_values
+
+    if (
+      rawChannelValues &&
+      typeof rawChannelValues === 'object' &&
+      Object.keys(rawChannelValues).length > 0
+    ) {
+      for (const [channel, val] of Object.entries(rawChannelValues)) {
+        if (isPreCalculatedBlob(val)) {
           channel_values[channel] = {
-            type: blobRecord.type,
-            blob: blobRecord.blob,
-            serialized: blobRecord.serialized
+            type: val.type,
+            blob: val.blob,
+            serialized: val.serialized
+          }
+        } else {
+          channel_values[channel] = val
+        }
+      }
+    } else {
+      const channelVersions = (
+        record.checkpoint as { channel_versions?: Record<string, string | number> }
+      ).channel_versions
+      if (channelVersions) {
+        for (const [channel, version] of Object.entries(channelVersions)) {
+          const blobKey = `${thread_id}:${channel}:${version}`
+          const blobRecord = await this.store.getBlob(blobKey)
+          if (blobRecord) {
+            channel_values[channel] = {
+              type: blobRecord.type,
+              blob: blobRecord.blob,
+              serialized: blobRecord.serialized
+            }
           }
         }
       }
@@ -397,15 +449,32 @@ export class FileSystemSaver extends BaseCheckpointSaver {
       }
 
       const channel_values: Record<string, unknown> = {}
-      const channelVersions = (
-        record.checkpoint as { channel_versions?: Record<string, string | number> }
-      ).channel_versions
-      if (channelVersions) {
-        for (const [channel, version] of Object.entries(channelVersions)) {
-          const blobKey = `${thread_id}:${channel}:${version}`
-          const blobRecord = await this.store.getBlob(blobKey)
-          if (blobRecord) {
-            channel_values[channel] = blobRecord.blob
+      const rawChannelValues = (record.checkpoint as { channel_values?: Record<string, unknown> })
+        .channel_values
+
+      if (
+        rawChannelValues &&
+        typeof rawChannelValues === 'object' &&
+        Object.keys(rawChannelValues).length > 0
+      ) {
+        for (const [channel, val] of Object.entries(rawChannelValues)) {
+          if (isPreCalculatedBlob(val)) {
+            channel_values[channel] = val.blob
+          } else {
+            channel_values[channel] = val
+          }
+        }
+      } else {
+        const channelVersions = (
+          record.checkpoint as { channel_versions?: Record<string, string | number> }
+        ).channel_versions
+        if (channelVersions) {
+          for (const [channel, version] of Object.entries(channelVersions)) {
+            const blobKey = `${thread_id}:${channel}:${version}`
+            const blobRecord = await this.store.getBlob(blobKey)
+            if (blobRecord) {
+              channel_values[channel] = blobRecord.blob
+            }
           }
         }
       }
@@ -444,7 +513,7 @@ export class FileSystemSaver extends BaseCheckpointSaver {
     },
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
-    newVersions: Record<string, string | number>,
+    _newVersions?: Record<string, string | number>,
     preCalculatedBlobs?: Record<string, unknown>
   ): Promise<{
     configurable: { thread_id: string; checkpoint_ns: string; checkpoint_id: string }
@@ -454,82 +523,61 @@ export class FileSystemSaver extends BaseCheckpointSaver {
 
     if (!thread_id) throw new Error('Missing thread_id in config')
 
-    const { channel_values, ...lightweightCheckpoint } = checkpoint
+    const savedChannelValues: Record<string, unknown> = {}
 
-    const record: CheckpointRecord = {
-      thread_id,
-      checkpoint_ns,
-      checkpoint_id: checkpoint.id,
-      parent_checkpoint_id: config.configurable?.checkpoint_id,
-      checkpoint: lightweightCheckpoint,
-      metadata
-    }
-
-    if (channel_values && newVersions) {
-      for (const [channel, version] of Object.entries(newVersions)) {
-        const val = channel_values[channel]
-        const blobKey = `${thread_id}:${channel}:${version}`
-
-        const existingBlob = await this.store.getBlob(blobKey)
-        if (!existingBlob) {
-          let blobRecord: CheckpointBlobRecord
-
-          const pre = preCalculatedBlobs ? preCalculatedBlobs[channel] : undefined
-          if (isPreCalculatedBlob(pre)) {
-            blobRecord = {
-              thread_id,
-              checkpoint_ns,
-              channel,
-              version: String(version),
-              type: pre.type,
-              blob: pre.blob,
-              serialized: pre.serialized
+    if (checkpoint.channel_values) {
+      for (const [channel, val] of Object.entries(checkpoint.channel_values)) {
+        const pre = preCalculatedBlobs ? preCalculatedBlobs[channel] : undefined
+        if (isPreCalculatedBlob(pre)) {
+          savedChannelValues[channel] = {
+            type: pre.type,
+            blob: pre.blob,
+            serialized: pre.serialized ?? false
+          }
+        } else if (isPreCalculatedBlob(val)) {
+          savedChannelValues[channel] = val
+        } else if (val !== undefined) {
+          if (this.serde) {
+            try {
+              const [type, serializedValue] = await this.serde.dumpsTyped(val)
+              const blobData = new TextDecoder().decode(serializedValue)
+              savedChannelValues[channel] = {
+                type,
+                blob: blobData,
+                serialized: true
+              }
+            } catch (e) {
+              console.error(`[FileSystemSaver] Failed to serialize blob for ${channel}:`, e)
+              throw e
             }
           } else {
-            let blobType = 'empty'
-            let blobData: unknown = null
-            let serialized = false
-
-            if (val !== undefined) {
-              try {
-                const [type, serializedValue] = await this.serde.dumpsTyped(val)
-                blobType = type
-                blobData = new TextDecoder().decode(serializedValue)
-                serialized = true
-              } catch (e) {
-                console.error(`[FileSystemSaver] Failed to serialize blob for ${channel}:`, e)
-                throw e
-              }
-            }
-
-            blobRecord = {
-              thread_id,
-              checkpoint_ns,
-              channel,
-              version: String(version),
-              type: blobType,
-              blob: blobData,
-              serialized
-            }
-          }
-          if (this.store instanceof SqliteCheckpointStore) {
-            await this.store.putBlob(blobKey, blobRecord)
-          } else if ('putBlob' in this.store) {
-            if (this.store.putBlob.length >= 2) {
-              await (this.store as CheckpointStore).putBlob(blobKey, blobRecord)
-            } else {
-              await (this.store as ICheckpointStore).putBlob(blobRecord)
+            savedChannelValues[channel] = {
+              type: 'json',
+              blob: val,
+              serialized: false
             }
           }
         }
       }
     }
 
+    const selfContainedCheckpoint: Record<string, unknown> = {
+      ...checkpoint,
+      channel_values: savedChannelValues
+    }
+
+    const record: CheckpointRecord = {
+      thread_id,
+      checkpoint_ns,
+      checkpoint_id: checkpoint.id,
+      parent_checkpoint_id: config.configurable?.checkpoint_id,
+      checkpoint: selfContainedCheckpoint,
+      metadata
+    }
+
     await this.store.putCheckpoint(record)
 
-    if (await this.getRestoreHead(thread_id, checkpoint_ns)) {
-      await this.setRestoreHead(thread_id, checkpoint.id, checkpoint_ns)
-    }
+    await this.setRestoreHead(thread_id, checkpoint.id, checkpoint_ns)
 
     if (hasPruneWrites(this.store)) {
       await this.store.pruneWrites(thread_id, SQLITE_ENGINE_CONFIG.maxWriteRetentionTurns)

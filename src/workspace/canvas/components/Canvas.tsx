@@ -284,6 +284,47 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
     }
   }, [isDragging, marquee, dispatch, dispatchCommand, state.ui.viewport, connect.status])
 
+  useEffect(() => {
+    const handleJumpToCanvasNode = (event: Event) => {
+      const customEvent = event as CustomEvent<{ targetEntityId?: string }>
+      const targetEntityId = customEvent.detail?.targetEntityId
+      if (!targetEntityId) return
+
+      const nodes = Object.values(state.domain.graph.nodesById)
+      const targetLower = targetEntityId.toLowerCase()
+      const found = nodes.find(
+        (n) =>
+          n.id.toLowerCase() === targetLower ||
+          (typeof n.attrs?.title === 'string' && n.attrs.title.toLowerCase() === targetLower) ||
+          (typeof n.attrs?.label === 'string' && n.attrs.label.toLowerCase() === targetLower)
+      )
+
+      if (found) {
+        dispatch({
+          type: 'SELECT_NODE',
+          payload: { id: found.id, multi: false }
+        })
+
+        const layout = state.layout.layoutByNodeId[found.id]
+        if (layout && containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect()
+          const currentZoom = state.ui.viewport.zoom
+          const targetX = rect.width / 2 - (layout.x + layout.width / 2) * currentZoom
+          const targetY = rect.height / 2 - (layout.y + layout.height / 2) * currentZoom
+          dispatch({
+            type: 'SET_VIEWPORT',
+            payload: { x: targetX, y: targetY, zoom: currentZoom }
+          })
+        }
+      }
+    }
+
+    window.addEventListener('cagent:jump-to-canvas-node', handleJumpToCanvasNode)
+    return () => {
+      window.removeEventListener('cagent:jump-to-canvas-node', handleJumpToCanvasNode)
+    }
+  }, [state.domain.graph.nodesById, state.layout.layoutByNodeId, state.ui.viewport.zoom, dispatch])
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     const target = e.target as HTMLElement | null
     if (target) {

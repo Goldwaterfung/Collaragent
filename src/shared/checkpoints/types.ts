@@ -2,7 +2,7 @@ export const CHECKPOINT_START_SENTINEL = '__start__'
 export const INITIAL_CHECKPOINT_LABEL = 'Initial checkpoint'
 export const TURN_CHECKPOINT_LABEL = 'Turn checkpoint'
 
-export type InstanceType = 'graph-canvas' | 'document'
+export type InstanceType = 'graph-canvas' | 'document' | 'ledger'
 
 export type InstanceLogPosition = {
   seq: number
@@ -68,6 +68,15 @@ export type CommandPreviousState = {
   block?: unknown
   index?: number
   documentPayload?: unknown
+  existed?: boolean
+  entry?: unknown
+  removedEntry?: unknown
+  previousAnchor?: {
+    blockId: string
+    justification: string
+    selectedTextSnippet?: string
+  }
+  previousStatus?: 'active' | 'anchor_lost' | 'archived'
 }
 
 export type WorkspaceCommandLogEntry = {
@@ -83,3 +92,5 @@ export type WorkspaceCommandLogEntry = {
 export type WorkspaceCommandLog = {
   byInstanceId: Record<string, WorkspaceCommandLogEntry[]>
 }
+
+export * from './events'

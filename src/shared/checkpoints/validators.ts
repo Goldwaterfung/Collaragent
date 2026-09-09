@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const InstanceTypeSchema = z.enum(['graph-canvas', 'document'])
+export const InstanceTypeSchema = z.enum(['graph-canvas', 'document', 'ledger'])
 
 export const InstanceLogPositionSchema = z.object({
   seq: z.number().int().nonnegative(),

@@ -1,7 +1,8 @@
 import { z } from 'zod'
+import { ClaimBadgeSchema } from '../wiki/schemas'
 
 // --- SHARED DEFINITIONS ---
-export const InstanceTypeSchema = z.enum(['document', 'canvas'])
+export const InstanceTypeSchema = z.enum(['document', 'canvas', 'ledger'])
 
 // --- GRAPH CANVAS SCHEMA ---
 
@@ -90,7 +91,8 @@ export const InlineRunSchema = z.object({
     .optional()
     .describe('An array of comment IDs associated with this text run.'),
   equation: z.string().optional().describe('The LaTeX equation.'),
-  inline: z.boolean().optional().describe('Whether the equation is inline.')
+  inline: z.boolean().optional().describe('Whether the equation is inline.'),
+  claimBadge: ClaimBadgeSchema.optional().describe('Inline claim badge linkage metadata.')
 })
 
 export const TableCellSchema = z.object({

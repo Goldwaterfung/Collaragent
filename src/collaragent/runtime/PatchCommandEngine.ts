@@ -114,10 +114,35 @@ export class PatchCommandEngine {
             throw new Error(`Operation ${i}: update newHtml contained no valid blocks.`)
           }
 
-          // Case: updating one block with one or more new blocks
           // 1. First new block replaces the targeted block.
           const firstBlock = newBlocks[0]
           firstBlock.id = op.blockId
+
+          // Preserve existing block attributes if not explicitly provided in newHtml
+          const existingBlock = htmlToBlocks(workingLines[index])[0]
+          if (existingBlock) {
+            if (firstBlock.align === undefined && existingBlock.align !== undefined) {
+              firstBlock.align = existingBlock.align
+            }
+            if (
+              firstBlock.listType === undefined &&
+              existingBlock.listType !== undefined &&
+              firstBlock.type === existingBlock.type
+            ) {
+              firstBlock.listType = existingBlock.listType
+            }
+            if (
+              firstBlock.language === undefined &&
+              existingBlock.language !== undefined &&
+              firstBlock.type === 'code'
+            ) {
+              firstBlock.language = existingBlock.language
+            }
+            if (firstBlock.indent === undefined && existingBlock.indent !== undefined) {
+              firstBlock.indent = existingBlock.indent
+            }
+          }
+
           const { id: _id, ...changes } = firstBlock
           commands.push({ type: 'editor:update_block', blockId: op.blockId, changes })
           workingLines[index] = serializeBlock(firstBlock)

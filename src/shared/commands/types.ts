@@ -1,7 +1,8 @@
 import { NodeId, NodeEntity, RelationshipId, RelationshipEntity } from '@workspace/canvas/domain'
 import { Block, Comment, DocumentPayload } from '@shared/schemas/instances'
+import { RelationalLedgerEntry } from '@shared/wiki/types'
 
-export type Command = CanvasCommand | EditorCommand
+export type Command = CanvasCommand | EditorCommand | LedgerCommand
 
 // --- Canvas Commands ---
 
@@ -99,4 +100,38 @@ export interface UpdateCommentsCommand extends StagedCommand {
 export interface ReplaceDocumentCommand extends StagedCommand {
   type: 'editor:replace_document'
   payload: DocumentPayload
+}
+
+// --- Ledger Commands ---
+
+export type LedgerCommand =
+  | UpsertLedgerEdgeCommand
+  | RemoveLedgerEdgeCommand
+  | DegradeLedgerEdgeCommand
+  | RestoreLedgerEdgeCommand
+
+export interface UpsertLedgerEdgeCommand extends StagedCommand {
+  type: 'ledger:upsert_edge'
+  entry: RelationalLedgerEntry
+}
+
+export interface RemoveLedgerEdgeCommand extends StagedCommand {
+  type: 'ledger:remove_edge'
+  edgeId: string
+}
+
+export interface DegradeLedgerEdgeCommand extends StagedCommand {
+  type: 'ledger:degrade_edge'
+  edgeId: string
+  reason: 'anchor_lost'
+}
+
+export interface RestoreLedgerEdgeCommand extends StagedCommand {
+  type: 'ledger:restore_edge'
+  edgeId: string
+  anchor: {
+    blockId: string
+    justification: string
+    selectedTextSnippet?: string
+  }
 }

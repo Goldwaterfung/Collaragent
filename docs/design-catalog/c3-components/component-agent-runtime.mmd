@@ -24,6 +24,12 @@ flowchart TB
             DocDiff["📄 DocumentDiffEngine<br/>[Component]<br/>Diffs Lexical DocumentPayloads to emit atomic EditorCommands"]:::component
             PatchEngine["🧩 PatchCommandEngine<br/>[Component]<br/>Applies structured JSON patch operations against HTML patch views"]:::component
             InverseEngine["🔄 InverseCommandEngine<br/>[Component]<br/>Inverts executed workspace commands into atomic Undo commands"]:::component
+            InverseLedger["🔄 InverseLedgerCommand<br/>[Component]<br/>Inverts relational ledger triple mutations for exact rollback"]:::component
+        end
+
+        subgraph WikiAndLedgerSubsystem ["LLM Wiki & Knowledge Ledger Subsystem"]
+            WikiAdapter["🔌 LiveWikiWorkspaceAdapter<br/>[Adapter]<br/>Transactional read barriers (flushBeforeRead), instance hydration & tool routing"]:::component
+            StructuralLinter["🔍 L1StructuralLinter<br/>[Component]<br/>Pre-audit flush barriers, orphan claim detection & graph validation"]:::component
         end
 
         subgraph StorageBackends ["Pluggable Storage Backends"]
@@ -51,3 +57,6 @@ flowchart TB
     DeepAgentFac --> DocDiff
     DeepAgentFac --> PatchEngine
     DeepAgentFac --> InverseEngine
+    DeepAgentFac --> InverseLedger
+    DeepAgentFac --> WikiAdapter
+    WikiAdapter --> StructuralLinter

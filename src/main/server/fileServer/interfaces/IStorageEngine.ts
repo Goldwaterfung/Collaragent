@@ -24,7 +24,7 @@ export interface ProjectRecord {
 export interface InstanceSummary {
   readonly id: string
   readonly projectId: string
-  readonly type: 'document' | 'canvas'
+  readonly type: 'document' | 'canvas' | 'ledger'
   readonly name: string
   readonly metadata: Record<string, unknown>
   readonly createdAt: string
@@ -58,6 +58,8 @@ export interface ChatSessionSummary {
   readonly title: string
   readonly createdAt: number
   readonly updatedAt: number
+  readonly activeMessageId?: string | null
+  readonly activeCheckpointId?: string | null
 }
 
 export interface ChatMessageInput {
@@ -70,6 +72,9 @@ export interface ChatMessageInput {
   readonly usage?: unknown
   readonly metadata?: Record<string, unknown>
   readonly timestamp?: number
+  readonly parentMessageId?: string | null
+  readonly checkpointId?: string | null
+  readonly branchId?: string | null
 }
 
 export interface ChatMessageRecord {
@@ -83,6 +88,9 @@ export interface ChatMessageRecord {
   readonly usage?: unknown
   readonly metadata: Record<string, unknown>
   readonly timestamp: number
+  readonly parentMessageId?: string | null
+  readonly checkpointId?: string | null
+  readonly branchId?: string | null
 }
 
 export interface ChatSessionDetail extends ChatSessionSummary {
@@ -127,7 +135,7 @@ export interface IStorageEngine {
   deleteProject?(projectId: string): boolean
   getInstancesMeta(projectId?: string): InstanceSummary[]
   getInstanceContent(instanceId: string): Buffer | null
-  createInstance(type: 'document' | 'canvas', data: CreateInstanceInput): InstanceSummary
+  createInstance(type: 'document' | 'canvas' | 'ledger', data: CreateInstanceInput): InstanceSummary
   updateInstance(instanceId: string, updates: UpdateInstanceInput): void
   deleteInstance(instanceId: string): void
 
@@ -142,6 +150,8 @@ export interface IStorageEngine {
   appendChatMessage(sessionId: string, message: ChatMessageInput): void
   deleteChatSession(sessionId: string): void // Cascades checkpoints & writes
   truncateChatSession?(sessionId: string, messageId: string, blockIndex?: number): boolean
+  setActiveBranch?(sessionId: string, messageId: string, checkpointId?: string): boolean
+  getMessageChildren?(sessionId: string, messageId: string): ChatMessageRecord[]
   clearChatSession?(sessionId: string): void
 
   // Snapshots & Command Logs
@@ -185,6 +195,8 @@ export interface IStorageEngine {
   getCloseState(): unknown
   markArchiveExported(targetPath: string): Promise<void>
   stopWatcher(): void
+  incrementalVacuum?(pages?: number): void
+  getFreelistCount?(): number
 
   // Event Handling (compatible with EventEmitter)
   on(event: string, listener: (...args: unknown[]) => void): this

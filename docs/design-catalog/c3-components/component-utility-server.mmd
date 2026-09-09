@@ -8,7 +8,7 @@ flowchart TB
     subgraph UtilityProcessDaemon ["Storage Utility Process (Daemon)"]
         ProcEntry["🚪 process.ts / ParentPort Handler<br/>[Component]<br/>Sniffs format, runs migrations, manages <10ms WAL truncate lifecycle"]:::component
         FSApi["🌐 Filesystem API (Express 5)<br/>[Component]<br/>Zod-validated REST router for instances, checkpoints, chat history & projects"]:::component
-        SqliteEngine["🗄️ SqliteStorageEngine<br/>[Component]<br/>IStorageEngine implementation: lazy MessagePack BLOBs, granular chat, snapshots"]:::component
+        SqliteEngine["🗄️ SqliteStorageEngine<br/>[Component]<br/>IStorageEngine implementation: CAS blobs, recursive CTE DAG chat, snapshots"]:::component
         CheckpointStore["⏱️ SqliteCheckpointStore<br/>[Component]<br/>ICheckpointStore: B-Tree point queries (<1.5ms), 3-turn writes pruning, ADR-006"]:::component
         DbManager["💾 SqliteDatabase<br/>[Component]<br/>better-sqlite3 connection, WAL mode, PRAGMAs, migrations & transactions"]:::component
         LockManager["🔒 ProjectLockManager<br/>[Component]<br/>Single-writer <path>.cagent.lock with dead PID auto-recovery"]:::component

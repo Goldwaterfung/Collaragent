@@ -20,13 +20,18 @@ stateDiagram-v2
     
     state ToolExecuting {
         [*] --> DispatchTool
-        DispatchTool --> ExecutingWorkspaceTool : manageGraph / editDocument
+        DispatchTool --> ExecutingWorkspaceTool : manageGraph / editDocument / compileGraph
+        DispatchTool --> ReadingWorkspaceState : readDocument / getCanvas / loadLedger
         DispatchTool --> ExecutingFilesystemTool : read_file / write_file
         DispatchTool --> ExecutingSubagent : task / dynamic_task
         
-        ExecutingWorkspaceTool --> DirectMutation : Direct mutation (staged: false) & debouncedSave
+        ReadingWorkspaceState --> TransactionalReadBarrier : flushBeforeRead === true
+        TransactionalReadBarrier --> ReadSettledState : await flush() settled to disk
+        ReadSettledState --> ReturnToolResult
+
+        ExecutingWorkspaceTool --> DirectMutation : Direct mutation (staged: false) & drainQueue.enqueue
         ExecutingWorkspaceTool --> StageProposal : Staged proposal review (staged: true)
-        DirectMutation --> ReturnToolResult : State committed to SQLite
+        DirectMutation --> ReturnToolResult : State committed to SQLite via SerializedDrainQueue
         StageProposal --> ReturnToolResult : Buffered in proposals[instanceId][threadId]
         ReturnToolResult --> ToolExecuting
         ExecutingSubagent --> SubagentRecursion : Run isolated ReactAgent (limit 200)

@@ -8,7 +8,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'evals/**/*.test.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**', '**/*.spec.mjs', '**/lexical-playground/**']
+    exclude: ['**/node_modules/**', '**/dist/**', '**/*.spec.mjs']
   },
   resolve: {
     alias: {

@@ -26,8 +26,8 @@ flowchart LR
     User[👤 Knowledge Worker]:::actor
     
     CmdDecision[Command: accept-changes OR reject-changes with threadId]:::command
-    PolResolve[Policy: If accept -> clear thread buffer & save; If reject -> revert thread commands & broadcast snapshot]:::policy
-    EvtFinalized[Event: Workspace State Finalized & Persisted to Disk]:::event
+    PolResolve[Policy: If accept -> clear thread buffer & drainQueue.enqueue; If reject -> revert thread commands & drainQueue.enqueue]:::policy
+    EvtFinalized[Event: Workspace State Finalized & Persisted via SerializedDrainQueue]:::event
 
     Agent --> CmdSyncCmd
     CmdSyncCmd --> EvtCmdReceived

@@ -26,8 +26,5 @@
         "./src/collaragent/*"
       ]
     }
-  },
-  "exclude": [
-    "src/**/lexical-playground/**"
-  ]
+  }
 }

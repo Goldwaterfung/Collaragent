@@ -70,10 +70,25 @@ type InstanceContextValue = {
 const DEFAULT_INSTANCE = DEFAULT_INSTANCE_ID
 const ACTIVE_ID_STORAGE_KEY = 'docEditorActiveInstanceId'
 
+function hashWorkspacePath(filePath: string): string {
+  let hash = 0
+  for (let i = 0; i < filePath.length; i++) {
+    const char = filePath.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash |= 0
+  }
+  return Math.abs(hash).toString(36)
+}
+
+function getActiveInstanceStorageKey(filePath?: string | null): string {
+  if (!filePath || !filePath.trim()) return ACTIVE_ID_STORAGE_KEY
+  return `collar:activeInstanceId:${hashWorkspacePath(filePath.trim())}`
+}
+
 const InstanceContext = createContext<InstanceContextValue | null>(null)
 
 export function InstanceProvider({ children }: { children: ReactNode }) {
-  const { apiPort, wsPort } = useProjectSession()
+  const { apiPort, wsPort, filePath } = useProjectSession()
 
   const [instanceSummaries, setInstanceSummaries] = useState<NormalizedInstanceSummary[]>([])
   const [instanceIds, setInstanceIds] = useState<string[]>([DEFAULT_INSTANCE])
@@ -88,6 +103,7 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
   const instanceIdRef = useRef(instanceId)
   const instanceSummariesRef = useRef(instanceSummaries)
   const instanceWatcherClientId = useMemo(() => Math.random().toString(36).slice(2), [])
+  const activeIdStorageKey = useMemo(() => getActiveInstanceStorageKey(filePath), [filePath])
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -298,19 +314,21 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
   }, [queryClient])
 
   const createMutation = useMutation<
-    any,
+    { id: string; name: string },
     Error,
     { name: string; type: 'document' | 'canvas'; projectId: string; metadata?: Record<string, any> }
   >({
     mutationFn: async ({ name, type, projectId, metadata }) => {
-      const id = await instanceService.create({ name, type, projectId, metadata })
-      return { id }
+      const uniqueName = await instanceService.findUniqueName(name, projectId, type)
+      const id = await instanceService.create({ name: uniqueName, type, projectId, metadata })
+      return { id, name: uniqueName }
     },
     onSuccess: (data, variables) => {
       if (data && data.id) {
+        const resolvedName = data.name || variables.name
         const newSummary: NormalizedInstanceSummary = {
           instanceId: data.id,
-          name: variables.name,
+          name: resolvedName,
           type: variables.type,
           projectId: variables.projectId,
           metadata: variables.metadata,
@@ -398,20 +416,24 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const storedActive = localStorage.getItem(ACTIVE_ID_STORAGE_KEY)
+    const storedActive = localStorage.getItem(activeIdStorageKey)
     if (storedActive) {
       setInstanceIdState(storedActive)
     }
-  }, [])
+  }, [activeIdStorageKey])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
-      localStorage.setItem(ACTIVE_ID_STORAGE_KEY, instanceId)
+      if (instanceId) {
+        localStorage.setItem(activeIdStorageKey, instanceId)
+      } else {
+        localStorage.removeItem(activeIdStorageKey)
+      }
     } catch {
       // ignore storage failures
     }
-  }, [instanceId])
+  }, [instanceId, activeIdStorageKey])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !wsPort) return

@@ -11,7 +11,10 @@ import {
 } from './graphSchemaConverter'
 import { isCanonicalNodeId } from '@workspace/persistence/graphCanvasDto'
 import type { CanvasSnapshot } from '@workspace/canvas/domain/types'
+import type { NodeId } from '@workspace/canvas/domain/ids'
 import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
+import { RelationalLedgerStore } from '../wiki/RelationalLedgerStore'
+import { ClaimRelationEnum, type RelationalLedgerEntry } from '@shared/wiki'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. readGraph
@@ -55,6 +58,7 @@ export type RawGraphNode = {
   id: string
   name?: string
   attrs?: Record<string, unknown>
+  memo?: string
 }
 
 export type RawGraphRelationship = {
@@ -76,12 +80,10 @@ export function extractGraphRecords(snapshot: unknown): {
   }
 
   const snapRecord = snapshot as Record<string, unknown>
-  const graph = snapRecord.graph
-  if (!graph || typeof graph !== 'object') {
-    return { nodes: [], relationships: [] }
-  }
-
-  const graphRecord = graph as Record<string, unknown>
+  const graphRecord =
+    typeof snapRecord.graph === 'object' && snapRecord.graph !== null
+      ? (snapRecord.graph as Record<string, unknown>)
+      : snapRecord
 
   // Handle both domain graph (nodesById, relationshipsById) and wire DTO (nodes, relationships)
   const rawNodesObj =
@@ -103,13 +105,29 @@ export function extractGraphRecords(snapshot: unknown): {
     if (!nodeVal || typeof nodeVal !== 'object') continue
     const n = nodeVal as Record<string, unknown>
     if (typeof n.id === 'string' || typeof n.id === 'number') {
+      const attrs =
+        typeof n.attrs === 'object' && n.attrs !== null
+          ? (n.attrs as Record<string, unknown>)
+          : undefined
+
+      const memo =
+        typeof n.memo === 'string'
+          ? n.memo
+          : typeof attrs?.memo === 'string'
+            ? attrs.memo
+            : typeof attrs?.notes === 'string'
+              ? attrs.notes
+              : typeof attrs?.content === 'string'
+                ? attrs.content
+                : typeof (n.data as Record<string, unknown> | undefined)?.memo === 'string'
+                  ? ((n.data as Record<string, unknown>).memo as string)
+                  : undefined
+
       nodes.push({
         id: String(n.id),
         name: typeof n.name === 'string' ? n.name : undefined,
-        attrs:
-          typeof n.attrs === 'object' && n.attrs !== null
-            ? (n.attrs as Record<string, unknown>)
-            : undefined
+        attrs,
+        memo
       })
     }
   }
@@ -118,8 +136,15 @@ export function extractGraphRecords(snapshot: unknown): {
   for (const relVal of Object.values(rawRelsObj)) {
     if (!relVal || typeof relVal !== 'object') continue
     const r = relVal as Record<string, unknown>
+    const id = typeof r.id === 'string' || typeof r.id === 'number' ? String(r.id) : undefined
+    if (!id) continue
+
+    const attrs =
+      typeof r.attrs === 'object' && r.attrs !== null
+        ? (r.attrs as Record<string, unknown>)
+        : undefined
+
     if (
-      (typeof r.id === 'string' || typeof r.id === 'number') &&
       typeof r.from === 'object' &&
       r.from !== null &&
       typeof r.to === 'object' &&
@@ -129,7 +154,7 @@ export function extractGraphRecords(snapshot: unknown): {
       const toObj = r.to as Record<string, unknown>
       if (typeof fromObj.nodeId === 'string' && typeof toObj.nodeId === 'string') {
         relationships.push({
-          id: String(r.id),
+          id,
           from: {
             nodeId: fromObj.nodeId,
             portId: typeof fromObj.portId === 'string' ? fromObj.portId : undefined
@@ -138,12 +163,16 @@ export function extractGraphRecords(snapshot: unknown): {
             nodeId: toObj.nodeId,
             portId: typeof toObj.portId === 'string' ? toObj.portId : undefined
           },
-          attrs:
-            typeof r.attrs === 'object' && r.attrs !== null
-              ? (r.attrs as Record<string, unknown>)
-              : undefined
+          attrs
         })
       }
+    } else if (typeof r.from === 'string' && typeof r.to === 'string') {
+      relationships.push({
+        id,
+        from: { nodeId: r.from },
+        to: { nodeId: r.to },
+        attrs
+      })
     }
   }
 
@@ -175,7 +204,16 @@ export function parseGraphFromSnapshot(
     }
 
     const attrs = rawNode.attrs
-    const memo = typeof attrs?.memo === 'string' ? attrs.memo : undefined
+    const memo =
+      typeof rawNode.memo === 'string'
+        ? rawNode.memo
+        : typeof attrs?.memo === 'string'
+          ? attrs.memo
+          : typeof attrs?.notes === 'string'
+            ? attrs.notes
+            : typeof attrs?.content === 'string'
+              ? attrs.content
+              : undefined
     const hasMemo = typeof memo === 'string' && memo.trim().length > 0
 
     let clusterId: string | undefined
@@ -198,7 +236,12 @@ export function parseGraphFromSnapshot(
       groupsMap.set(clusterId, list)
     }
 
-    if (options?.includeMemo && hasMemo) {
+    const shouldIncludeMemo =
+      options?.includeMemo === true ||
+      (typeof options?.includeMemo === 'string' &&
+        (options.includeMemo as string).toLowerCase() === 'true')
+
+    if (shouldIncludeMemo && hasMemo) {
       resultNode.memo = memo
     }
 
@@ -268,6 +311,42 @@ export type WriteGraphOptions = WriteGraphSpec & {
   apiPort?: number
   staged?: boolean
   threadId?: string
+  ledgerStore?: RelationalLedgerStore
+}
+
+/**
+ * Converts declarative edge specifications into canvas_relational ledger entries with zero text pollution.
+ */
+export function convertEdgeSpecsToLedgerEntries(
+  edges: EdgeSpec[],
+  options?: { author?: 'user' | 'agent' }
+): RelationalLedgerEntry[] {
+  const author = options?.author || 'agent'
+  const now = new Date().toISOString()
+
+  return edges.map((edge) => {
+    const rawLabel = edge.label?.trim().toLowerCase()
+    const relParsed = ClaimRelationEnum.safeParse(rawLabel)
+    const rel = relParsed.success ? relParsed.data : 'relates_to'
+
+    return {
+      id: crypto.randomUUID(),
+      sourceEntityId: edge.from,
+      targetEntityId: edge.to,
+      rel,
+      provenance: 'canvas_relational' as const,
+      canvasContext: {
+        label: edge.label,
+        createdVia: 'writeGraph' as const
+      },
+      status: 'active' as const,
+      meta: {
+        createdAt: now,
+        updatedAt: now,
+        author
+      }
+    }
+  })
 }
 
 function resolveGraphSpecIdentity(
@@ -420,6 +499,40 @@ export async function executeWriteGraph(options: WriteGraphOptions) {
         { threadId: options.threadId, baseVersion }
       )
     }
+
+    // Synchronize edges to Relational Ledger with zero text pollution
+    if (options.ledgerStore && validatedSpec.edges && validatedSpec.edges.length > 0) {
+      const ledgerEntries = convertEdgeSpecsToLedgerEntries(validatedSpec.edges, {
+        author: 'agent'
+      })
+      for (const entry of ledgerEntries) {
+        options.ledgerStore.upsertEdge(entry)
+      }
+    }
+
+    // Synchronize edge deletions to Relational Ledger
+    if (options.ledgerStore && resolvedSpec.deleteEdges && resolvedSpec.deleteEdges.length > 0) {
+      for (const delEdge of resolvedSpec.deleteEdges) {
+        const fromNode = currentGraph.graph.nodesById[delEdge.from as NodeId]
+        const toNode = currentGraph.graph.nodesById[delEdge.to as NodeId]
+        const sourceName = fromNode?.name || delEdge.from
+        const targetName = toNode?.name || delEdge.to
+        options.ledgerStore.removeEdgesByQuery({
+          sourceEntityId: sourceName,
+          targetEntityId: targetName
+        })
+      }
+    }
+
+    // Synchronize node deletions to Relational Ledger (all incident edges)
+    if (options.ledgerStore && resolvedSpec.deleteNodes && resolvedSpec.deleteNodes.length > 0) {
+      for (const nodeId of resolvedSpec.deleteNodes) {
+        const node = currentGraph.graph.nodesById[nodeId as NodeId]
+        const entityName = node?.name || nodeId
+        options.ledgerStore.removeEdgesByQuery({ sourceEntityId: entityName })
+        options.ledgerStore.removeEdgesByQuery({ targetEntityId: entityName })
+      }
+    }
   } finally {
     // 5. Cleanup
     client.disconnect()
@@ -428,7 +541,8 @@ export async function executeWriteGraph(options: WriteGraphOptions) {
   // 6. Return success
   return {
     instanceId,
-    status: 'success'
+    status: 'success',
+    edgesRecorded: resolvedSpec.edges?.length ?? 0
   }
 }
 

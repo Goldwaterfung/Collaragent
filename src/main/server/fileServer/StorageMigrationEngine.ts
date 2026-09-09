@@ -21,7 +21,8 @@ import {
 } from './config/sqliteConfig'
 import { SqliteDatabase } from './db/SqliteDatabase'
 import { StorageError, StorageErrorCode } from './errors/StorageErrors'
-import { ImportCagentArchive } from './ImportCagentArchive'
+import { bootstrapWorkspaceDirectory } from '@workspace/wiki/LegacyArchiveBootstrapper'
+import { RelationalLedgerStore } from '@workspace/wiki/RelationalLedgerStore'
 
 export type StorageFormatVersion = 'v4_sqlite' | 'legacy_zip' | 'unknown'
 
@@ -353,27 +354,63 @@ export class StorageMigrationEngine {
   }
 
   public async normalizeLegacyV2IfPresent(tempDir: string): Promise<boolean> {
-    const cagentJsonPath = path.join(tempDir, 'cagent.json')
-    const manifestPath = path.join(tempDir, 'manifest.json')
+    try {
+      const cagentJsonPath = path.join(tempDir, 'cagent.json')
+      const manifestPath = path.join(tempDir, 'manifest.json')
 
-    if (!fs.existsSync(manifestPath) && fs.existsSync(cagentJsonPath)) {
-      this.reportProgress(
-        'extracting',
-        35,
-        'Legacy V2 monolithic cagent.json detected. Normalizing...'
-      )
-      const migrator = new ImportCagentArchive()
-      const report = await migrator.migrate(tempDir)
-      if (!report.success) {
+      if (!fs.existsSync(manifestPath) && fs.existsSync(cagentJsonPath)) {
         throw new StorageError(
           StorageErrorCode.STORAGE_MIGRATION_FAILED,
-          `Legacy V2 archive normalization failed: ${report.errors.join(', ')}`,
-          { errors: report.errors }
+          'Legacy V2 monolithic archive format (cagent.json) is deprecated and unsupported. Please upgrade using a prior release of CollarAgent.',
+          { tempDir, cagentJsonPath }
         )
       }
-      return true
+      return false
+    } catch (err: unknown) {
+      if (err instanceof StorageError) throw err
+      throw new StorageError(
+        StorageErrorCode.STORAGE_MIGRATION_FAILED,
+        `Legacy V2 archive validation failed: ${err instanceof Error ? err.message : String(err)}`,
+        { tempDir },
+        err instanceof Error ? err : undefined
+      )
     }
-    return false
+  }
+
+  public async bootstrapRelationalLedgerIfMissing(tempDir: string): Promise<boolean> {
+    const instancesDir = path.join(tempDir, 'instances')
+    const ledgerPathJson = path.join(instancesDir, 'ledger-default.json')
+    const ledgerPathMsgpack = path.join(instancesDir, 'ledger-default.msgpack')
+
+    if (fs.existsSync(ledgerPathJson) || fs.existsSync(ledgerPathMsgpack)) {
+      return false
+    }
+
+    this.reportProgress(
+      'extracting',
+      38,
+      'Checking legacy archive canvas instances for relational ledger bootstrapping...'
+    )
+
+    try {
+      const ledgerStore = new RelationalLedgerStore()
+      const res = await bootstrapWorkspaceDirectory(tempDir, ledgerStore)
+      if (res.bootstrapped) {
+        this.reportProgress(
+          'extracting',
+          39,
+          `Synthesized ${res.entriesCount} relational ledger edge(s) into ledger-default`
+        )
+      }
+      return res.bootstrapped
+    } catch (err: unknown) {
+      throw new StorageError(
+        StorageErrorCode.STORAGE_MIGRATION_FAILED,
+        `Relational ledger bootstrapping failed: ${err instanceof Error ? err.message : String(err)}`,
+        { tempDir },
+        err instanceof Error ? err : undefined
+      )
+    }
   }
 
   public ingestStaging(stagingDb: SqliteDatabase, sourceDir: string): IngestStats {
@@ -494,7 +531,12 @@ export class StorageMigrationEngine {
             : defaultProjectId
 
         const rawType = typeof instObj.type === 'string' ? instObj.type : 'document'
-        const type = rawType === 'canvas' || rawType === 'graph-canvas' ? 'canvas' : 'document'
+        const type =
+          rawType === 'canvas' || rawType === 'graph-canvas'
+            ? 'canvas'
+            : rawType === 'ledger'
+              ? 'ledger'
+              : 'document'
         const name = typeof instObj.name === 'string' ? instObj.name : 'Untitled'
         const meta = isRecord(instObj.metadata) ? instObj.metadata : {}
         const nowIso = new Date().toISOString()
@@ -1246,6 +1288,9 @@ export class StorageMigrationEngine {
 
       // Step 4: Check and normalize legacy V2 monolithic structure if needed
       await this.normalizeLegacyV2IfPresent(tempExtractionDir)
+
+      // Step 4.5: Check and bootstrap Relational Ledger (Spec §7.8) for legacy V3 archives lacking ledger-default
+      await this.bootstrapRelationalLedgerIfMissing(tempExtractionDir)
 
       // Step 5: Initialize staging SQLite database
       if (fs.existsSync(stagingDbPath)) {

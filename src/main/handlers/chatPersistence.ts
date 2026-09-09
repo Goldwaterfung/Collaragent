@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 
 async function getFetch(): Promise<typeof fetch> {
-  if (typeof (globalThis as any).fetch === 'function') return (globalThis as any).fetch
+  const g = globalThis as unknown as { fetch?: typeof fetch }
+  if (typeof g.fetch === 'function') return g.fetch
   // dynamic import of node-fetch for older node versions
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const nf = await import('node-fetch')
-    return (nf as any).default
-  } catch (e) {
+    const nf = (await import('node-fetch')) as unknown as { default?: typeof fetch }
+    if (typeof nf.default === 'function') return nf.default
+    throw new Error('No default fetch export found')
+  } catch {
     throw new Error('No fetch available in this runtime')
   }
 }
@@ -17,15 +18,18 @@ export async function saveMessageToProject(
   sessionId: string,
   role: 'user' | 'assistant' | 'system',
   content: string,
-  toolCalls?: any[],
-  blocks?: any[],
-  actions?: any[],
-  usage?: any,
+  toolCalls?: unknown[],
+  blocks?: unknown[],
+  actions?: unknown[],
+  usage?: unknown,
   messageId?: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>,
+  parentMessageId?: string | null,
+  checkpointId?: string | null,
+  branchId?: string | null
 ): Promise<boolean> {
   if (!apiPort) return false
-  const fetch = await getFetch()
+  const fetchFn = await getFetch()
   const url = `http://localhost:${apiPort}/api/chat/sessions/${sessionId}/messages`
   const body = {
     id: messageId || randomUUID(),
@@ -36,15 +40,17 @@ export async function saveMessageToProject(
     actions: actions || [],
     usage,
     timestamp: Date.now(),
-    metadata: metadata || {}
+    metadata: metadata || {},
+    parentMessageId: parentMessageId ?? undefined,
+    checkpointId: checkpointId ?? undefined,
+    branchId: branchId ?? undefined
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchFn(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
-      // short timeout via AbortController could be added if needed
     })
     return res.ok
   } catch (err) {
@@ -53,15 +59,41 @@ export async function saveMessageToProject(
   }
 }
 
+export async function getSessionDetailFromProject(
+  apiPort: number | undefined | null,
+  sessionId: string
+): Promise<{ activeMessageId?: string | null; activeCheckpointId?: string | null } | null> {
+  if (!apiPort) return null
+  const fetchFn = await getFetch()
+  const url = `http://localhost:${apiPort}/api/chat/sessions/${sessionId}`
+  try {
+    const res = await fetchFn(url)
+    if (!res.ok) return null
+    const json = (await res.json()) as unknown
+    if (json && typeof json === 'object') {
+      const rec = json as Record<string, unknown>
+      return {
+        activeMessageId: typeof rec.activeMessageId === 'string' ? rec.activeMessageId : null,
+        activeCheckpointId:
+          typeof rec.activeCheckpointId === 'string' ? rec.activeCheckpointId : null
+      }
+    }
+    return null
+  } catch (err) {
+    console.warn('[chatPersistence] Failed to get session detail via project API:', err)
+    return null
+  }
+}
+
 export async function deleteSessionFromProject(
   apiPort: number | undefined | null,
   sessionId: string
 ): Promise<boolean> {
   if (!apiPort) return false
-  const fetch = await getFetch()
+  const fetchFn = await getFetch()
   const url = `http://localhost:${apiPort}/api/chat/sessions/${sessionId}`
   try {
-    const res = await fetch(url, { method: 'DELETE' })
+    const res = await fetchFn(url, { method: 'DELETE' })
     return res.ok
   } catch (err) {
     console.warn('[chatPersistence] Failed to DELETE session via project API:', err)
@@ -69,15 +101,26 @@ export async function deleteSessionFromProject(
   }
 }
 
-export async function listSessionsFromProject(apiPort: number | undefined | null) {
+export async function listSessionsFromProject(
+  apiPort: number | undefined | null
+): Promise<Array<{ id: string; title: string; updatedAt: number }>> {
   if (!apiPort) return []
-  const fetch = await getFetch()
+  const fetchFn = await getFetch()
   const url = `http://localhost:${apiPort}/api/chat/sessions`
   try {
-    const res = await fetch(url)
+    const res = await fetchFn(url)
     if (!res.ok) return []
-    const json = await res.json()
-    return json.sessions || []
+    const json = (await res.json()) as unknown
+    if (
+      json &&
+      typeof json === 'object' &&
+      'sessions' in json &&
+      Array.isArray((json as { sessions: unknown }).sessions)
+    ) {
+      return (json as { sessions: Array<{ id: string; title: string; updatedAt: number }> })
+        .sessions
+    }
+    return []
   } catch (err) {
     console.warn('[chatPersistence] Failed to list sessions via project API:', err)
     return []

@@ -52,7 +52,7 @@ npx vitest run path/to/file.test.ts   # run a single test file
 npx vitest -t "name pattern"          # run tests matching a name
 ```
 
-Tests are colocated under `src/workspace/editor/lexical-playground/__tests__/unit/` (note: `lexical-playground/` is excluded from both TS configs, so vitest must run with its own resolver). Tests files use `*.test.ts` extension.
+Tests are colocated across packages (e.g. `src/workspace/editor/__tests__/`, `src/main/**/__tests__/`, `src/collaragent/__tests__/`). Test files use `*.test.ts` or `*.test.tsx` extension.
 
 VS Code debug configurations exist in `.vscode/launch.json`: "Debug Main Process" (Node launch via `electron-vite`) and "Debug Renderer Process" (Chrome attach on `:9222`), or use the compound "Debug All".
 
@@ -112,7 +112,7 @@ Channel constants live under `src/shared/ipc/<feature>/channels.ts`. The preload
 ### Workspace module (`src/workspace`)
 
 - `canvas/` — store (`store.tsx`), domain types, commands, components (`Canvas.tsx`), Dagre/d3-hierarchy layouts, off-thread Leiden clustering worker.
-- `editor/` — Lexical-based `CardEditor` with KaTeX math, Prism syntax, GFM tables, drag handles; `lexical-playground/` is a vendored reference (excluded from TS configs).
+- `editor/` — Lexical-based `CardEditor` with KaTeX math, Prism syntax, GFM tables, drag handles.
 - `sync/` — `SyncClient`, `SyncClientPool`, `CanvasSyncPlugin`, `EditorSyncPlugin` over the per-workspace WebSocket.
 - `persistence/` — DTOs/serialization (`canvasSerialization.ts`, `graphCanvasDto.ts`, `editorContent.ts`).
 - `contexts/` — `project/ProjectSession`, `instance/InstanceContext` (`InstanceProvider` + `InstanceScope`), `skills/SkillsContext`.

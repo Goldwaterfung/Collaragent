@@ -10,7 +10,7 @@ sequenceDiagram
 
     User->>UI: Types "@Canvas add auth node" & clicks Send
     UI->>UI: Append optimistic user message to useChatStore
-    UI->>Preload: window.agentIPC.stream({ message, streamId, threadId })
+    UI->>Preload: window.agentIPC.stream({ message, streamId, threadId, parentMessageId })
     Preload->>Main: IPC send(AGENT_STREAM, req)
     Main->>Agent: Invoke createDeepAgent ReAct loop
     Agent->>ExtLLM: Stream prompt + injected skills catalog
@@ -27,7 +27,7 @@ sequenceDiagram
     alt Direct Workspace Tool Call (Default: staged = false)
         Agent->>WSS: Broadcast command with { staged: false, threadId, baseVersion }
         WSS->>WSS: OCC validation & apply to live doc
-        WSS->>WSS: debouncedSave() persists directly to SQLite
+        WSS->>WSS: drainQueue.enqueue() dispatches single-flight write to SQLite
         WSS-->>UI: WebSocket push: sync-command (renders immediately)
     else Proposal Staging Flow (Explicit: staged = true)
         Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
@@ -37,16 +37,16 @@ sequenceDiagram
     end
 
     ExtLLM-->>Agent: Final synthesis text
-    Agent-->>Main: Turn finished & persist assistant message
+    Agent-->>Main: Turn finished & persist assistant message (anchored to parentMessageId & checkpointId)
     Main-->>Preload: IPC send(agent:stream:streamId:end)
     Preload-->>UI: Finalize assistant message in useChatStore
 
     %% Post-Turn Checkpoint Creation (Decoupled, Zero Quiesce)
-    UI->>Preload: window.checkpointIPC.create({ threadId, projectId, reason: 'auto' })
+    UI->>Preload: window.checkpointIPC.create({ threadId, projectId, parentMessageId, reason: 'auto' })
     Preload->>Main: IPC invoke(CHECKPOINT_CREATE)
     Main->>WSS: Direct wsHandle.flush() (Zero window quiesce pause)
     Main-->>Preload: CheckpointBundleSummary { id: "chk-turn-101", projectId }
-    Preload-->>UI: Checkpoint stored
+    Preload-->>UI: Checkpoint stored (DAG parent/child linked)
     UI->>Preload: window.checkpointIPC.list({ threadId, projectId })
     Preload-->>UI: CheckpointBundles -> Render CheckpointMarker under completed turn
 

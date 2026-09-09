@@ -48,8 +48,13 @@ docs/design-catalog/
     ├── adr-007-websocket-staged-proposal-protocol.md
     ├── adr-008-hierarchical-leiden-clustering-and-spatial-layout.md
     ├── adr-009-multi-chat-concurrency-and-workspace-synchronization.md
-    └── adr-010-cas-blob-deduplication-and-dag-checkpoint-architecture.md
+    ├── adr-010-cas-blob-deduplication-and-dag-checkpoint-architecture.md
+    ├── adr-011-official-langgraph-checkpointer-and-true-dag-history.md
+    └── adr-012-event-driven-serialized-drain-system.md
 ```
+
+> [!NOTE]
+> **Event-Driven Serialized Drain System Catalog**: The complete C4 architecture, event contracts, EventStorming workflows, and migration roadmap for transitioning persistence from temporal debouncing to deterministic single-flight queues are documented in [docs/event-driven-system/](file:///Users/goldenfung/Documents/collaragent/docs/event-driven-system/README.md).
 
 > [!NOTE]
 > **Evaluation & Telemetry Architecture Catalog**: The deterministic evaluation suite, OpenTelemetry/Langfuse tracing, metrics taxonomy, and evaluation ADRs are organized in a dedicated catalog under [docs/evaluations/](file:///Users/goldenfung/Documents/collaragent/docs/evaluations/README.md).
@@ -129,7 +134,7 @@ flowchart LR
     CmdAddNode[Add Card Node / Connect]:::command
     EvtCanvasMutated[Canvas State Mutated]:::event
     AggGraph[Graph Aggregate]:::aggregate
-    PolBroadcast[Whenever Canvas Mutated -> Broadcast via WebSocket]:::policy
+    PolBroadcast[Whenever Canvas Mutated -> Broadcast via WebSocket & Enqueue DrainQueue]:::policy
     SysWSServer[In-Process WS Server]:::system
 
     User --> CmdAddNode
@@ -164,11 +169,15 @@ flowchart LR
     PolOCC[Whenever Staged Command -> Verify OCC baseVersion >= currentSeq]:::policy
     EvtPropStaged[Workspace Proposal Staged in Thread Buffer]:::event
     AggProposal[Thread-Scoped Proposal Aggregate]:::aggregate
+    PolReadBarrier[Whenever Tool Reads Workspace -> Transactional Barrier flushBeforeRead]:::policy
+    EvtBarrierResolved[Barrier Settled to SQLite Disk]:::event
 
     EvtToolCalled --> CmdStageProp
     CmdStageProp --> PolOCC
     PolOCC --> EvtPropStaged
     EvtPropStaged --> AggProposal
+    EvtToolCalled --> PolReadBarrier
+    PolReadBarrier --> EvtBarrierResolved
 
     %% 6. Thread-Scoped Proposal Acceptance & Commit
     CmdAccept[Accept Thread Proposals]:::command
@@ -217,7 +226,7 @@ flowchart TB
 
         MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
 
-        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server with thread-segregated proposals, OCC validation, and transactional flush"]:::container
+        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time sync server with SerializedDrainQueue, transactional read barriers, thread proposals, and OCC"]:::container
 
         UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, SqliteStorageEngine, and SqliteCheckpointStore"]:::container
 
@@ -236,7 +245,8 @@ flowchart TB
     RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
 
     MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer
-    MainHost -->|"Agent tools dispatch staged mutations with threadId & OCC [WebSocket / SyncClient]"| WSServer
+    MainHost -->|"Agent tools dispatch staged mutations & read barriers [WebSocket / SyncClient]"| WSServer
+    WSServer -->|"Single-flight serialized persistence writes [HTTP / REST :fsPort]"| UtilityServer
     MainHost -->|"Encrypts / decrypts API credentials [safeStorage]"| LocalVault
     MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
     MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP
@@ -359,7 +369,7 @@ flowchart TB
     subgraph UtilityProcessDaemon ["Storage Utility Process (Daemon)"]
         ProcEntry["🚪 process.ts / ParentPort Handler<br/>[Component]<br/>Sniffs format, runs migrations, manages <10ms WAL truncate lifecycle"]:::component
         FSApi["🌐 Filesystem API (Express 5)<br/>[Component]<br/>Zod-validated REST router for instances, checkpoints, chat history & projects"]:::component
-        SqliteEngine["🗄️ SqliteStorageEngine<br/>[Component]<br/>IStorageEngine implementation: lazy MessagePack BLOBs, granular chat, snapshots"]:::component
+        SqliteEngine["🗄️ SqliteStorageEngine<br/>[Component]<br/>IStorageEngine implementation: CAS blobs, recursive CTE DAG chat, snapshots"]:::component
         CheckpointStore["⏱️ SqliteCheckpointStore<br/>[Component]<br/>ICheckpointStore: B-Tree point queries (<1.5ms), 3-turn writes pruning, ADR-006"]:::component
         DbManager["💾 SqliteDatabase<br/>[Component]<br/>better-sqlite3 connection, WAL mode, PRAGMAs, migrations & transactions"]:::component
         LockManager["🔒 ProjectLockManager<br/>[Component]<br/>Single-writer <path>.cagent.lock with dead PID auto-recovery"]:::component
@@ -409,6 +419,7 @@ flowchart TB
             ConfigStore["📦 useConfigStore (Zustand)<br/>[Store]<br/>Cached application configuration, models, and tool settings"]:::store
             SessionCtx["🌐 ProjectSessionContext<br/>[Context]<br/>Resolves apiPort/wsPort, manages session lifecycle & reload sockets"]:::store
             InstanceCtx["📑 InstanceContext<br/>[Context]<br/>TanStack Query cache & live /ws/instances watcher"]:::store
+            RelationalLedgerCtx["🧠 RelationalLedgerContext<br/>[Context]<br/>Live ledger triple state, claim bindings & contradiction alerts"]:::store
             CanvasStore["🎨 CanvasProvider (useReducer)<br/>[Reducer Store]<br/>Manages Domain, Layout, UI, and History undo/redo stacks"]:::store
         end
 
@@ -424,6 +435,8 @@ flowchart TB
 
             subgraph DocumentView ["Rich Document Subsystem"]
                 CardEditor["📄 CardEditor (Lexical)<br/>[Component]<br/>Full document editor: typography, GFM tables, math (KaTeX), code blocks"]:::component
+                BlockIdPlugin["🔑 BlockIdPlugin<br/>[Plugin]<br/>Deterministic Lexical AST block UUID assignment & registry"]:::component
+                ClaimBadgeNode["🏷️ InlineClaimBadgeNode<br/>[Lexical Node]<br/>Grounded claim badges with provenance tooltip popovers"]:::component
                 DocxExporter["📑 DocxExporter<br/>[Component]<br/>Compiles DocumentPayload block AST directly into Word (.docx)"]:::component
             end
 
@@ -437,11 +450,12 @@ flowchart TB
         subgraph SyncLayer ["Real-Time Synchronization Plugins & Resilient SyncClient"]
             CanvasSync["⚡ CanvasWebSocketSyncPlugin<br/>[Component]<br/>Syncs graph commands, thread proposals, and OCC versions over /ws/canvas/:id"]:::component
             EditorSync["⚡ EditorWebSocketSyncPlugin<br/>[Component]<br/>Syncs Lexical AST, diff reviews, and thread-scoped staged proposals"]:::component
-            ClientLifecycle["🛡️ Resilient SyncClient<br/>[Component]<br/>Pre-handled readyPromise, safe ack drain, and unmount fiber protection"]:::component
+            ClientLifecycle["🛡️ Resilient SyncClient<br/>[Component]<br/>AbortSignal cancellation token propagation, zero standalone timers, safe ack drain"]:::component
         end
     end
 
     SessionCtx --> InstanceCtx
+    SessionCtx --> RelationalLedgerCtx
     InstanceCtx --> DockviewHost
     DockviewHost --> CanvasViewport
     DockviewHost --> CardEditor
@@ -449,6 +463,8 @@ flowchart TB
     CanvasNodeComp --> MemoEditor
     CanvasViewport -.-> LeidenWorker
 
+    CardEditor --> BlockIdPlugin
+    CardEditor --> ClaimBadgeNode
     CardEditor --> DocxExporter
     ChatEngine --> MessageListComp
     ChatEngine --> SubagentPane
@@ -490,6 +506,12 @@ flowchart TB
             DocDiff["📄 DocumentDiffEngine<br/>[Component]<br/>Diffs Lexical DocumentPayloads to emit atomic EditorCommands"]:::component
             PatchEngine["🧩 PatchCommandEngine<br/>[Component]<br/>Applies structured JSON patch operations against HTML patch views"]:::component
             InverseEngine["🔄 InverseCommandEngine<br/>[Component]<br/>Inverts executed workspace commands into atomic Undo commands"]:::component
+            InverseLedger["🔄 InverseLedgerCommand<br/>[Component]<br/>Inverts relational ledger triple mutations for exact rollback"]:::component
+        end
+
+        subgraph WikiAndLedgerSubsystem ["LLM Wiki & Knowledge Ledger Subsystem"]
+            WikiAdapter["🔌 LiveWikiWorkspaceAdapter<br/>[Adapter]<br/>Transactional read barriers (flushBeforeRead), instance hydration & tool routing"]:::component
+            StructuralLinter["🔍 L1StructuralLinter<br/>[Component]<br/>Pre-audit flush barriers, orphan claim detection & graph validation"]:::component
         end
 
         subgraph StorageBackends ["Pluggable Storage Backends"]
@@ -517,6 +539,9 @@ flowchart TB
     DeepAgentFac --> DocDiff
     DeepAgentFac --> PatchEngine
     DeepAgentFac --> InverseEngine
+    DeepAgentFac --> InverseLedger
+    DeepAgentFac --> WikiAdapter
+    WikiAdapter --> StructuralLinter
 ```
 
 ---
@@ -543,20 +568,30 @@ erDiagram
     TABLE_CELL ||--o{ INLINE_RUN : contains
     INLINE_RUN }o--o{ COMMENT : references
 
+    %% Relational Knowledge Ledger Domain
+    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_TRIPLE : contains
+    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_ENTITY : contains
+    RELATIONAL_TRIPLE }o--|| BLOCK : grounded_by_claim
+    BLOCK ||--o{ INLINE_CLAIM_BADGE : contains
+
     %% Unified Checkpoint & Ledger Domain
     CHECKPOINT_BUNDLE ||--o{ INSTANCE_RESTORE_POINT : captures
     CHECKPOINT_BUNDLE ||--|| CHAT_CHECKPOINT : references
     WORKSPACE_SNAPSHOT ||--|| INSTANCE_RESTORE_POINT : targets
     WORKSPACE_COMMAND_LOG ||--|| INSTANCE_LOG_POSITION : indexed_at
 
-    %% Physical SQLite V5 CAS Persistence Schema
+    %% Physical SQLite V7 True DAG & CAS Persistence Schema
     PROJECTS ||--o{ INSTANCES : owns
     PROJECTS ||--o{ CHAT_SESSIONS : contains
     CHAT_SESSIONS ||--o{ CHAT_MESSAGES : logs
+    CHAT_SESSIONS ||--o| CHAT_MESSAGES : active_message
+    CHAT_MESSAGES ||--o{ CHAT_MESSAGES : "parent / child DAG"
+    CHAT_MESSAGES }o--o| LANGGRAPH_CHECKPOINTS : "checkpoint"
     CHAT_SESSIONS ||--o{ LARGE_TOOL_OUTPUTS : attaches
     INSTANCES ||--o{ WORKSPACE_SNAPSHOTS : captures
     INSTANCES ||--o{ WORKSPACE_COMMAND_LOGS : records
     WORKSPACE_BLOBS ||--o{ WORKSPACE_SNAPSHOTS : stores
+    LANGGRAPH_CHECKPOINTS ||--o{ LANGGRAPH_CHECKPOINTS : parent_checkpoint
     LANGGRAPH_CHECKPOINTS ||--o{ LANGGRAPH_WRITES : produces
 
     %% Entity Definitions
@@ -608,6 +643,7 @@ erDiagram
         string align "left|center|right|justify"
         string language
         InlineRun[] children
+        InlineClaimBadge[] claimBadges
     }
 
     INLINE_RUN {
@@ -616,6 +652,34 @@ erDiagram
         boolean italic
         string equation "LaTeX Formula"
         string[] commentIds FK
+    }
+
+    RELATIONAL_LEDGER_PAYLOAD {
+        string instanceId PK
+        Record entitiesById
+        Record triplesById
+    }
+
+    RELATIONAL_TRIPLE {
+        string id PK
+        string source FK
+        string predicate
+        string target FK
+        string claimId FK
+    }
+
+    RELATIONAL_ENTITY {
+        string id PK
+        string label
+        string type
+        Record properties
+    }
+
+    INLINE_CLAIM_BADGE {
+        string claimId PK
+        string quote
+        string sourceDocId FK
+        string blockId FK
     }
 
     CHECKPOINT_BUNDLE {
@@ -634,7 +698,7 @@ erDiagram
 
     INSTANCE_RESTORE_POINT {
         string instanceId PK
-        string instanceType "graph-canvas | document"
+        string instanceType "graph-canvas | document | ledger"
         string snapshotId FK
         string blobHash FK
         integer sequenceNumber
@@ -650,7 +714,7 @@ erDiagram
         Record previousState
     }
 
-    %% Physical SQLite V5 Table Schemas
+    %% Physical SQLite V7 Table Schemas
     PROJECTS {
         string id PK
         string name
@@ -662,7 +726,7 @@ erDiagram
     INSTANCES {
         string id PK
         string project_id FK
-        string type "document | canvas"
+        string type "document | canvas | ledger"
         string name
         blob content_msgpack "MessagePack binary"
         string metadata_json
@@ -676,6 +740,8 @@ erDiagram
         string title
         integer created_at
         integer updated_at
+        string active_message_id FK
+        string active_checkpoint_id FK
     }
 
     CHAT_MESSAGES {
@@ -689,14 +755,17 @@ erDiagram
         string usage_json
         string metadata_json
         integer timestamp
+        string parent_message_id FK
+        string checkpoint_id FK
+        string branch_id
     }
 
     LANGGRAPH_CHECKPOINTS {
         string thread_id PK
         string checkpoint_ns PK
         string checkpoint_id PK
-        string parent_checkpoint_id
-        string checkpoint_json
+        string parent_checkpoint_id FK
+        string checkpoint_json "Self-contained complete channel_values snapshot"
         string metadata_json
         integer created_at
     }
@@ -804,13 +873,18 @@ stateDiagram-v2
 
     state ToolExecuting {
         [*] --> DispatchTool
-        DispatchTool --> ExecutingWorkspaceTool : manageGraph / editDocument
+        DispatchTool --> ExecutingWorkspaceTool : manageGraph / editDocument / compileGraph
+        DispatchTool --> ReadingWorkspaceState : readDocument / getCanvas / loadLedger
         DispatchTool --> ExecutingFilesystemTool : read_file / write_file
         DispatchTool --> ExecutingSubagent : task / dynamic_task
 
-        ExecutingWorkspaceTool --> DirectMutation : Direct mutation (staged: false) & debouncedSave
+        ReadingWorkspaceState --> TransactionalReadBarrier : flushBeforeRead === true
+        TransactionalReadBarrier --> ReadSettledState : await flush() settled to disk
+        ReadSettledState --> ReturnToolResult
+
+        ExecutingWorkspaceTool --> DirectMutation : Direct mutation (staged: false) & drainQueue.enqueue
         ExecutingWorkspaceTool --> StageProposal : Staged proposal review (staged: true)
-        DirectMutation --> ReturnToolResult : State committed to SQLite
+        DirectMutation --> ReturnToolResult : State committed to SQLite via SerializedDrainQueue
         StageProposal --> ReturnToolResult : Buffered in proposals[instanceId][threadId]
         ReturnToolResult --> ToolExecuting
         ExecutingSubagent --> SubagentRecursion : Run isolated ReactAgent (limit 200)
@@ -833,8 +907,9 @@ stateDiagram-v2
 
     state SnapshotCapturing {
         [*] --> FlushWSBuffers : wsHandle.flush() (commit dirty memory state)
-        FlushWSBuffers --> CaptureLangGraphHead : Persist ChatCheckpointSaver tuple
-        CaptureLangGraphHead --> DeduplicateCASBlob : SHA-256 hash & upsert workspace_blobs
+        FlushWSBuffers --> CaptureLangGraphHead : Persist self-contained ChatCheckpointSaver tuple
+        CaptureLangGraphHead --> AdvanceRestoreHead : Unconditionally advance langgraph_restore_heads
+        AdvanceRestoreHead --> DeduplicateCASBlob : SHA-256 hash & upsert workspace_blobs
         DeduplicateCASBlob --> LinkSnapshotV5 : Insert workspace_snapshots with blob_hash
         LinkSnapshotV5 --> AssembleDAGBundle : Create CheckpointBundle with parentBundleId & branchName
     }
@@ -846,9 +921,9 @@ stateDiagram-v2
 
     state QuiescingRestore {
         [*] --> ValidateTargetBundle : Verify bundle existence
-        ValidateTargetBundle --> RollbackChat : Clear session (__start__) OR truncate to messageId
-        RollbackChat --> UpdateDAGRegistry : setEffectiveBundleId(parent) & setPendingBranch()
-        UpdateDAGRegistry --> HydrateFromCAS : Reconstitute instances from workspace_blobs via blob_hash
+        ValidateTargetBundle --> SwitchActiveBranch : Clear session (__start__) OR setActiveBranch pointer in SQLite (zero data loss)
+        SwitchActiveBranch --> SyncRestoreHead : setRestoreHead & setEffectiveBundleId/pendingBranch
+        SyncRestoreHead --> HydrateFromCAS : Reconstitute instances from workspace_blobs via blob_hash
         HydrateFromCAS --> FailClosedGuard : Check payload integrity
         FailClosedGuard --> ResetOCCSequences : Payload valid: emit system-checkpoint-restore & reset commandSequences
         FailClosedGuard --> AbortRestore : Missing/corrupt: Throw STORAGE_CHECKPOINT_NOT_FOUND (safe fail-closed)
@@ -894,7 +969,7 @@ sequenceDiagram
     alt Direct Workspace Tool Call (Default: staged = false)
         Agent->>WSS: Broadcast command with { staged: false, threadId, baseVersion }
         WSS->>WSS: OCC validation & apply to live doc
-        WSS->>WSS: debouncedSave() persists directly to SQLite
+        WSS->>WSS: drainQueue.enqueue() dispatches single-flight write to SQLite
         WSS-->>UI: WebSocket push: sync-command (renders immediately)
     else Proposal Staging Flow (Explicit: staged = true)
         Agent->>WSS: Broadcast command with { staged: true, threadId, baseVersion }
@@ -960,9 +1035,10 @@ sequenceDiagram
 
         alt bundle.chat.messageId === '__start__'
             Server->>Storage: Clear full chat session (clearChatSession)
-        else Regular Message ID
-            Server->>Storage: Truncate chat messages to bundle.chat.messageId (truncateChatSession)
+        else Regular Message ID (True DAG Non-Destructive Switch)
+            Server->>Storage: Non-destructively switch active branch (setActiveBranch(threadId, messageId, agentCheckpointId))
         end
+        Server->>Server: saver.setRestoreHead(threadId, agentCheckpointId)
 
         Server-->>Main: Restore completed { status: "restored", bundleId }
         Main->>Registry: setPendingBranch(threadId, bundle.agentCheckpointId)
@@ -973,7 +1049,7 @@ sequenceDiagram
         Main-->>Preload: Restore response
         Preload-->>UI: Success
 
-        UI->>UI: Reload messages via ChatService.getMessages & refreshBundles()
+        UI->>UI: Recursive CTE reloads active branch messages; alternate branches preserved; renders 🔀 Branch switchers
         UI->>UI: Re-render Canvas and Lexical Editor at exact historical state
     end
 ```
@@ -1013,7 +1089,7 @@ sequenceDiagram
             WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
             par Broadcast & Direct Persistence
                 WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
-                WSS->>RESTServer: 500ms debouncedSave() persists committed state to SQLite
+                WSS->>RESTServer: drainQueue.enqueue() dispatches single-flight write to SQLite
                 WSS->>RESTServer: POST /api/checkpoints/workspace/logs (Audit Trail)
             end
         end
@@ -1042,7 +1118,7 @@ sequenceDiagram
             CanvasUI->>WSS: Send { type: 'accept-changes', instanceId, threadId, clientId }
             WSS->>WSS: proposals.get(instanceId).delete(threadId)
             WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
-            WSS->>RESTServer: 500ms debouncedSave() persists committed state to SQLite
+            WSS->>RESTServer: drainQueue.enqueue() dispatches single-flight write to SQLite
         else User clicks "Undo" (Reject Changes for Thread)
             User->>CanvasUI: Clicks "Reject Changes"
             CanvasUI->>WSS: Send { type: 'reject-changes', instanceId, threadId, clientId }
@@ -1050,7 +1126,7 @@ sequenceDiagram
             WSS->>WSS: proposals.get(instanceId).delete(threadId)
             WSS-->>CanvasUI: Broadcast { type: 'sync-snapshot', graph, layout, from: 'agent-proposal-reverted' }
             WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
-            WSS->>RESTServer: 500ms debouncedSave() persists restored state to SQLite
+            WSS->>RESTServer: drainQueue.enqueue() dispatches single-flight write to SQLite
         end
     end
 ```
@@ -1182,8 +1258,8 @@ flowchart LR
     User[👤 Knowledge Worker]:::actor
 
     CmdDecision[Command: accept-changes OR reject-changes with threadId]:::command
-    PolResolve[Policy: If accept -> clear thread buffer & save; If reject -> revert thread commands & broadcast snapshot]:::policy
-    EvtFinalized[Event: Workspace State Finalized & Persisted to Disk]:::event
+    PolResolve[Policy: If accept -> clear thread buffer & drainQueue.enqueue; If reject -> revert thread commands & drainQueue.enqueue]:::policy
+    EvtFinalized[Event: Workspace State Finalized & Persisted via SerializedDrainQueue]:::event
 
     Agent --> CmdSyncCmd
     CmdSyncCmd --> EvtCmdReceived
@@ -1203,18 +1279,20 @@ flowchart LR
 
 ## 6. Architecture Decision Records (ADRs)
 
-| ADR                                                                                                                                                  | Title                                                                                              | Decision & Key Rationale                                                                                                                                                                                                                                                                                                                                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)                  | **Multi-Process Electron Host with Forked Utility Daemons**                                        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.                                                                                                                                                                                                                 |
-| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)                       | **Sharded V3 Storage Engine (Superseded by V4 SQLite Engine)**                                     | Historical V3 sharded layout (`manifest.json`, `instances/*.json`, `snapshots/*.msgpack`). Superseded by V4 single-file SQLite database with WAL journaling and B-Tree indexing.                                                                                                                                                                                                   |
-| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md)                 | **Nominal ID Branding for Graph Entities**                                                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                                                                                                                                                                                                                                  |
-| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)                    | **Progressive Disclosure Architecture for Agent Skills**                                           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.                                                                                                                                                                                                               |
-| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)                 | **Deterministic Inverse Command Rollback Engine**                                                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.                                                                                                                                                                                                                  |
-| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)                    | **Large Tool Output Eviction Protocol**                                                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.                                                                                                                                                                                                          |
-| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)                     | **WebSocket Real-Time Synchronization & Staged Proposal Protocol**                                 | Stream real-time canvas mutations over dedicated WebSocket channels with thread-partitioned proposal buffering, monotonic sequence acks, and thread-scoped review.                                                                                                                                                                                                                 |
-| [ADR-008](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-008-hierarchical-leiden-clustering-and-spatial-layout.md)      | **Hierarchical Leiden Community Detection, Derived Group Enclosures, and Two-Tier Spatial Layout** | Adopt Option A (derived cluster layer in `node.attrs`) with a two-tier spatial layout engine (intra-cluster Dagre/grid + inter-cluster shelf-packing), off-thread WebWorker delta patching for concurrency safety, and granular transactional WebSocket persistence.                                                                                                               |
-| [ADR-009](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-009-multi-chat-concurrency-and-workspace-synchronization.md)   | **Multi-Chat Concurrent Execution & Workspace Synchronization Architecture**                       | Support concurrent multi-chat Dockview panes via thread-segregated proposal maps, sequence-based Optimistic Concurrency Control, decoupled transactional checkpoint flushes without global window pauses, and unmount-resilient client lifecycle.                                                                                                                                  |
-| [ADR-010](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-010-cas-blob-deduplication-and-dag-checkpoint-architecture.md) | **CAS Blob Deduplication, DAG Lineage Tracking, and Fail-Closed Checkpoint Architecture**          | Implement SQLite V5 two-tier Content-Addressed Storage (`workspace_blobs`) with SHA-256 deduplication and cascade-deletion immunity, DAG tree branching via `parentBundleId`, fail-closed restore validation (`STORAGE_CHECKPOINT_NOT_FOUND`), internal `system-checkpoint-restore` WebSocket sequence alignment, and direct workspace tool persistence (`staged: false` default). |
+| ADR                                                                                                                                                  | Title                                                                                              | Decision & Key Rationale                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-001](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-001-multi-process-electron-utility-daemon.md)                  | **Multi-Process Electron Host with Forked Utility Daemons**                                        | Fork heavy project file I/O, compression, and Express REST server into independent `UtilityProcess` instances to keep the Main process and UI rendering at 60 FPS.                                                                                                                                                                                                                                                      |
+| [ADR-002](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-002-sharded-v3-cagent-storage-engine.md)                       | **Sharded V3 Storage Engine (Superseded by V4 SQLite Engine)**                                     | Historical V3 sharded layout (`manifest.json`, `instances/*.json`, `snapshots/*.msgpack`). Superseded by V4 single-file SQLite database with WAL journaling and B-Tree indexing.                                                                                                                                                                                                                                        |
+| [ADR-003](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-003-nominal-id-branding-for-graph-entities.md)                 | **Nominal ID Branding for Graph Entities**                                                         | Brand `NodeId`, `RelationshipId`, `PortId`, and `GraphId` nominal types to eliminate accidental identifier cross-assignment bugs at compile time.                                                                                                                                                                                                                                                                       |
+| [ADR-004](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-004-progressive-disclosure-agent-skills.md)                    | **Progressive Disclosure Architecture for Agent Skills**                                           | Inject only a compact YAML frontmatter catalog into system prompts; agent loads complete `SKILL.md` files on-demand via `read_file`, cutting token overhead by ~85%.                                                                                                                                                                                                                                                    |
+| [ADR-005](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-005-deterministic-inverse-command-rollback.md)                 | **Deterministic Inverse Command Rollback Engine**                                                  | Capture `previousState` on every mutation to mathematically compute inverse commands, powering unified Undo/Redo, proposal rejection, and checkpoint restoration.                                                                                                                                                                                                                                                       |
+| [ADR-006](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-006-large-tool-output-eviction-protocol.md)                    | **Large Tool Output Eviction Protocol**                                                            | Automatically evict tool results exceeding 20,000 tokens to `/large_tool_results/` and replace prompt messages with truncated previews to prevent LLM context exhaustion.                                                                                                                                                                                                                                               |
+| [ADR-007](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-007-websocket-staged-proposal-protocol.md)                     | **WebSocket Real-Time Synchronization & Staged Proposal Protocol**                                 | Stream real-time canvas mutations over dedicated WebSocket channels with thread-partitioned proposal buffering, monotonic sequence acks, and thread-scoped review.                                                                                                                                                                                                                                                      |
+| [ADR-008](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-008-hierarchical-leiden-clustering-and-spatial-layout.md)      | **Hierarchical Leiden Community Detection, Derived Group Enclosures, and Two-Tier Spatial Layout** | Adopt Option A (derived cluster layer in `node.attrs`) with a two-tier spatial layout engine (intra-cluster Dagre/grid + inter-cluster shelf-packing), off-thread WebWorker delta patching for concurrency safety, and granular transactional WebSocket persistence.                                                                                                                                                    |
+| [ADR-009](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-009-multi-chat-concurrency-and-workspace-synchronization.md)   | **Multi-Chat Concurrent Execution & Workspace Synchronization Architecture**                       | Support concurrent multi-chat Dockview panes via thread-segregated proposal maps, sequence-based Optimistic Concurrency Control, decoupled transactional checkpoint flushes without global window pauses, and unmount-resilient client lifecycle.                                                                                                                                                                       |
+| [ADR-010](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-010-cas-blob-deduplication-and-dag-checkpoint-architecture.md) | **CAS Blob Deduplication, DAG Lineage Tracking, and Fail-Closed Checkpoint Architecture**          | Implement SQLite V5 two-tier Content-Addressed Storage (`workspace_blobs`) with SHA-256 deduplication and cascade-deletion immunity, DAG tree branching via `parentBundleId`, fail-closed restore validation (`STORAGE_CHECKPOINT_NOT_FOUND`), internal `system-checkpoint-restore` WebSocket sequence alignment, and direct workspace tool persistence (`staged: false` default).                                      |
+| [ADR-011](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-011-official-langgraph-checkpointer-and-true-dag-history.md)   | **Official LangGraph Checkpointer Storage Alignment and True DAG History**                         | Align checkpointer storage with official LangGraph architecture via self-contained `checkpoint_json` blobs (Schema V6) eliminating branch sequence version collisions; implement True DAG chat messages (Schema V7) with `parent_message_id`, `checkpoint_id`, and `active_message_id`, recursive CTE lineage queries, zero-data-loss non-destructive branch switching, and UI multi-branch navigation (`🔀 Branch 2`). |
+| [ADR-012](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-012-event-driven-serialized-drain-system.md)                   | **Event-Driven Serialized Drain System Architecture**                                              | Replace temporal debouncing (`setTimeout(..., 500)`) with a single-flight serialized drain queue, in-memory dirty coalescing, and deterministic `flush()` barriers to eliminate SQLite lock contention and stale disk reads by autonomous AI agents.                                                                                                                                                                    |
 
 ---
 

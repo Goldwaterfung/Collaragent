@@ -11,6 +11,7 @@ export interface SqliteEngineConfig {
   readonly walAutoCheckpointPages: number
   readonly idleCheckpointDelayMs: number
   readonly incrementalVacuumPages: number
+  readonly vacuumAllPages: number
   readonly maxWriteRetentionTurns: number
   readonly largeToolOutputThresholdBytes: number
   readonly defaultPaginationLimit: number
@@ -24,6 +25,7 @@ export const SQLITE_ENGINE_CONFIG: Readonly<SqliteEngineConfig> = {
   walAutoCheckpointPages: 1000,
   idleCheckpointDelayMs: 30000, // 30 seconds idle trigger
   incrementalVacuumPages: 500,
+  vacuumAllPages: 0, // 0 instructs SQLite incremental_vacuum to reclaim all freelist pages
   maxWriteRetentionTurns: 3, // Retain last 3 turns of transient task writes
   largeToolOutputThresholdBytes: 81920, // 80 KB (~20k tokens, ADR-006)
   defaultPaginationLimit: 50,

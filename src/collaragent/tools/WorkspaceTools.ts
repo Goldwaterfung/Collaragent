@@ -13,6 +13,12 @@ import { getDocumentPayload } from '@workspace/wstools/getDocument'
 import { executeWriteDocument, executeDocumentCommands } from '@workspace/wstools/manageDocument'
 import { listDocumentInstances } from '@workspace/wstools/listDocumentInstances'
 import { createInstance } from '@workspace/wstools/createDocumentInstance'
+import { RelationalLedgerStore } from '@workspace/wiki/RelationalLedgerStore'
+import {
+  syncDocumentClaimsToLedger,
+  extractClaimsFromDocument
+} from '@workspace/wiki/LinkExtractor'
+import { normalizeEntityTitle } from '@workspace/wiki/L1StructuralLinter'
 
 // Graph Canvas imports
 import { executeReadGraph, executeWriteGraph } from '@workspace/wstools/manageGraph'
@@ -24,6 +30,21 @@ import {
   DirectionSchema,
   assertUniqueNodeEntities
 } from '@workspace/wstools/graphSchemaConverter'
+import {
+  DEFAULT_DOCUMENT_BLOCK_LIMIT,
+  MAX_DOCUMENT_BLOCK_LIMIT,
+  WORKSPACE_TOOL_NAMES,
+  isWorkspaceTool,
+  type WorkspaceToolName
+} from '@shared/constants'
+
+export {
+  DEFAULT_DOCUMENT_BLOCK_LIMIT,
+  MAX_DOCUMENT_BLOCK_LIMIT,
+  WORKSPACE_TOOL_NAMES,
+  isWorkspaceTool,
+  type WorkspaceToolName
+}
 
 // ============================================================================
 // Constants
@@ -41,7 +62,8 @@ const EMPTY_PARAGRAPH_BLOCK: Block = {
 export class WorkspaceToolError extends Error {
   constructor(
     message: string,
-    public readonly code: WorkspaceErrorCode | string
+    public readonly code: WorkspaceErrorCode | string,
+    public readonly details?: Record<string, unknown>
   ) {
     super(message)
     this.name = 'WorkspaceToolError'
@@ -49,19 +71,25 @@ export class WorkspaceToolError extends Error {
 }
 
 class InstanceNotFoundError extends WorkspaceToolError {
-  constructor(instanceName: string, projectName?: string) {
+  constructor(identifier: string, projectName?: string) {
     const suffix = projectName ? ` in project "${projectName}"` : ''
     super(
-      `Instance "${instanceName}" not found${suffix}. Use listWorkspaceItems to see available files.`,
+      `Instance "${identifier}" not found${suffix}. Use listWorkspaceItems to see available files.`,
       WorkspaceErrorCode.WORKSPACE_INSTANCE_NOT_FOUND
     )
   }
 }
 
 class MultipleInstancesError extends WorkspaceToolError {
-  constructor(instanceName: string, projectNames: string[]) {
+  constructor(instanceName: string, matches: InstanceInfo[], projects: ProjectInfo[]) {
+    const details = matches
+      .map((m) => {
+        const pName = projects.find((p) => p.id === m.projectId)?.name || 'Unknown'
+        return `ID: "${m.instanceId}" (Project: "${pName}", Type: ${m.type || 'unknown'})`
+      })
+      .join(', ')
     super(
-      `Multiple instances named "${instanceName}" found in projects: ${projectNames.join(', ')}. Please specify a projectName.`,
+      `Multiple instances named "${instanceName}" found: [${details}]. Please specify "instanceId" or a specific "projectName" to disambiguate.`,
       WorkspaceErrorCode.WORKSPACE_MULTIPLE_INSTANCES
     )
   }
@@ -80,10 +108,37 @@ class ProjectNotFoundError extends WorkspaceToolError {
 // Schemas
 // ============================================================================
 
-const getDocumentInputSchema = z.object({
-  instanceName: z.string().min(1).describe('The name of document.'),
-  projectName: z.string().optional().describe('Optional project name.')
-})
+const getDocumentInputSchema = z
+  .object({
+    instanceId: z
+      .string()
+      .optional()
+      .describe(
+        'Optional persistent UUID of the document. If provided, resolves directly without ambiguity.'
+      ),
+    instanceName: z.string().optional().describe('The name of document.'),
+    projectName: z.string().optional().describe('Optional project name.'),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .default(0)
+      .describe('0-based block index to start reading from (default: 0).'),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_DOCUMENT_BLOCK_LIMIT)
+      .optional()
+      .default(DEFAULT_DOCUMENT_BLOCK_LIMIT)
+      .describe(
+        `Maximum number of blocks to return (default: ${DEFAULT_DOCUMENT_BLOCK_LIMIT}, max: ${MAX_DOCUMENT_BLOCK_LIMIT}). Use to read documents incrementally in chunks.`
+      )
+  })
+  .refine((data) => !!(data.instanceId || data.instanceName), {
+    message: 'Either instanceId or instanceName must be provided.'
+  })
 
 const listDocumentInstancesInputSchema = z.object({
   instanceName: z
@@ -93,64 +148,115 @@ const listDocumentInstancesInputSchema = z.object({
   projectName: z.string().optional().describe('Optional project name filter.')
 })
 
-const createDocumentHtmlSchema = z.object({
-  html_content: z
-    .string()
-    .min(1)
-    .describe(
-      'The full document content as HTML blocks (e.g. <h1>Title</h1><p>Content...</p><table>...</table>). Tabularize 2D data (comparisons, metrics) and use bold lead-ins for list items.'
-    ),
-  instanceName: z.string().min(1).describe('The name for the new document.'),
-  projectName: z
-    .string()
-    .optional()
-    .describe('Optional project name where the document should be created.')
-})
+const createDocumentHtmlSchema = z
+  .object({
+    html_content: z
+      .string()
+      .min(1)
+      .describe(
+        'The full document content as HTML blocks (e.g. <h1>Title</h1><p>Content...</p><table>...</table>). Tabularize 2D data (comparisons, metrics) and use bold lead-ins for list items.'
+      ),
+    instanceId: z
+      .string()
+      .optional()
+      .describe('Optional persistent UUID if overwriting an existing document.'),
+    instanceName: z.string().optional().describe('The name for the new document.'),
+    projectName: z
+      .string()
+      .optional()
+      .describe('Optional project name where the document should be created.'),
+    allowUnresolvedLinks: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, allows creating wikilinks to documents that do not exist yet. Defaults to false.'
+      )
+  })
+  .refine((data) => !!(data.instanceId || data.instanceName), {
+    message: 'Either instanceId or instanceName must be provided.'
+  })
 
-const editDocumentSchema = z.object({
-  instanceName: z.string().min(1).describe('The document name.'),
-  projectName: z.string().optional().describe('Optional project name.'),
-  operations: z
-    .array(
-      z.object({
-        action: z.enum(['update', 'insert', 'delete']).describe('The action to perform.'),
-        blockId: z.string().describe('The target block ID (or anchor ID for insert).'),
-        anchor: z
-          .enum(['before', 'after'])
-          .optional()
-          .describe('Placement relative to the blockId. Required only for "insert".'),
-        newHtml: z
-          .string()
-          .optional()
-          .describe(
-            'The new HTML content. Required for "update" and "insert". Can contain multiple tags.'
-          )
-      })
-    )
-    .min(1)
-    .describe('An array of edit operations to apply in order.'),
-  explanation: z.string().optional().describe('Optional explanation of the intended change.')
-})
+const editDocumentSchema = z
+  .object({
+    instanceId: z.string().optional().describe('Optional persistent UUID of the document.'),
+    instanceName: z.string().optional().describe('The document name.'),
+    projectName: z.string().optional().describe('Optional project name.'),
+    allowUnresolvedLinks: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, allows adding wikilinks to documents that do not exist yet. Defaults to false.'
+      ),
+    operations: z
+      .array(
+        z.object({
+          action: z.enum(['update', 'insert', 'delete']).describe('The action to perform.'),
+          blockId: z.string().describe('The target block ID (or anchor ID for insert).'),
+          anchor: z
+            .enum(['before', 'after'])
+            .optional()
+            .describe('Placement relative to the blockId. Required only for "insert".'),
+          newHtml: z
+            .string()
+            .optional()
+            .describe(
+              'The new HTML content. Required for "update" and "insert". Can contain multiple tags.'
+            )
+        })
+      )
+      .min(1)
+      .describe('An array of edit operations to apply in order.'),
+    explanation: z.string().optional().describe('Optional explanation of the intended change.')
+  })
+  .refine((data) => !!(data.instanceId || data.instanceName), {
+    message: 'Either instanceId or instanceName must be provided.'
+  })
 
 // Graph Schemas
-const writeMindMapInputSchema = z.object({
-  instanceName: z.string().min(1).describe('The name of the mind map canvas instance.'),
-  projectName: z.string().optional().describe('Optional project name.'),
-  root: MindMapNodeSchema,
-  direction: DirectionSchema.default('RADIAL')
-})
+const writeMindMapInputSchema = z
+  .object({
+    instanceId: z
+      .string()
+      .optional()
+      .describe('Optional persistent UUID of the mind map canvas instance.'),
+    instanceName: z.string().optional().describe('The name of the mind map canvas instance.'),
+    projectName: z.string().optional().describe('Optional project name.'),
+    root: MindMapNodeSchema,
+    direction: DirectionSchema.default('RADIAL')
+  })
+  .refine((data) => !!(data.instanceId || data.instanceName), {
+    message: 'Either instanceId or instanceName must be provided.'
+  })
 
-const readGraphInputSchema = z.object({
-  instanceName: z.string().min(1).describe('The name of the graph canvas instance to read.'),
-  projectName: z.string().optional().describe('Optional project name.'),
-  includeMemo: z.boolean().optional().describe('If true, include full memo text for each node.')
-})
+const readGraphInputSchema = z
+  .object({
+    instanceId: z
+      .string()
+      .optional()
+      .describe('Optional persistent UUID of the graph canvas instance to read.'),
+    instanceName: z.string().optional().describe('The name of the graph canvas instance to read.'),
+    projectName: z.string().optional().describe('Optional project name.'),
+    includeMemo: z.boolean().optional().describe('If true, include full memo text for each node.')
+  })
+  .refine((data) => !!(data.instanceId || data.instanceName), {
+    message: 'Either instanceId or instanceName must be provided.'
+  })
 
-const writeGraphInputSchema = WriteGraphSpecSchema.omit({ instanceId: true, root: true }).extend({
-  instanceName: z.string().min(1).describe('The name of the graph canvas instance.'),
-  projectName: z.string().optional().describe('Optional project name.'),
-  direction: z.enum(['LR', 'TD']).describe('Layout direction: LR (Left-to-Right) or TD (Top-Down).')
-})
+const writeGraphInputSchema = WriteGraphSpecSchema.omit({ instanceId: true, root: true })
+  .extend({
+    instanceId: z
+      .string()
+      .optional()
+      .describe('Optional persistent UUID of the graph canvas instance.'),
+    instanceName: z.string().optional().describe('The name of the graph canvas instance.'),
+    projectName: z.string().optional().describe('Optional project name.'),
+    direction: z
+      .enum(['LR', 'TD'])
+      .describe('Layout direction: LR (Left-to-Right) or TD (Top-Down).')
+  })
+  .refine((data) => !!(data.instanceId || data.instanceName), {
+    message: 'Either instanceId or instanceName must be provided.'
+  })
 
 const createProjectInputSchema = z.object({
   name: z.string().min(1).describe('The name of the new project.')
@@ -169,6 +275,20 @@ export interface ToolConnectionContext {
   apiPort?: number
   thread_id?: string
   threadId?: string
+  ledgerStore?: RelationalLedgerStore
+  /** Optional cancellation signal propagated from caller/session lifecycle (equiv. to C# CancellationToken) */
+  signal?: AbortSignal
+  /** Optional caller-configured network timeout in milliseconds */
+  timeoutMs?: number
+  /** Optional in-memory WebSocket server handle for transactional persistence flushes */
+  wsHandle?: {
+    flush: (
+      instanceId?: string,
+      options?: { signal?: AbortSignal; timeoutMs?: number }
+    ) => Promise<void>
+  }
+  /** When true, adapters and tools execute transactional read barrier flush() before reading */
+  flushBeforeRead?: boolean
 }
 
 interface ToolConfig {
@@ -197,11 +317,31 @@ interface ListInstancesResult {
   projects: ProjectInfo[]
 }
 
-interface ReadDocumentResult {
+export interface ResolvedResource {
+  instanceId: string
+  name: string
+  projectId?: string
+}
+
+export interface ResolveResourceOptions {
+  instanceId?: string
+  instanceName?: string
+  projectName?: string
+  type?: 'document' | 'canvas'
+  context?: ToolConnectionContext
+}
+
+export interface ReadDocumentSuccessResult {
   status: 'success'
   action: 'Read'
+  instanceId: string
   instanceName: string
   projectName?: string
+  totalBlocks: number
+  offset: number
+  limit: number
+  hasMore: boolean
+  nextOffset?: number
   editable_blocks: Array<{
     id: string
     html: string
@@ -209,9 +349,12 @@ interface ReadDocumentResult {
   comments?: Record<string, Comment>
 }
 
+export type ReadDocumentResult = ReadDocumentSuccessResult | ReadDocumentErrorResult
+
 interface CreateDocumentResult {
   status: 'success'
   action: 'Created'
+  instanceId: string
   instanceName: string
   projectName?: string
   blockCount: number
@@ -220,7 +363,8 @@ interface CreateDocumentResult {
 interface EditDocumentErrorResult {
   status: 'error'
   action: 'Failed to edit'
-  instanceName: string
+  instanceId?: string
+  instanceName?: string
   projectName?: string
   explanation?: string
   code: string
@@ -238,6 +382,7 @@ interface EditDocumentErrorResult {
 interface EditDocumentSuccessResult {
   status: 'success'
   action: 'Applied Patch'
+  instanceId: string
   instanceName: string
   projectName?: string
   explanation?: string
@@ -256,7 +401,8 @@ export type EditDocumentResult = EditDocumentErrorResult | EditDocumentSuccessRe
 export interface ReadDocumentErrorResult {
   status: 'error'
   action: 'Failed to read'
-  instanceName: string
+  instanceId?: string
+  instanceName?: string
   projectName?: string
   code: string
   message: string
@@ -266,7 +412,8 @@ export interface ReadDocumentErrorResult {
 export interface CreateDocumentErrorResult {
   status: 'error'
   action: 'Failed to create'
-  instanceName: string
+  instanceId?: string
+  instanceName?: string
   projectName?: string
   code: string
   message: string
@@ -284,7 +431,8 @@ export interface ListWorkspaceItemsErrorResult {
 export interface GraphErrorResult {
   status: 'error'
   action: string
-  instanceName: string
+  instanceId?: string
+  instanceName?: string
   projectName?: string
   code: string
   message: string
@@ -488,6 +636,28 @@ export function getCodeRecommendFix(code: string): string | undefined {
       return 'Graph clustering algorithm execution failed. Verify graph connectivity and node relationships.'
     case WorkspaceErrorCode.WORKSPACE_CLUSTER_ABORTED:
       return 'Graph clustering operation was aborted or timed out.'
+
+    // Workspace-as-Wiki & Knowledge Compiler Subsystem Recommendations
+    case WorkspaceErrorCode.WORKSPACE_WIKI_ENTITY_COLLISION:
+      return 'An entity document with this name already exists in the workspace. Choose a different name or edit the existing document.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_UNRESOLVED_SYMBOL:
+      return 'The referenced wiki entity does not exist. Create the missing entity document, edit the document to remove the invalid wikilink, or use pruneLedger to clean up obsolete ledger edges.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_CIRCULAR_SUPERSEDENCE:
+      return 'Circular supersedence detected in documents. Ensure version/supersedence relationships are strictly acyclic.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_CYCLE_DETECTED:
+      return 'A cycle was detected in the relational ledger edges. Ensure hierarchical edges form a directed acyclic graph.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_COMPILATION_FAILED:
+      return 'Wiki graph compilation failed. Run lintWorkspace first to identify and resolve structural issues.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_INVALID_LINK_SCHEMA:
+      return 'Document link syntax is invalid. Ensure links follow the [[Entity]] or [[Entity#Anchor|Label]] standard.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_ANCHOR_BLOCK_NOT_FOUND:
+      return 'The block anchor for this claim was deleted or modified. Edit the source document to restore or update the claim anchor, or use pruneLedger to purge degraded edges.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_EDGE_NOT_FOUND:
+      return 'The specified ledger edge ID was not found. Use lintWorkspace to check current edge IDs.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_LEDGER_SYNC_FAILED:
+      return 'Relational ledger synchronization failed. Check database permissions and integrity.'
+    case WorkspaceErrorCode.WORKSPACE_WIKI_MIGRATION_FAILED:
+      return 'Migration of legacy workspace links failed.'
     default:
       return undefined
   }
@@ -548,34 +718,102 @@ export function extractErrorInfo(err: unknown): {
   }
 }
 
+function extractCommentIdsFromBlocks(blocks: Block[]): Set<string> {
+  const commentIds = new Set<string>()
+
+  function inspectRuns(runs?: Array<{ commentIds?: string[] }>) {
+    if (!runs) return
+    for (const run of runs) {
+      if (Array.isArray(run.commentIds)) {
+        for (const cid of run.commentIds) {
+          if (cid) commentIds.add(cid)
+        }
+      }
+    }
+  }
+
+  for (const block of blocks) {
+    inspectRuns(block.children)
+    if (Array.isArray(block.tableRows)) {
+      for (const row of block.tableRows) {
+        if (Array.isArray(row.cells)) {
+          for (const cell of row.cells) {
+            inspectRuns(cell.children)
+          }
+        }
+      }
+    }
+  }
+
+  return commentIds
+}
+
 async function readDocumentHandler(
   input: ReadDocumentInput,
   config: ToolConfig
-): Promise<ReadDocumentResult | ReadDocumentErrorResult> {
+): Promise<ReadDocumentResult> {
   try {
     const context = config.configurable
-    const uuid = await resolveResourceId(input.instanceName, input.projectName, context)
+    const resolved = await resolveResourceId({
+      instanceId: input.instanceId,
+      instanceName: input.instanceName,
+      projectName: input.projectName,
+      type: 'document',
+      context
+    })
 
     const { payload } = await getDocumentPayload({
-      instanceId: uuid,
+      instanceId: resolved.instanceId,
       port: context?.wsPort
     })
 
-    const editableBlocks = buildEditableBlocks(payload.blocks)
+    const allBlocks = payload.blocks || []
+    const totalBlocks = allBlocks.length
+
+    const offset = Math.max(0, Math.min(input.offset ?? 0, totalBlocks))
+    const limit = Math.max(
+      1,
+      Math.min(input.limit ?? DEFAULT_DOCUMENT_BLOCK_LIMIT, MAX_DOCUMENT_BLOCK_LIMIT)
+    )
+
+    const slicedBlocks = allBlocks.slice(offset, offset + limit)
+    const hasMore = offset + slicedBlocks.length < totalBlocks
+    const nextOffset = hasMore ? offset + slicedBlocks.length : undefined
+
+    const editableBlocks = buildEditableBlocks(slicedBlocks)
+
+    let filteredComments: Record<string, Comment> | undefined
+    if (payload.comments) {
+      const visibleCommentIds = extractCommentIdsFromBlocks(slicedBlocks)
+      const result: Record<string, Comment> = {}
+      for (const [id, comment] of Object.entries(payload.comments)) {
+        if (visibleCommentIds.has(id)) {
+          result[id] = comment
+        }
+      }
+      filteredComments = Object.keys(result).length > 0 ? result : undefined
+    }
 
     return {
       status: 'success',
       action: 'Read',
-      instanceName: input.instanceName,
+      instanceId: resolved.instanceId,
+      instanceName: resolved.name,
       projectName: input.projectName,
+      totalBlocks,
+      offset,
+      limit,
+      hasMore,
+      nextOffset,
       editable_blocks: editableBlocks,
-      comments: payload.comments
+      comments: filteredComments
     }
   } catch (err: unknown) {
     const { code, message, recommendFix } = extractErrorInfo(err)
     return {
       status: 'error',
       action: 'Failed to read',
+      instanceId: input.instanceId,
       instanceName: input.instanceName,
       projectName: input.projectName,
       code,
@@ -607,28 +845,64 @@ async function createDocumentHandler(
     }
 
     const context = config.configurable
-    const uuid = await resolveOrCreateResourceId(
-      input.instanceName,
-      input.projectName,
-      'document',
+    const resolved = await resolveOrCreateResourceId({
+      instanceId: input.instanceId,
+      instanceName: input.instanceName,
+      projectName: input.projectName,
+      type: 'document',
       context
-    )
+    })
 
     const safeBlocks = normalizeWritableBlocks(parsedBlocks)
     const payload = DocumentSchema.parse({ blocks: safeBlocks })
 
+    // Flaw #2: Pre-validate extracted claim targets against workspace documents at write time
+    const claims = extractClaimsFromDocument(resolved.name, payload)
+    if (claims.length > 0 && input.allowUnresolvedLinks !== true) {
+      const list = await listDocumentInstances({
+        apiPort: context?.apiPort,
+        timeoutMs: context?.timeoutMs
+      })
+      const validDocNames = new Set<string>()
+      validDocNames.add(normalizeEntityTitle(resolved.name))
+      if (input.instanceName) {
+        validDocNames.add(normalizeEntityTitle(input.instanceName))
+      }
+      for (const inst of list.instances) {
+        if (inst.type === 'document') {
+          if (inst.name) validDocNames.add(normalizeEntityTitle(inst.name))
+          validDocNames.add(normalizeEntityTitle(inst.instanceId))
+        }
+      }
+
+      for (const claim of claims) {
+        const targetNorm = normalizeEntityTitle(claim.targetEntityId)
+        if (!validDocNames.has(targetNorm)) {
+          throw new WorkspaceToolError(
+            `Cannot link to target "${claim.targetEntityId}": no corresponding document exists in workspace. Create document "${claim.targetEntityId}" first, or pass allowUnresolvedLinks: true.`,
+            WorkspaceErrorCode.WORKSPACE_WIKI_UNRESOLVED_SYMBOL,
+            { details: { targetEntityId: claim.targetEntityId, rel: claim.rel } }
+          )
+        }
+      }
+    }
+
     await executeWriteDocument({
       payload,
-      instanceId: uuid,
+      instanceId: resolved.instanceId,
       wsPort: context?.wsPort,
       threadId: context?.thread_id || context?.threadId,
       staged: false
     })
 
+    const ledgerStore = context?.ledgerStore ?? new RelationalLedgerStore()
+    syncDocumentClaimsToLedger(resolved.name, payload, ledgerStore)
+
     return {
       status: 'success',
       action: 'Created',
-      instanceName: input.instanceName,
+      instanceId: resolved.instanceId,
+      instanceName: resolved.name,
       projectName: input.projectName,
       blockCount: safeBlocks.length
     }
@@ -637,6 +911,7 @@ async function createDocumentHandler(
     return {
       status: 'error',
       action: 'Failed to create',
+      instanceId: input.instanceId,
       instanceName: input.instanceName,
       projectName: input.projectName,
       code,
@@ -652,10 +927,16 @@ async function editDocumentHandler(
 ): Promise<EditDocumentResult> {
   try {
     const context = config.configurable
-    const uuid = await resolveResourceId(input.instanceName, input.projectName, context)
+    const resolved = await resolveResourceId({
+      instanceId: input.instanceId,
+      instanceName: input.instanceName,
+      projectName: input.projectName,
+      type: 'document',
+      context
+    })
 
     const { payload } = await getDocumentPayload({
-      instanceId: uuid,
+      instanceId: resolved.instanceId,
       port: context?.wsPort
     })
 
@@ -666,7 +947,8 @@ async function editDocumentHandler(
       return {
         status: 'error',
         action: 'Failed to edit',
-        instanceName: input.instanceName,
+        instanceId: resolved.instanceId,
+        instanceName: resolved.name,
         projectName: input.projectName,
         explanation: input.explanation,
         code: compiled.code,
@@ -677,20 +959,58 @@ async function editDocumentHandler(
       }
     }
 
+    const updatedBlocks = convertHtmlToBlocks(compiled.updatedContent)
+    const updatedPayload = DocumentSchema.parse({ blocks: normalizeWritableBlocks(updatedBlocks) })
+
+    // Flaw #2: Pre-validate extracted claim targets against workspace documents at edit time
+    const claims = extractClaimsFromDocument(resolved.name, updatedPayload)
+    if (claims.length > 0 && input.allowUnresolvedLinks !== true) {
+      const list = await listDocumentInstances({
+        apiPort: context?.apiPort,
+        timeoutMs: context?.timeoutMs
+      })
+      const validDocNames = new Set<string>()
+      validDocNames.add(normalizeEntityTitle(resolved.name))
+      if (input.instanceName) {
+        validDocNames.add(normalizeEntityTitle(input.instanceName))
+      }
+      for (const inst of list.instances) {
+        if (inst.type === 'document') {
+          if (inst.name) validDocNames.add(normalizeEntityTitle(inst.name))
+          validDocNames.add(normalizeEntityTitle(inst.instanceId))
+        }
+      }
+
+      for (const claim of claims) {
+        const targetNorm = normalizeEntityTitle(claim.targetEntityId)
+        if (!validDocNames.has(targetNorm)) {
+          throw new WorkspaceToolError(
+            `Cannot link to target "${claim.targetEntityId}": no corresponding document exists in workspace. Create document "${claim.targetEntityId}" first, or pass allowUnresolvedLinks: true.`,
+            WorkspaceErrorCode.WORKSPACE_WIKI_UNRESOLVED_SYMBOL,
+            { details: { targetEntityId: claim.targetEntityId, rel: claim.rel } }
+          )
+        }
+      }
+    }
+
     await executeDocumentCommands({
       commands: compiled.commands,
-      instanceId: uuid,
+      instanceId: resolved.instanceId,
       wsPort: context?.wsPort,
       threadId: context?.thread_id || context?.threadId,
       staged: false
     })
+
+    const ledgerStore = context?.ledgerStore ?? new RelationalLedgerStore()
+    syncDocumentClaimsToLedger(resolved.name, updatedPayload, ledgerStore)
 
     const diffViewSnippet = generateUnifiedDiff(currentPatchView, compiled.updatedContent)
 
     return {
       status: 'success',
       action: 'Applied Patch',
-      instanceName: input.instanceName,
+      instanceId: resolved.instanceId,
+      instanceName: resolved.name,
       projectName: input.projectName,
       explanation: input.explanation,
       hunksApplied: compiled.stats.hunksApplied,
@@ -707,6 +1027,7 @@ async function editDocumentHandler(
     return {
       status: 'error',
       action: 'Failed to edit',
+      instanceId: input.instanceId,
       instanceName: input.instanceName,
       projectName: input.projectName,
       explanation: input.explanation,
@@ -748,36 +1069,63 @@ function findProjectByName(projects: ProjectInfo[], projectName: string): Projec
 }
 
 /**
- * Filters instances based on name and optionally project scope.
+ * Filters instances based on name and optionally project scope and resource type.
  */
 function filterInstances(
   instances: InstanceInfo[],
   instanceName: string,
-  projectId?: string
+  projectId?: string,
+  type?: 'document' | 'canvas'
 ): InstanceInfo[] {
   return instances.filter(
     (i) =>
       i.name?.toLowerCase() === instanceName.toLowerCase() &&
-      (!projectId || i.projectId === projectId)
+      (!projectId || i.projectId === projectId) &&
+      (!type || i.type === type)
   )
 }
 
 /**
- * Resolves a human-readable instance name (and optional project name) to its persistent UUID.
+ * Resolves a resource identifier (instanceId or instanceName + optional projectName/type) to its persistent UUID.
  *
  * Logic Flow:
  * 1. Fetches all instances and projects.
- * 2. If projectName is provided, resolves it to a projectId or throws PROJECT_NOT_FOUND.
- * 3. Filters instances by name (and projectId if available).
- * 4. Throws INSTANCE_NOT_FOUND if no match.
- * 5. Throws MULTIPLE_INSTANCES if ambiguity persists (matching names in different projects).
+ * 2. If instanceId is provided, looks up by ID directly and verifies type if specified.
+ * 3. If projectName is provided, resolves it to a projectId or throws PROJECT_NOT_FOUND.
+ * 4. Filters instances by name, projectId, and type.
+ * 5. Throws INSTANCE_NOT_FOUND if no match.
+ * 6. Throws MULTIPLE_INSTANCES with candidate details if ambiguity persists.
  */
-async function resolveResourceId(
-  instanceName: string,
-  projectName?: string,
-  context?: ToolConnectionContext
-): Promise<string> {
+async function resolveResourceId(options: ResolveResourceOptions): Promise<ResolvedResource> {
+  const { instanceId, instanceName, projectName, type, context } = options
   const { instances, projects } = await fetchInstancesAndProjects(context)
+
+  // 1. Direct UUID resolution
+  if (instanceId) {
+    const directMatch = instances.find((i) => i.instanceId === instanceId)
+    if (!directMatch) {
+      throw new InstanceNotFoundError(instanceId, projectName)
+    }
+    if (type && directMatch.type && directMatch.type !== type) {
+      throw new WorkspaceToolError(
+        `Instance "${instanceId}" is a ${directMatch.type}, but expected a ${type}.`,
+        WorkspaceErrorCode.WORKSPACE_INSTANCE_NOT_FOUND
+      )
+    }
+    return {
+      instanceId: directMatch.instanceId,
+      name: directMatch.name || directMatch.instanceId,
+      projectId: directMatch.projectId
+    }
+  }
+
+  // 2. Name-based resolution
+  if (!instanceName) {
+    throw new WorkspaceToolError(
+      'Either instanceId or instanceName must be provided.',
+      WorkspaceErrorCode.WORKSPACE_INSTANCE_NOT_FOUND
+    )
+  }
 
   let projectFilterId: string | undefined
   if (projectName) {
@@ -791,58 +1139,67 @@ async function resolveResourceId(
     projectFilterId = project.id
   }
 
-  const matches = filterInstances(instances, instanceName, projectFilterId)
+  const matches = filterInstances(instances, instanceName, projectFilterId, type)
 
   if (matches.length === 0) {
     throw new InstanceNotFoundError(instanceName, projectName)
   }
 
   if (matches.length > 1) {
-    const projectNames = matches.map(
-      (m) => projects.find((p) => p.id === m.projectId)?.name || 'Unknown'
-    )
-    throw new MultipleInstancesError(instanceName, projectNames)
+    throw new MultipleInstancesError(instanceName, matches, projects)
   }
 
-  return matches[0].instanceId
+  const match = matches[0]
+  return {
+    instanceId: match.instanceId,
+    name: match.name || instanceName,
+    projectId: match.projectId
+  }
 }
 
 /**
- * Resolves a resource name to a UUID, or performs an "upsert-like" creation.
+ * Resolves a resource identifier to a UUID, or performs an "upsert-like" creation.
  *
  * If the resource exists within the specified (or default) project, returns its ID.
  * If not, it provisions a new instance of the requested type via REST API.
  */
-async function resolveOrCreateResourceId(
-  instanceName: string,
-  projectName?: string,
-  type: 'document' | 'canvas' = 'document',
+async function resolveOrCreateResourceId(options: {
+  instanceId?: string
+  instanceName?: string
+  projectName?: string
+  type: 'document' | 'canvas'
   context?: ToolConnectionContext
-): Promise<string> {
+}): Promise<ResolvedResource> {
   try {
-    const existingId = await resolveResourceId(instanceName, projectName, context)
-    return existingId
+    const existing = await resolveResourceId(options)
+    return existing
   } catch (error) {
-    if (error instanceof InstanceNotFoundError) {
-      const { projects } = await fetchInstancesAndProjects(context)
+    if (error instanceof InstanceNotFoundError && !options.instanceId && options.instanceName) {
+      const { projects } = await fetchInstancesAndProjects(options.context)
 
-      const targetProject = projectName ? findProjectByName(projects, projectName) : projects[0]
+      const targetProject = options.projectName
+        ? findProjectByName(projects, options.projectName)
+        : projects[0]
 
       if (!targetProject) {
         throw new ProjectNotFoundError(
-          projectName || 'default',
+          options.projectName || 'default',
           projects.map((p) => p.name)
         )
       }
 
       const createdInstanceId = await createInstance({
-        name: instanceName,
+        name: options.instanceName,
         projectId: targetProject.id,
-        type,
-        apiPort: context?.apiPort
+        type: options.type,
+        apiPort: options.context?.apiPort
       })
 
-      return createdInstanceId
+      return {
+        instanceId: createdInstanceId,
+        name: options.instanceName,
+        projectId: targetProject.id
+      }
     }
     throw error
   }
@@ -860,13 +1217,22 @@ async function resolveOrCreateResourceId(
 export const readDocument = tool(readDocumentHandler, {
   name: 'readDocument',
   description: `Read a document and return its content as a list of editable blocks and associated comments.
+Supports pagination via 'offset' and 'limit' to read large documents in manageable slices without token exhaustion.
 
 The editable_blocks are the preferred source for editDocument patches. Each item contains:
 - id: the stable block ID
 - html: the exact current block HTML without data-block-id attributes.
 
 If a block contains comment references, they will appear in the HTML as <span data-comment-ids="c1,c2">text</span>. 
-The actual content of these comments is provided in the 'comments' record.
+Only comments referenced within the returned slice are provided in the 'comments' record.
+
+WIKI & CLAIM BADGE LINKAGE:
+Inline entity relationships and claim badges are represented in editable_blocks HTML using wikilink syntax:
+[[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]].
+Example: "<p>Architecture [[supports:Storage-Engine-Evaluation|Ensures zero data loss]] verified.</p>"
+
+PAGINATION:
+- If 'hasMore' is true, call readDocument again with 'offset' set to 'nextOffset' to retrieve subsequent blocks.
 
 Example editable_blocks:
 [
@@ -901,11 +1267,21 @@ DOCUMENT STRUCTURE GUIDELINES:
 • Narrative Cohesion: Use <p> for continuous conceptual reasoning and synthesis. Preserve thematic unity (one core idea per paragraph); do not bury tabular data in prose.
 For comprehensive layouts, refer to the 'workspace-document-presentation' skill.
 
+WIKI & CLAIM BADGE LINKAGE:
+Link to other documents, concepts, claims, or sources using typed wikilinks:
+• Syntax: [[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]]
+• Supported relations: 'supports', 'contradicts', 'supersedes', 'details', 'derived_from', 'cites', 'relates_to'
+• DOM representation: <span data-lexical-claim-badge="true" data-target-entity="..." data-rel="..." data-justification="...">...</span> is also supported.
+• Examples:
+  - "<p>Our benchmark [[supports:Storage-Engine-Evaluation|Multi-process WAL matches P99 latency SLA]] confirms performance.</p>"
+  - "<p>V4 storage engine [[supersedes:V3-Monolith|Eliminates serialization bottleneck]].</p>"
+All embedded wikilinks are automatically extracted into the workspace Relational Ledger and projected onto the Concept Canvas.
+
 Example Input:
 {
   "instanceName": "Storage-Engine-Evaluation",
-  "html_content": "<h2>Storage Engine Evaluation</h2><p>This evaluation benchmarks relational and sharded key-value engines for local document persistence, focusing on retrieval latency and cross-process concurrency guarantees.</p><table><thead><tr><th>Engine</th><th>Read Latency</th><th>Concurrency</th><th>Assessment</th></tr></thead><tbody><tr><td><b>SQLite (WAL)</b></td><td>&lt;2ms</td><td>Multi-reader, single-writer</td><td>Recommended for metadata</td></tr><tr><td><b>Sharded MsgPack</b></td><td>&lt;1ms</td><td>Process-isolated shards</td><td>Optimal for binary snapshots</td></tr></tbody></table><h3>Selection Criteria</h3><ul><li><b>Throughput Resilience:</b> Must handle rapid micro-edits without UI thread blocking.</li><li><b>Crash Consistency:</b> Atomic file swaps prevent corruption during unexpected shutdowns.</li></ul>"
-}`,
+  "html_content": "<h2>Storage Engine Evaluation</h2><p>This evaluation benchmarks relational and sharded key-value engines for local document persistence [[supports:Architecture-Spec|Matches multi-process isolation guarantees]], focusing on retrieval latency and cross-process concurrency guarantees.</p><table><thead><tr><th>Engine</th><th>Read Latency</th><th>Concurrency</th><th>Assessment</th></tr></thead><tbody><tr><td><b>SQLite (WAL)</b></td><td>&lt;2ms</td><td>Multi-reader, single-writer</td><td>Recommended for metadata</td></tr><tr><td><b>Sharded MsgPack</b></td><td>&lt;1ms</td><td>Process-isolated shards</td><td>Optimal for binary snapshots</td></tr></tbody></table><h3>Selection Criteria</h3><ul><li><b>Throughput Resilience:</b> Must handle rapid micro-edits without UI thread blocking.</li><li><b>Crash Consistency:</b> Atomic file swaps prevent corruption during unexpected shutdowns.</li></ul>"
+} `,
   schema: createDocumentHtmlSchema
 })
 
@@ -931,6 +1307,12 @@ BEST PRACTICES:
 • Multi-Block Support: Use a single 'update' or 'insert' to add multiple tags at once rather than making separate calls.
 • Valid HTML: Ensure 'newHtml' contains valid, semantic HTML tags (e.g., <p>, <ul>, <h2>, <table>). Keep comparisons in <table> with <thead> and bold keys, and use bold lead-ins for <li>.
 
+WIKI & CLAIM BADGE LINKAGE:
+You can insert, update, or remove entity relationships in 'newHtml' using wikilink syntax:
+• [[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]]
+• Supported relations: 'supports', 'contradicts', 'supersedes', 'details', 'derived_from', 'cites', 'relates_to'
+Any edits with wikilinks immediately update the Relational Ledger and project changes onto the Concept Canvas.
+
 Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>, <table>, <thead>, <tbody>, <tfoot>, <tr>, <th>, <td>.
 Supported styles: <b>, <i>, <u>; style="text-align: center|right"; colspan, rowspan, background-color.
 
@@ -941,7 +1323,7 @@ Example Input (Batch Refinement):
     {
       "action": "update",
       "blockId": "summary-p1",
-      "newHtml": "<p>Updated analysis incorporating recent stress-test benchmarks under concurrent worker loads.</p>"
+      "newHtml": "<p>Updated analysis incorporating recent stress-test benchmarks [[supports:Architecture-Spec|Matches multi-process isolation guarantees]] under concurrent worker loads.</p>"
     },
     {
       "action": "insert",
@@ -971,6 +1353,11 @@ export const listWorkspaceItems = tool(
       const { instances, projects } = await fetchInstancesAndProjects(context)
 
       const filtered = instances.filter((i) => {
+        // Exclude internal ledger instances and hidden items
+        if (i.type === 'ledger') return false
+        if (i.name === 'ledger-default' || i.instanceId === 'ledger-default') return false
+        if ((i as { metadata?: { isHidden?: boolean } }).metadata?.isHidden) return false
+
         let match = true
         if (input.instanceName) {
           match = match && !!i.name?.toLowerCase().includes(input.instanceName.toLowerCase())
@@ -985,6 +1372,7 @@ export const listWorkspaceItems = tool(
       const formatted = filtered.map((i) => {
         const project = projects.find((p) => p.id === i.projectId)
         return {
+          instanceId: i.instanceId,
           name: i.name,
           project: project?.name,
           type: i.type
@@ -1011,7 +1399,7 @@ export const listWorkspaceItems = tool(
   {
     name: 'listWorkspaceItems',
     description:
-      'Get a list of all available workspace items (documents and canvases). Returns names, project names, and types.',
+      'Get a list of all available workspace items (documents and canvases). Returns instanceId, names, project names, and types.',
     schema: listDocumentInstancesInputSchema
   }
 )
@@ -1020,10 +1408,16 @@ export const readGraph = tool(
   async (input, config) => {
     const context = config.configurable as ToolConnectionContext | undefined
     try {
-      const uuid = await resolveResourceId(input.instanceName, input.projectName, context)
+      const resolved = await resolveResourceId({
+        instanceId: input.instanceId,
+        instanceName: input.instanceName,
+        projectName: input.projectName,
+        type: 'canvas',
+        context
+      })
 
       const result = await executeReadGraph({
-        instanceId: uuid,
+        instanceId: resolved.instanceId,
         wsPort: context?.wsPort,
         includeMemo: input.includeMemo
       })
@@ -1031,7 +1425,8 @@ export const readGraph = tool(
       return {
         status: 'success' as const,
         action: 'Read Graph',
-        instanceName: input.instanceName,
+        instanceId: resolved.instanceId,
+        instanceName: resolved.name,
         projectName: input.projectName,
         nodeCount: result.nodes.length,
         edgeCount: result.edges.length,
@@ -1044,6 +1439,7 @@ export const readGraph = tool(
       return {
         status: 'error' as const,
         action: 'Failed to read graph',
+        instanceId: input.instanceId,
         instanceName: input.instanceName,
         projectName: input.projectName,
         code,
@@ -1068,10 +1464,16 @@ export const readGraph = tool(
 export const writeGraph = tool(
   async (input, config) => {
     const context = config.configurable as ToolConnectionContext | undefined
-    const { instanceName, projectName, ...spec } = input
+    const { instanceId, instanceName, projectName, ...spec } = input
 
     try {
-      const uuid = await resolveOrCreateResourceId(instanceName, projectName, 'canvas', context)
+      const resolved = await resolveOrCreateResourceId({
+        instanceId,
+        instanceName,
+        projectName,
+        type: 'canvas',
+        context
+      })
 
       const nodesToResolve = spec.nodes || []
       const edgesToUse = spec.edges || []
@@ -1083,17 +1485,19 @@ export const writeGraph = tool(
         // Overwrite the nodes and edges with the fully flattened & resolved ones
         nodes: nodesToResolve,
         edges: edgesToUse,
-        instanceId: uuid,
+        instanceId: resolved.instanceId,
         wsPort: context?.wsPort,
         apiPort: context?.apiPort,
         threadId: context?.thread_id || context?.threadId,
-        staged: false
+        staged: false,
+        ledgerStore: context?.ledgerStore ?? new RelationalLedgerStore()
       })
 
       return {
         status: result.status,
         action: 'Wrote Graph',
-        instanceName: input.instanceName,
+        instanceId: resolved.instanceId,
+        instanceName: resolved.name,
         projectName: input.projectName,
         nodeCount: nodesToResolve.length,
         edgeCount: edgesToUse.length
@@ -1103,6 +1507,7 @@ export const writeGraph = tool(
       return {
         status: 'error' as const,
         action: 'Failed to write graph',
+        instanceId,
         instanceName,
         projectName,
         code,
@@ -1115,7 +1520,7 @@ export const writeGraph = tool(
     name: 'writeGraph',
     description: `Declaratively create or update a knowledge graph.
     
-Nodes are identified solely by their "entity" alias (usually the name). The system ensures each entity is linked to a corresponding document automatically.
+Nodes are identified solely by their "entity" alias (usually the name). Canvas edges automatically synchronize with the workspace Relational Ledger without modifying document prose.
 
 RULES:
 1. Every edge "from" and "to" MUST refer to an entity alias.
@@ -1183,10 +1588,16 @@ Use meaningful document instance names in the "entity" field.`,
 export const writeMindMap = tool(
   async (input, config) => {
     const context = config.configurable as ToolConnectionContext | undefined
-    const { instanceName, projectName, root, direction } = input
+    const { instanceId, instanceName, projectName, root, direction } = input
 
     try {
-      const uuid = await resolveOrCreateResourceId(instanceName, projectName, 'canvas', context)
+      const resolved = await resolveOrCreateResourceId({
+        instanceId,
+        instanceName,
+        projectName,
+        type: 'canvas',
+        context
+      })
 
       // Flatten the hierarchical mind map into flat nodes and edges
       const { nodes, edges } = flattenMindMap(root)
@@ -1198,17 +1609,19 @@ export const writeMindMap = tool(
         direction,
         nodes,
         edges,
-        instanceId: uuid,
+        instanceId: resolved.instanceId,
         wsPort: context?.wsPort,
         apiPort: context?.apiPort,
         threadId: context?.thread_id || context?.threadId,
-        staged: false
+        staged: false,
+        ledgerStore: context?.ledgerStore ?? new RelationalLedgerStore()
       })
 
       return {
         status: result.status,
         action: 'Wrote Mind Map',
-        instanceName: input.instanceName,
+        instanceId: resolved.instanceId,
+        instanceName: resolved.name,
         projectName: input.projectName,
         nodeCount: nodes.length,
         edgeCount: edges.length
@@ -1218,6 +1631,7 @@ export const writeMindMap = tool(
       return {
         status: 'error' as const,
         action: 'Failed to write mind map',
+        instanceId,
         instanceName,
         projectName,
         code,

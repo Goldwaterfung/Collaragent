@@ -3,13 +3,17 @@ import { renderMarkdown, parseContentSegments } from '../../utils/markdown'
 import { ChatMessage } from '../../types/ui'
 import ToolCallCard from './ToolCallCard'
 import ReasoningCard from './ReasoningCard'
-import { CheckpointMarker } from './CheckpointMarker'
+import { CheckpointMarker, type AlternateBranch } from './CheckpointMarker'
 import { CHECKPOINT_START_SENTINEL } from '@shared/checkpoints/types'
 import type { CheckpointBundleSummary } from '@shared/ipc/checkpoints/types'
 import ProgressContainer from './ProgressContainer'
 import { groupBlocksByTodos } from './groupBlocks'
 import { ChatErrorBoundary } from './ChatErrorBoundary'
 import { MermaidDiagram } from './MermaidDiagram'
+import { SkillIcon } from '../../assets/icons/SkillIcon'
+
+const SKILL_TAG_REGEX =
+  /^<SKILL>The user requested you read and use the "([^"]+)" skill\. The path to the skill file is:\s*([^<]+)<\/SKILL>\s*([\s\S]*)$/
 
 type MessageListProps = {
   messages: ChatMessage[]
@@ -29,9 +33,26 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   onOpenSubagentTask
 }) => {
   const renderContent = (content: string) => {
-    const segments = parseContentSegments(content)
+    let skillHeader: React.ReactNode = null
+    let displayContent = content
+
+    const skillMatch = content.match(SKILL_TAG_REGEX)
+    if (skillMatch) {
+      const skillName = skillMatch[1]
+      displayContent = skillMatch[3].trim()
+      skillHeader = (
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/20 text-primary border border-primary/30">
+            <SkillIcon width={12} height={12} />/{skillName}
+          </span>
+        </div>
+      )
+    }
+
+    const segments = parseContentSegments(displayContent)
     return (
-      <ChatErrorBoundary fallbackContent={content}>
+      <ChatErrorBoundary fallbackContent={displayContent}>
+        {skillHeader}
         <div className="space-y-3">
           {segments.map((seg, idx) =>
             seg.type === 'mermaid' ? (
@@ -74,6 +95,54 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     // to rolled-back branches and must not be anchored to earlier remaining messages.
   }
 
+  // 1. Identify which bundles are active (on the currently rendered active lineage path)
+  const activeBundleIds = new Set<string>()
+  if (startBundle) activeBundleIds.add(startBundle.id)
+  for (const b of bundleByMessageId.values()) {
+    activeBundleIds.add(b.id)
+  }
+
+  // 2. Index valid bundles by id
+  const bundleMap = new Map<string, CheckpointBundleSummary>()
+  const validBundles = sortedBundles.filter((b) => b.reason !== 'restore')
+  for (const b of validBundles) {
+    bundleMap.set(b.id, b)
+  }
+
+  // 3. Identify leaves among inactive bundles
+  const parentBundleIdSet = new Set<string>()
+  for (const b of validBundles) {
+    if (b.parentBundleId) {
+      parentBundleIdSet.add(b.parentBundleId)
+    }
+  }
+
+  const inactiveLeaves = validBundles.filter(
+    (b) => !activeBundleIds.has(b.id) && !parentBundleIdSet.has(b.id)
+  )
+
+  // 4. Map each inactive leaf to its closest active divergence anchor bundle
+  const alternateBranchesByAnchor = new Map<string, AlternateBranch[]>()
+  for (const leaf of inactiveLeaves) {
+    let curr: CheckpointBundleSummary | undefined = leaf
+    while (curr && !activeBundleIds.has(curr.id)) {
+      if (!curr.parentBundleId) break
+      const parent: CheckpointBundleSummary | undefined = bundleMap.get(curr.parentBundleId)
+      if (!parent) break
+      if (activeBundleIds.has(parent.id)) {
+        const list = alternateBranchesByAnchor.get(parent.id) ?? []
+        list.push({
+          headBundleId: leaf.id,
+          label: leaf.label,
+          createdAt: leaf.createdAt
+        })
+        alternateBranchesByAnchor.set(parent.id, list)
+        break
+      }
+      curr = parent
+    }
+  }
+
   const findNextUserMessage = (fromIndex: number): ChatMessage | undefined => {
     for (let i = fromIndex; i < messages.length; i++) {
       if (messages[i].role === 'user') {
@@ -94,6 +163,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
         createdAt={startBundle.createdAt}
         restoreContent={findNextUserMessage(0)?.content}
         disabled={checkpointBusy}
+        alternateBranches={alternateBranchesByAnchor.get(startBundle.id)}
         onRestore={onRestoreCheckpoint}
       />
     )
@@ -167,6 +237,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
           createdAt={bundle.createdAt}
           restoreContent={findNextUserMessage(index + 1)?.content}
           disabled={checkpointBusy}
+          alternateBranches={alternateBranchesByAnchor.get(bundle.id)}
           onRestore={onRestoreCheckpoint}
         />
       )

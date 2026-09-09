@@ -32,18 +32,44 @@ export interface OpenChatTabDetail {
   title?: string
 }
 
-export function saveDockviewLayout(api: DockviewApi): void {
+export function hashWorkspacePath(filePath: string): string {
+  let hash = 0
+  for (let i = 0; i < filePath.length; i++) {
+    const char = filePath.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash |= 0
+  }
+  return Math.abs(hash).toString(36)
+}
+
+export function getWorkspaceLayoutStorageKey(filePath?: string | null): string {
+  if (!filePath || !filePath.trim()) {
+    return GLOBAL_LAYOUT_STORAGE_KEY
+  }
+  const normalized = filePath.trim()
+  const fileName =
+    normalized
+      .split(/[/\\]/)
+      .filter(Boolean)
+      .pop()
+      ?.replace(/[^a-zA-Z0-9._-]/g, '_') ?? 'workspace'
+  return `collar:workspace:layout:${fileName}:${hashWorkspacePath(normalized)}`
+}
+
+export function saveDockviewLayout(api: DockviewApi, filePath?: string | null): void {
   try {
     const layout = api.toJSON()
-    window.localStorage.setItem(GLOBAL_LAYOUT_STORAGE_KEY, JSON.stringify(layout))
+    const storageKey = getWorkspaceLayoutStorageKey(filePath)
+    window.localStorage.setItem(storageKey, JSON.stringify(layout))
   } catch (error: unknown) {
     console.error('Failed to serialize Dockview layout:', error)
   }
 }
 
-export function loadDockviewLayout(): SerializedDockviewLayout | null {
+export function loadDockviewLayout(filePath?: string | null): SerializedDockviewLayout | null {
   try {
-    const raw = window.localStorage.getItem(GLOBAL_LAYOUT_STORAGE_KEY)
+    const storageKey = getWorkspaceLayoutStorageKey(filePath)
+    const raw = window.localStorage.getItem(storageKey)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (parsed && typeof parsed === 'object' && 'grid' in parsed) {
@@ -55,9 +81,13 @@ export function loadDockviewLayout(): SerializedDockviewLayout | null {
   return null
 }
 
-export function clearDockviewLayout(): void {
+export function clearDockviewLayout(filePath?: string | null): void {
   try {
-    window.localStorage.removeItem(GLOBAL_LAYOUT_STORAGE_KEY)
+    const storageKey = getWorkspaceLayoutStorageKey(filePath)
+    window.localStorage.removeItem(storageKey)
+    if (!filePath) {
+      window.localStorage.removeItem(GLOBAL_LAYOUT_STORAGE_KEY)
+    }
   } catch (error: unknown) {
     console.error('Failed to clear saved Dockview layout:', error)
   }

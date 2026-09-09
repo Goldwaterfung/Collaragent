@@ -3,8 +3,10 @@ import {
   extractGraphRecords,
   parseGraphFromSnapshot,
   executeReadGraph,
-  executeWriteGraph
+  executeWriteGraph,
+  convertEdgeSpecsToLedgerEntries
 } from '../manageGraph'
+import { RelationalLedgerStore } from '../../wiki/RelationalLedgerStore'
 import * as ClientConnection from '@workspace/sync/ClientConnection'
 import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 import { flattenMindMap, type MindMapNode } from '../graphSchemaConverter'
@@ -167,6 +169,70 @@ describe('manageGraph - Snapshot Parsing and readGraph Tool', () => {
 
       expect(mlNode?.hasMemo).toBe(true)
       expect(mlNode?.memo).toBeUndefined()
+    })
+
+    it('extracts memo from multiple attribute locations (raw memo, notes, content, unwrapped graph snapshot)', () => {
+      const unwrappedSnapshot = {
+        nodes: {
+          'node-a': {
+            id: 'node-a',
+            name: 'Node A',
+            memo: 'Direct memo body'
+          },
+          'node-b': {
+            id: 'node-b',
+            name: 'Node B',
+            attrs: {
+              notes: 'Notes as memo body'
+            }
+          },
+          'node-c': {
+            id: 'node-c',
+            name: 'Node C',
+            attrs: {
+              content: 'Content as memo body'
+            }
+          }
+        },
+        relationships: {
+          'rel-direct': {
+            id: 'rel-direct',
+            from: 'node-a',
+            to: 'node-b',
+            attrs: { label: 'leads to' }
+          }
+        }
+      }
+
+      const result = parseGraphFromSnapshot(unwrappedSnapshot, { includeMemo: true })
+      expect(result.nodes.length).toBe(3)
+      expect(result.edges.length).toBe(1)
+      expect(result.edges[0]).toEqual({
+        from: 'Node A',
+        to: 'Node B',
+        label: 'leads to'
+      })
+
+      const nodeA = result.nodes.find((n) => n.entity === 'Node A')
+      expect(nodeA?.hasMemo).toBe(true)
+      expect(nodeA?.memo).toBe('Direct memo body')
+
+      const nodeB = result.nodes.find((n) => n.entity === 'Node B')
+      expect(nodeB?.hasMemo).toBe(true)
+      expect(nodeB?.memo).toBe('Notes as memo body')
+
+      const nodeC = result.nodes.find((n) => n.entity === 'Node C')
+      expect(nodeC?.hasMemo).toBe(true)
+      expect(nodeC?.memo).toBe('Content as memo body')
+    })
+
+    it('coerces string "true" for includeMemo option', () => {
+      const result = parseGraphFromSnapshot(wireDtoSnapshot, {
+        includeMemo: 'true' as unknown as boolean
+      })
+      const mlNode = result.nodes.find((n) => n.entity === 'Machine Learning')
+      expect(mlNode?.hasMemo).toBe(true)
+      expect(mlNode?.memo).toBe('# ML Details\nCore concepts of ML.')
     })
   })
 
@@ -517,6 +583,61 @@ describe('manageGraph - Snapshot Parsing and readGraph Tool', () => {
           'The graph specification is invalid. Verify direction (LR/TD/RADIAL), mode (replace/merge), and nodes/edges schemas.'
         )
       }
+    })
+  })
+
+  describe('Relational Ledger Integration (writeGraph)', () => {
+    it('convertEdgeSpecsToLedgerEntries maps edges into canvas_relational ledger entries', () => {
+      const edges = [
+        { from: 'node-1', to: 'node-2', label: 'supersedes' },
+        { from: 'node-2', to: 'node-3', label: 'details' },
+        { from: 'node-3', to: 'node-4', label: 'custom_relation_label' }
+      ]
+      const entries = convertEdgeSpecsToLedgerEntries(edges, { author: 'agent' })
+      expect(entries.length).toBe(3)
+      expect(entries[0].sourceEntityId).toBe('node-1')
+      expect(entries[0].targetEntityId).toBe('node-2')
+      expect(entries[0].rel).toBe('supersedes')
+      expect(entries[0].provenance).toBe('canvas_relational')
+      expect(entries[0].canvasContext?.label).toBe('supersedes')
+
+      expect(entries[1].rel).toBe('details')
+      // Unrecognized label maps safely to relates_to
+      expect(entries[2].rel).toBe('relates_to')
+      expect(entries[2].canvasContext?.label).toBe('custom_relation_label')
+    })
+
+    it('executeWriteGraph synchronizes edges to RelationalLedgerStore with zero text pollution', async () => {
+      const mockDisconnect = vi.fn()
+      const mockGetSnapshot = vi.fn().mockReturnValue(wireDtoSnapshot)
+      const mockSendBatch = vi.fn().mockResolvedValue([1, 2])
+
+      vi.spyOn(ClientConnection, 'connectToCanvas').mockResolvedValue({
+        getSnapshot: mockGetSnapshot,
+        getClientId: vi.fn().mockReturnValue('agent-test-123'),
+        sendBatch: mockSendBatch,
+        disconnect: mockDisconnect
+      } as unknown as Awaited<ReturnType<typeof ClientConnection.connectToCanvas>>)
+
+      const ledgerStore = new RelationalLedgerStore()
+
+      const result = await executeWriteGraph({
+        instanceId: 'canvas-test-uuid',
+        mode: 'merge',
+        direction: 'LR',
+        nodes: [{ entity: 'New Node', name: 'New Node' }],
+        edges: [{ from: 'Machine Learning', to: 'New Node', label: 'supersedes' }],
+        ledgerStore
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.edgesRecorded).toBe(1)
+      expect(ledgerStore.getAllEdges().length).toBe(1)
+
+      const outlinks = ledgerStore.getOutlinks('Machine Learning')
+      expect(outlinks.length).toBe(1)
+      expect(outlinks[0].rel).toBe('supersedes')
+      expect(outlinks[0].provenance).toBe('canvas_relational')
     })
   })
 })

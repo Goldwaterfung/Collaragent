@@ -2,6 +2,7 @@ import { SyncClient, type SyncClientConfig } from './SyncClient'
 import { canvasStateReducer } from '../canvas/domain/canvasStateReducer'
 import type { CanvasSnapshot } from '@workspace/canvas/domain/types'
 import type { CanvasCommand, EditorCommand } from '@shared/commands'
+import { SyncError, SyncErrorCode } from '@shared/errors/SyncErrors'
 
 export interface PoolConnectionOptions {
   instanceId: string
@@ -9,11 +10,13 @@ export interface PoolConnectionOptions {
   port?: number
   path?: string
   clientIdPrefix?: string
+  signal?: AbortSignal
+  timeoutMs?: number
 }
 
 export class SyncClientPool {
   private static instance: SyncClientPool
-  private pool = new Map<string, SyncClient<any, any>>()
+  private pool = new Map<string, SyncClient<unknown, unknown>>()
 
   public static getInstance(): SyncClientPool {
     if (!SyncClientPool.instance) {
@@ -29,7 +32,7 @@ export class SyncClientPool {
   /**
    * Retrieves an active connected client from the pool, or creates and connects a new one.
    */
-  async getClient<TCommand = any, TSnapshot = any>(
+  async getClient<TCommand = unknown, TSnapshot = unknown>(
     options: PoolConnectionOptions & {
       stateReducer?: (state: TSnapshot, command: TCommand) => TSnapshot
     }
@@ -45,10 +48,16 @@ export class SyncClientPool {
     const path = options.path || 'ws/canvas'
     const key = this.buildKey(path, options.instanceId, host, port)
 
-    let client = this.pool.get(key) as SyncClient<TCommand, TSnapshot> | undefined
+    let client = this.pool.get(key) as unknown as SyncClient<TCommand, TSnapshot> | undefined
 
     if (client) {
-      // Return existing warm connection
+      if (options.signal?.aborted) {
+        throw new SyncError(
+          SyncErrorCode.SYNC_DRAIN_ABORTED,
+          'Operation aborted before acquiring client',
+          { details: { reason: options.signal.reason } }
+        )
+      }
       return client
     }
 
@@ -61,10 +70,14 @@ export class SyncClientPool {
     }
 
     client = new SyncClient<TCommand, TSnapshot>(config)
-    await client.connect(options.instanceId)
-    await client.waitForReady()
+    const connectOptions = {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs
+    }
+    await client.connect(options.instanceId, connectOptions)
+    await client.waitForReady(connectOptions)
 
-    this.pool.set(key, client)
+    this.pool.set(key, client as unknown as SyncClient<unknown, unknown>)
     return client
   }
 
@@ -111,7 +124,7 @@ export const syncClientPool = SyncClientPool.getInstance()
  */
 export async function withCanvasClient<R>(
   instanceId: string,
-  options: { host?: string; port?: number },
+  options: { host?: string; port?: number; signal?: AbortSignal; timeoutMs?: number },
   operation: (client: SyncClient<CanvasCommand, CanvasSnapshot>) => Promise<R>
 ): Promise<R> {
   return syncClientPool.withClient<CanvasCommand, CanvasSnapshot, R>(
@@ -120,6 +133,8 @@ export async function withCanvasClient<R>(
       path: 'ws/canvas',
       host: options.host,
       port: options.port,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
       stateReducer: canvasStateReducer,
       clientIdPrefix: 'agent-'
     },
@@ -132,15 +147,17 @@ export async function withCanvasClient<R>(
  */
 export async function withEditorClient<R>(
   instanceId: string,
-  options: { host?: string; port?: number },
-  operation: (client: SyncClient<EditorCommand, any>) => Promise<R>
+  options: { host?: string; port?: number; signal?: AbortSignal; timeoutMs?: number },
+  operation: (client: SyncClient<EditorCommand, unknown>) => Promise<R>
 ): Promise<R> {
-  return syncClientPool.withClient<EditorCommand, any, R>(
+  return syncClientPool.withClient<EditorCommand, unknown, R>(
     {
       instanceId,
       path: 'ws/editor',
       host: options.host,
       port: options.port,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
       clientIdPrefix: 'agent-'
     },
     operation

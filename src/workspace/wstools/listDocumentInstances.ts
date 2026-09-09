@@ -1,7 +1,8 @@
 import http from 'node:http'
 import { z } from 'zod'
 import WebSocket from 'ws'
-import { createSocket, type ConnectionOverrides } from '@workspace/sync/ClientConnection'
+import { type ConnectionOverrides } from '@workspace/sync/ClientConnection'
+import { SyncError, SyncErrorCode } from '@shared/errors/SyncErrors'
 import {
   DEFAULT_INSTANCE_ID,
   normalizeInstanceSummaries
@@ -12,7 +13,7 @@ export type DocumentInstanceSummary = {
   projectId?: string
   updatedAt?: string
   name?: string
-  type?: 'document' | 'canvas'
+  type?: 'document' | 'canvas' | 'ledger'
 }
 
 export type ProjectSummary = {
@@ -43,7 +44,7 @@ const InstanceSummaryApiSchema = z.object({
   instanceId: z.string().optional(),
   name: z.string().optional(),
   projectId: z.string().optional(),
-  type: z.enum(['document', 'canvas']).optional(),
+  type: z.enum(['document', 'canvas', 'ledger']).optional(),
   updatedAt: z.string().optional()
 })
 
@@ -225,28 +226,62 @@ export async function listDocumentInstances(
   }
 
   // Fallback: Query WebSocket endpoint
-  const socket = createSocket(connectionOverrides)
-  const { ws, connection, waitForOpen, waitForClose } = socket
-  const { clientId } = connection
+  const host = connectionOverrides.host || process.env.WS_HOST || 'localhost'
+  const port =
+    connectionOverrides.port || (process.env.WS_PORT ? Number(process.env.WS_PORT) : undefined)
+  const clientId = connectionOverrides.clientId || `agent-${Math.random().toString(36).slice(2)}`
+  const url = `ws://${host}:${port}/ws/editor-content`
+  const ws = new WebSocket(url)
 
-  let timer: NodeJS.Timeout | null = null
+  const effectiveSignal =
+    connectionOverrides.signal && timeoutMs !== undefined
+      ? AbortSignal.any([connectionOverrides.signal, AbortSignal.timeout(timeoutMs)])
+      : (connectionOverrides.signal ??
+        (timeoutMs !== undefined ? AbortSignal.timeout(timeoutMs) : undefined))
+
+  if (effectiveSignal?.aborted) {
+    throw new SyncError(
+      SyncErrorCode.SYNC_DRAIN_ABORTED,
+      'List document instances aborted before connection',
+      { cause: effectiveSignal.reason instanceof Error ? effectiveSignal.reason : undefined }
+    )
+  }
 
   try {
-    await waitForOpen()
+    const instancesPromise = new Promise<DocumentInstanceSummary[]>((resolve, reject) => {
+      let onAbort: (() => void) | null = null
+      let onOpen: (() => void) | null = null
+      let onMessage: ((data: WebSocket.RawData) => void) | null = null
+      let onError: ((err: Error) => void) | null = null
 
-    let onMessage: ((data: WebSocket.RawData) => void) | null = null
-    let onError: ((err: Error) => void) | null = null
-
-    const cleanup = () => {
-      try {
+      const cleanup = () => {
+        if (effectiveSignal && onAbort) {
+          effectiveSignal.removeEventListener('abort', onAbort)
+        }
+        if (onOpen) ws.off('open', onOpen)
         if (onMessage) ws.off('message', onMessage)
         if (onError) ws.off('error', onError)
-      } catch {
-        // ignore
       }
-    }
 
-    const instancesPromise = new Promise<DocumentInstanceSummary[]>((resolve, reject) => {
+      onAbort = () => {
+        cleanup()
+        const reason = effectiveSignal?.reason
+        const isTimeout = reason instanceof DOMException && reason.name === 'TimeoutError'
+        const code = isTimeout
+          ? SyncErrorCode.SYNC_DRAIN_BARRIER_TIMEOUT
+          : SyncErrorCode.SYNC_DRAIN_ABORTED
+        const message = isTimeout
+          ? 'Timed out while fetching document instances via WebSocket'
+          : 'Fetching document instances aborted'
+        reject(
+          new SyncError(code, message, { cause: reason instanceof Error ? reason : undefined })
+        )
+      }
+
+      if (effectiveSignal) {
+        effectiveSignal.addEventListener('abort', onAbort, { once: true })
+      }
+
       onError = (err: Error) => {
         cleanup()
         reject(err)
@@ -275,33 +310,29 @@ export async function listDocumentInstances(
         }
       }
 
+      onOpen = () => {
+        try {
+          ws.send(JSON.stringify({ type: 'hello', clientId }))
+          ws.send(JSON.stringify({ type: 'watchInstances', clientId }))
+        } catch (err: unknown) {
+          cleanup()
+          reject(err instanceof Error ? err : new Error(String(err)))
+        }
+      }
+
       ws.on('message', onMessage)
       ws.on('error', onError)
 
-      try {
-        ws.send(JSON.stringify({ type: 'hello', clientId }))
-        ws.send(JSON.stringify({ type: 'watchInstances', clientId }))
-      } catch (err: unknown) {
-        cleanup()
-        reject(err instanceof Error ? err : new Error(String(err)))
+      if (ws.readyState === WebSocket.OPEN) {
+        onOpen()
+      } else {
+        ws.once('open', onOpen)
       }
     })
 
     const projectsPromise = fetchProjects({ host: apiHost, port: apiPort })
 
-    const timeoutPromise = new Promise<DocumentInstanceSummary[]>((_resolve, reject) => {
-      timer = setTimeout(
-        () => reject(new Error('Timed out while fetching document instances via WebSocket')),
-        timeoutMs
-      )
-    })
-
-    const [instances, projects] = await Promise.all([
-      Promise.race([instancesPromise, timeoutPromise]),
-      projectsPromise
-    ])
-
-    cleanup()
+    const [instances, projects] = await Promise.all([instancesPromise, projectsPromise])
 
     let finalInstances = instances
     if (instanceId) {
@@ -310,12 +341,8 @@ export async function listDocumentInstances(
 
     return { instances: finalInstances, projects, clientId }
   } finally {
-    if (timer) {
-      clearTimeout(timer)
-    }
-    if (ws && ws.readyState !== WebSocket.CLOSED) {
+    if (ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
       ws.close()
-      await waitForClose().catch(() => undefined)
     }
   }
 }

@@ -6,6 +6,7 @@ export type GraphId = string & { readonly __brand: 'GraphId' }
 
 export const asNodeId = (id: string) => id as NodeId
 export const asRelationshipId = (id: string) => id as RelationshipId
+export const asPortId = (id: string) => id as PortId
 
 // The core Node entity in the graph
 export interface NodeEntity {

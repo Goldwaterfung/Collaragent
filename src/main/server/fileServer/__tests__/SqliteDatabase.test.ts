@@ -25,11 +25,11 @@ describe('SqliteDatabase Integration & Migration Suite', () => {
     }
   })
 
-  it('initializes a fresh database and executes V5 migration setting user_version = 5', () => {
+  it('initializes a fresh database and executes V7 migration setting user_version = 7', () => {
     db = new SqliteDatabase(dbPath)
 
     expect(db.isOpen).toBe(true)
-    expect(db.getUserVersion()).toBe(5)
+    expect(db.getUserVersion()).toBe(7)
     expect(db.integrityCheck()).toBe(true)
     expect(db.foreignKeyCheck()).toBe(true)
 
@@ -210,6 +210,28 @@ describe('SqliteDatabase Integration & Migration Suite', () => {
       db!.walCheckpoint('TRUNCATE')
       db!.incrementalVacuum(100)
     }).not.toThrow()
+  })
+
+  it('tracks freelist pages and reclaims them via incrementalVacuum', () => {
+    db = new SqliteDatabase(dbPath)
+
+    expect(db.getFreelistCount()).toBeGreaterThanOrEqual(0)
+
+    // Insert large blobs and delete them to generate free pages
+    const insert = db.prepare(
+      'INSERT INTO workspace_blobs (hash, content_msgpack, byte_size, created_at) VALUES (?, ?, ?, ?)'
+    )
+    for (let i = 0; i < 20; i++) {
+      insert.run(`hash-${i}`, Buffer.alloc(10000), 10000, new Date().toISOString())
+    }
+    db.prepare("DELETE FROM workspace_blobs WHERE hash LIKE 'hash-%'").run()
+
+    const freeBefore = db.getFreelistCount()
+    expect(freeBefore).toBeGreaterThan(0)
+
+    // Vacuum all free pages with 0
+    db.incrementalVacuum(0)
+    expect(db.getFreelistCount()).toBe(0)
   })
 
   it('closes cleanly and updates isOpen property', () => {

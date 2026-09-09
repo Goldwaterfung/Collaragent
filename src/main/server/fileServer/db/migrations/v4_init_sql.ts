@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS instances (
     id TEXT PRIMARY KEY NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    type TEXT NOT NULL CHECK(type IN ('document', 'canvas')),
+    type TEXT NOT NULL CHECK(type IN ('document', 'canvas', 'ledger')),
     name TEXT NOT NULL,
     content_msgpack BLOB,              -- MessagePack binary payload (Lexical or GraphCanvasDTO)
     metadata_json TEXT NOT NULL DEFAULT '{}',

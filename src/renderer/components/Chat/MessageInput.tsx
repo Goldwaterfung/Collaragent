@@ -4,6 +4,9 @@ import { Trie } from '@shared/algorithms/Trie'
 import { useChatStore } from '../../store/chatStore'
 
 import { MentionList, SuggestionItem } from './MentionList'
+import { SlashCommandList } from './SlashCommandList'
+import { useSkillsContext } from '@workspace/contexts/skills/SkillsContext'
+import type { SkillEntry } from '@shared/ipc/skills/types'
 import { StatsIcon } from '../../assets/icons/StatsIcon'
 import { SendIcon } from '../../assets/icons/SendIcon'
 import { StopIcon } from '../../assets/icons/StopIcon'
@@ -97,12 +100,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   disabled
 }) => {
   const { instanceSummaries, projects } = useInstanceContext()
+  const { skills } = useSkillsContext()
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const draftInput = useChatStore((state) => state.draftInput)
   const setDraftInput = useChatStore((state) => state.setDraftInput)
 
-  // Suggestion State
+  // Mention Suggestion State (@)
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -112,6 +116,17 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     left: number
   }>({ top: 0, left: 0 })
   const [triggerIndex, setTriggerIndex] = useState(-1)
+
+  // Slash Command Suggestion State (/)
+  const [slashSuggestions, setSlashSuggestions] = useState<SkillEntry[]>([])
+  const [showSlashSuggestions, setShowSlashSuggestions] = useState(false)
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
+  const [slashPosition, setSlashPosition] = useState<{
+    top?: number
+    bottom?: number
+    left: number
+  }>({ top: 0, left: 0 })
+  const [slashTriggerIndex, setSlashTriggerIndex] = useState(-1)
 
   // Token Stats Modal State
   const [showTokenStats, setShowTokenStats] = useState(false)
@@ -132,8 +147,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     setInput(draftInput)
     setDraftInput(null)
     setShowSuggestions(false)
+    setShowSlashSuggestions(false)
     setSelectedIndex(0)
+    setSlashSelectedIndex(0)
     setSuggestions([])
+    setSlashSuggestions([])
 
     if (textareaRef.current) {
       const end = draftInput.length
@@ -158,33 +176,22 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
     // Check for trigger '@'
     const lastAt = value.lastIndexOf('@', selectionStart - 1)
-
     if (lastAt !== -1) {
-      // Check if match is valid (start of string or preceded by whitespace)
       const prevChar = value[lastAt - 1]
       if (lastAt === 0 || prevChar === ' ' || prevChar === '\n') {
         const query = value.slice(lastAt + 1, selectionStart)
-
-        // Don't search across newlines
         if (!query.includes('\n')) {
           const matches = trie.search(query)
           if (matches.length > 0) {
-            setSuggestions(matches.slice(0, 10)) // Limit results
+            setSuggestions(matches.slice(0, 10))
             setTriggerIndex(lastAt)
             setSelectedIndex(0)
             setShowSuggestions(true)
+            setShowSlashSuggestions(false)
 
-            // Calculate Position
             if (textareaRef.current) {
               const coords = getCaretCoordinates(textareaRef.current, lastAt + 1)
-
-              // Positioning:
-              // We want the BOTTOM of the menu to be slightly above the text line (coords.top).
-              // coords.top is the Y position of the top of the cursor line relative to the viewport top.
-              // To pin the bottom of the menu there, we set CSS 'bottom' to (ViewportHeight - coords.top).
-              // We add a small buffer (e.g. 5px) so it doesn't touch the text.
               const distFromBottom = window.innerHeight - coords.top + 5
-
               setMentionPosition({ bottom: distFromBottom, left: coords.left })
             }
             return
@@ -193,6 +200,38 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       }
     }
     setShowSuggestions(false)
+
+    // Check for trigger '/'
+    const lastSlash = value.lastIndexOf('/', selectionStart - 1)
+    if (lastSlash !== -1) {
+      const prevChar = value[lastSlash - 1]
+      if (lastSlash === 0 || prevChar === ' ' || prevChar === '\n') {
+        const query = value.slice(lastSlash + 1, selectionStart).toLowerCase()
+        if (!query.includes('\n') && !query.includes(' ')) {
+          const matches = skills.filter((s) => {
+            const nameMatch = s.name.toLowerCase().includes(query)
+            const descMatch = s.description.toLowerCase().includes(query)
+            return nameMatch || descMatch
+          })
+
+          if (matches.length > 0) {
+            setSlashSuggestions(matches.slice(0, 10))
+            setSlashTriggerIndex(lastSlash)
+            setSlashSelectedIndex(0)
+            setShowSlashSuggestions(true)
+            setShowSuggestions(false)
+
+            if (textareaRef.current) {
+              const coords = getCaretCoordinates(textareaRef.current, lastSlash + 1)
+              const distFromBottom = window.innerHeight - coords.top + 5
+              setSlashPosition({ bottom: distFromBottom, left: coords.left })
+            }
+            return
+          }
+        }
+      }
+    }
+    setShowSlashSuggestions(false)
   }
 
   const insertMention = (item: SuggestionItem) => {
@@ -210,7 +249,24 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     setInput(newValue)
     setShowSuggestions(false)
 
-    // Restore focus and update cursor
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        const newCursorPos = before.length + tag.length
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos)
+      }
+    }, 0)
+  }
+
+  const insertSlashCommand = (item: SkillEntry) => {
+    const tag = `/${item.name} `
+    const before = input.slice(0, slashTriggerIndex)
+    const after = input.slice(textareaRef.current?.selectionStart || input.length)
+
+    const newValue = before + tag + after
+    setInput(newValue)
+    setShowSlashSuggestions(false)
+
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus()
@@ -243,6 +299,30 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       }
     }
 
+    if (showSlashSuggestions) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashSelectedIndex((prev) => (prev + 1) % slashSuggestions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashSelectedIndex(
+          (prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length
+        )
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertSlashCommand(slashSuggestions[slashSelectedIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        setShowSlashSuggestions(false)
+        return
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -254,6 +334,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       onSendMessage(input.trim())
       setInput('')
       setShowSuggestions(false)
+      setShowSlashSuggestions(false)
     }
   }
 
@@ -288,6 +369,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           position={mentionPosition}
         />
       )}
+      {showSlashSuggestions && (
+        <SlashCommandList
+          suggestions={slashSuggestions}
+          selectedIndex={slashSelectedIndex}
+          onSelect={insertSlashCommand}
+          position={slashPosition}
+        />
+      )}
       <div
         className="relative flex items-end gap-2"
         onDragOver={(e) => e.preventDefault()}
@@ -298,7 +387,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? 'Agent is working...' : 'Type a message... (@ to mention)'}
+          placeholder={
+            disabled ? 'Agent is working...' : 'Type a message... (@ to mention, / for skills)'
+          }
           disabled={disabled}
           className="flex-1 p-3 border border-surface-200 rounded-lg resize-none focus:outline-none bg-surface-100 text-(--ev-c-text-1) placeholder-(--ev-c-text-3) max-h-[300px] min-h-[50px] custom-scrollbar text-sm"
           rows={1}

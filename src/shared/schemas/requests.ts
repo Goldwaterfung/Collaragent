@@ -30,7 +30,7 @@ export type CreateInstanceResponse = z.infer<typeof CreateInstanceResponseSchema
 // GET /api/instances (List)
 export const InstanceSummarySchema = z
   .object({
-    id: z.string().uuid(),
+    id: z.string(),
     projectId: z.string(),
     name: z.string(),
     type: InstanceTypeSchema,
@@ -60,7 +60,7 @@ export type ListInstancesResponse = z.infer<typeof ListInstancesResponseSchema>
 
 // GET /api/instances/:id
 export const GetInstanceByIdSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   projectId: z.string(),
   name: z.string(),
   type: InstanceTypeSchema,

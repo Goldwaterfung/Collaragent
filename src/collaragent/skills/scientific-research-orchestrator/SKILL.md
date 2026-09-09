@@ -78,14 +78,14 @@ The Primary Orchestrator delegates tasks to specialized subagents for each stage
 
 ### Subagent Worker Directory & Contracts
 
-| Stage | Subagent Worker Role            | Primary Responsibility                                                                       | Input Contract                                  | Expected Deliverable                                              |
-| :---- | :------------------------------ | :------------------------------------------------------------------------------------------- | :---------------------------------------------- | :---------------------------------------------------------------- |
-| **1** | `conceptual-systems-analyst`    | First-principles deconstruction; extracts irreducible truths; plants 2D concept canvas.      | Broad research topic, domain prompt.            | Concept Canvas Mind Map and directional knowledge graph.          |
-| **2** | `empirical-literature-scout`    | Academic literature search; comparative evidence matrix synthesis; gap isolation.            | Theoretical pillars from Stage 1 graph.         | `Literature_Review_Matrix` document and canvas citation nodes.    |
-| **3** | `construct-operationalizer`     | Variable architecture definition; formal $RQ$ and directional hypothesis drafting.           | Isolated research gap from Stage 2.             | `Formal_Hypotheses_and_RQs` document.                             |
-| **4** | `methodology-protocol-designer` | Experimental paradigm design; statistical power analysis; KaTeX mathematical models.         | Hypotheses and variables from Stage 3.          | `Experimental_Methodology_Protocol` document with KaTeX.          |
-| **5** | `scholarly-manuscript-compiler` | Full APA 7th Edition manuscript compilation; rectangular tables; bibliographic formatting.   | Assembled sections from Stages 1-4.             | `Manuscript_Draft` document with APA Table 1.                     |
-| **6** | `adversarial-peer-reviewer`     | Critical validity review; race condition detection; mathematical inverse rollback execution. | Manuscript draft and active workspace snapshot. | Peer review audit, diff review, and rollback parity confirmation. |
+| Stage | Subagent Worker Role            | Primary Responsibility                                                                         | Input Contract                                  | Expected Deliverable                                         |
+| :---- | :------------------------------ | :--------------------------------------------------------------------------------------------- | :---------------------------------------------- | :----------------------------------------------------------- |
+| **1** | `conceptual-systems-analyst`    | First-principles deconstruction; extracts irreducible truths; plants 2D concept canvas.        | Broad research topic, domain prompt.            | Concept Canvas Mind Map and directional knowledge graph.     |
+| **2** | `empirical-literature-scout`    | Academic literature search; atomic ingestion via `ingestSource`; comparative matrix.           | Theoretical pillars from Stage 1 graph.         | `Literature_Review_Matrix` and Relational Ledger claims.     |
+| **3** | `construct-operationalizer`     | Variable architecture definition; formal $RQ$ and directional hypothesis drafting.             | Isolated research gap from Stage 2.             | `Formal_Hypotheses_and_RQs` document.                        |
+| **4** | `methodology-protocol-designer` | Experimental paradigm design; statistical power analysis; KaTeX mathematical models.           | Hypotheses and variables from Stage 3.          | `Experimental_Methodology_Protocol` document with KaTeX.     |
+| **5** | `scholarly-manuscript-compiler` | Full APA 7th Edition manuscript compilation; files back wiki syntheses via `queryAndFileBack`. | Assembled sections from Stages 1-4.             | `Manuscript_Draft` document and filed wiki syntheses.        |
+| **6** | `adversarial-peer-reviewer`     | Critical validity review; L1 audit via `lintWorkspace`; mathematical rollback execution.       | Manuscript draft and active workspace snapshot. | Audit report, diff review, and rollback parity confirmation. |
 
 ---
 
@@ -110,10 +110,12 @@ The Primary Orchestrator delegates tasks to specialized subagents for each stage
 2. **Subagent Delegation**: Delegate to `empirical-literature-scout` (using `apa-research-execution-specialist` search mode).
 3. **Execution Steps**:
    - Query academic literature using `internetSearch`.
+   - Ingest verified literature sources via `ingestSource`, establishing grounded claim anchors (`[[supports:Construct|justification]]`) and relational ledger entries.
    - Compile a comparative literature matrix using `createDocument` capturing citations, setups, findings, and limitations.
    - Project verified citations and the isolated research gap back onto the Concept Canvas using `writeGraph` in `merge` mode.
 4. **Stage 2 Gate Exit Criteria**:
    - Literature matrix contains at least 3-5 foundational peer-reviewed studies.
+   - All empirical sources are ingested via `ingestSource` with verified claim anchors.
    - An unambiguous, defensible research gap is explicitly documented and linked on the canvas.
 
 ### Stage 3: Hypothesis & Research Question Formulation
@@ -142,27 +144,31 @@ The Primary Orchestrator delegates tasks to specialized subagents for each stage
 
 ### Stage 5: Structured Scholarly Synthesis (APA 7)
 
-1. **Objective**: Assemble a complete, publication-grade academic manuscript in strict APA 7th Edition style.
+1. **Objective**: Assemble a complete, publication-grade academic manuscript in strict APA 7th Edition style and compound wiki knowledge.
 2. **Subagent Delegation**: Delegate to `scholarly-manuscript-compiler` (using `apa-research-execution-specialist`).
 3. **Execution Steps**:
    - Author Title Page, Abstract (150-250 words) with _Keywords:_, Introduction, Method, Planned Results, and References.
    - Structure Planned Results Table 1 with strict APA formatting: 3 horizontal borders (top, bottom, header bottom) and zero vertical lines.
    - Persist complete manuscript AST via `createDocument`.
+   - File back cross-cutting thematic syntheses into the wiki using `queryAndFileBack` with bidirectional `derived_from` or `supports` relationships.
 4. **Stage 5 Gate Exit Criteria**:
    - Abstract conforms strictly to the 150-250 word limit.
    - Table schema is strictly rectangular (zero jagged rows/columns).
    - In-text citations and reference list match 1-to-1 with complete bibliographic metadata.
+   - Thematic synthesis pages are filed back into the workspace wiki.
 
 ### Stage 6: Critique, Verification & Reversible Rollback
 
-1. **Objective**: Perform adversarial peer critique, detect ungrounded claims or concurrency collisions, and verify state reversibility.
+1. **Objective**: Perform adversarial peer critique, detect ungrounded claims or concurrency collisions, verify structural integrity, and ensure state reversibility.
 2. **Subagent Delegation**: Delegate to `adversarial-peer-reviewer`.
 3. **Execution Steps**:
    - Inspect proposed manuscript for threats to internal/external validity, confounding variables, or stale state conflicts.
+   - Execute deterministic L1 compiler audit via `lintWorkspace` to detect unresolved symbols, missing claim anchors, degraded edges, and circular dependencies.
    - If an ungrounded or conflicting edit is detected, reject the proposal.
    - Invert forward patch commands using mathematical command inversion, restoring baseline document state.
    - Verify 100% snapshot byte parity against baseline.
 4. **Stage 6 Gate Exit Criteria**:
+   - Workspace passes `lintWorkspace` with zero structural errors.
    - All identified defects are either resolved or cleanly reverted.
    - Zero lost human keystrokes; document and canvas pass AST integrity validation.
 
@@ -282,6 +288,46 @@ The orchestrator and subagents interact with the CollarAgent runtime exclusively
 }
 ```
 
+### 7. Atomic Source Ingestion (`ingestSource`)
+
+```json
+{
+  "sourceTitle": "sources/sweller1994",
+  "sourceType": "paper",
+  "sourceContent": "# Cognitive Load Theory\n\nSweller & Chandler (1994) empirical split-attention evaluation.",
+  "targetClaims": [
+    {
+      "targetEntity": "Extraneous Load (Interface Friction)",
+      "rel": "supports",
+      "claimText": "Split-attention formatting multiplies extraneous cognitive load.",
+      "justification": "Direct empirical measurement of diagram and separate text presentation."
+    }
+  ],
+  "summary": "Foundational study establishing split-attention burden on working memory."
+}
+```
+
+### 8. Compound Thematic Synthesis (`queryAndFileBack`)
+
+```json
+{
+  "query": "Synthesize working memory bandwidth limits under multimodal loading",
+  "targetEntity": "Synthesis-WorkingMemoryBandwidth",
+  "synthesisTitle": "Working Memory Bandwidth in Multimodal Interfaces",
+  "synthesisContent": "# Working Memory Bandwidth\n\nDual-channel processing expands functional bandwidth if visual and acoustic channels are non-redundant.",
+  "referencedEntities": ["sources/sweller1994", "Visuospatial Sketchpad (Spatial Maps)"],
+  "relationToReferences": "derived_from",
+  "justification": "Integrates Sweller (1994) split-attention findings with Baddeley working memory model.",
+  "summary": "Thematic synthesis on multimodal working memory bandwidth expansion."
+}
+```
+
+### 9. Deterministic L1 Workspace Audit (`lintWorkspace`)
+
+```json
+{}
+```
+
 ---
 
 ## Concurrency, Staged Diffs & Reversible Rollback Directives
@@ -292,6 +338,7 @@ The orchestrator and subagents interact with the CollarAgent runtime exclusively
 2. **Optimistic Concurrency Check**:
    - Before applying any automated patch, verify that the document snapshot hash matches the parent state.
    - If parent state has diverged (e.g. human edited while subagent was executing), abort the patch, re-read live state via `readDocument`, and re-base cleanly.
-3. **Deterministic Mathematical Rollback**:
-   - If the user or peer reviewer rejects an edit, compute the algebraic inverse of the forward command sequence (`insertBlock` $\rightarrow$ `deleteBlock`, `updateText(old, new)` $\rightarrow$ `updateText(new, old)`).
-   - Execute the inverse stream via `editDocument` to restore baseline state with 100% snapshot byte parity.
+3. **Deterministic Mathematical Rollback (ADR-005)**:
+   - If the user or peer reviewer rejects an edit, compute the algebraic inverse of the forward command sequence (`insertBlock` $\rightarrow$ `deleteBlock`, `updateText(old, new)` $\rightarrow$ `updateText(new, old)`, `ledger:upsert_edge` $\rightarrow$ `ledger:remove_edge`).
+   - Execute the inverse stream via `editDocument` and `InverseCommandEngine` to restore baseline state with 100% snapshot byte parity.
+   - In compound tools (`ingestSource`, `queryAndFileBack`), any partial write failure automatically triggers LIFO rollback across documents, index entries, and ledger records.

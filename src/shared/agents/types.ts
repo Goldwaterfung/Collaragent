@@ -40,6 +40,9 @@ export interface ChatMessage {
   }
   blocks?: MessageBlock[]
   usage?: TokenUsage
+  parentMessageId?: string | null
+  checkpointId?: string | null
+  branchId?: string | null
 }
 
 export interface SubagentSessionData {

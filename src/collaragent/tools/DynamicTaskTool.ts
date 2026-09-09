@@ -233,19 +233,7 @@ While the standard \`task\` tool is used for pre-configured, common agent types,
 /**
  * Create the dynamic_task tool for ad-hoc agent creation
  */
-export function createDynamicTaskTool(
-  optionsOrTools: DynamicTaskToolOptions | StructuredTool[],
-  legacyModel?: LanguageModelLike | string,
-  legacyMiddleware?: AgentMiddleware[] | null
-): StructuredTool {
-  const options: DynamicTaskToolOptions = Array.isArray(optionsOrTools)
-    ? {
-        availableTools: optionsOrTools,
-        defaultModel: (legacyModel ?? '') as LanguageModelLike | string,
-        defaultMiddleware: legacyMiddleware
-      }
-    : optionsOrTools
-
+export function createDynamicTaskTool(options: DynamicTaskToolOptions): StructuredTool {
   const {
     availableTools,
     defaultModel,

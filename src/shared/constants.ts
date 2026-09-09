@@ -38,3 +38,48 @@ export const CLUSTER_ACCENT_BAR_WIDTH_PX = 3.5
 export const CLUSTER_LABEL_MAX_WIDTH_PX = 200
 export const CLUSTER_PROGRESS_MAX_WIDTH_PX = 260
 export const CLUSTER_FILL_OPACITY_PERCENT = 5
+
+// Workspace Document Tool Constants
+export const DEFAULT_DOCUMENT_BLOCK_LIMIT = 50
+export const MAX_DOCUMENT_BLOCK_LIMIT = 200
+
+export const WORKSPACE_TOOL_NAMES = [
+  'readDocument',
+  'createDocument',
+  'editDocument',
+  'listWorkspaceItems',
+  'readGraph',
+  'writeGraph',
+  'writeMindMap',
+  'createProject',
+  'removeProject',
+  'createProjectTool',
+  'removeProjectTool',
+  'compileGraph',
+  'lintWorkspace',
+  'ingestSource',
+  'queryAndFileBack',
+  'pruneLedger'
+] as const
+
+export const PRUNE_LEDGER_TOOL_NAME = 'pruneLedger'
+
+export type WorkspaceToolName = (typeof WORKSPACE_TOOL_NAMES)[number]
+
+export function isWorkspaceTool(name?: string): boolean {
+  if (!name) return false
+  return (WORKSPACE_TOOL_NAMES as readonly string[]).includes(name)
+}
+
+// Relational Ledger Constants
+export const DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID = 'ledger-default'
+export const DEFAULT_RELATIONAL_LEDGER_NAME = 'ledger-default'
+export const DEFAULT_RELATIONAL_LEDGER_TYPE = 'ledger'
+
+// Wiki Graph Compilation & Layout Constants
+export const DEFAULT_WIKI_NODE_WIDTH = 280
+export const DEFAULT_WIKI_NODE_HEIGHT = 160
+export const DEFAULT_WIKI_GRID_COLUMNS = 5
+export const DEFAULT_WIKI_GRID_COL_WIDTH = 320
+export const DEFAULT_WIKI_GRID_ROW_HEIGHT = 220
+export const DEFAULT_WIKI_GRID_OFFSET = 50

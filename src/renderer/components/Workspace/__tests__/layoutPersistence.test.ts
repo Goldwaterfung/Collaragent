@@ -51,6 +51,41 @@ describe('layoutPersistence', () => {
     expect(window.localStorage.getItem(GLOBAL_LAYOUT_STORAGE_KEY)).toBeNull()
   })
 
+  it('isolates layouts by workspace filePath', () => {
+    const apiFileA = {
+      toJSON: () => ({
+        grid: { root: { type: 'branch', data: [] } },
+        panels: {},
+        activeGroup: 'group-file-a'
+      })
+    }
+    const apiFileB = {
+      toJSON: () => ({
+        grid: { root: { type: 'branch', data: [] } },
+        panels: {},
+        activeGroup: 'group-file-b'
+      })
+    }
+
+    saveDockviewLayout(apiFileA as unknown as DockviewApi, '/path/to/projectA.cagent')
+    saveDockviewLayout(apiFileB as unknown as DockviewApi, '/path/to/projectB.cagent')
+
+    // Clean project C has no saved layout
+    expect(loadDockviewLayout('/path/to/projectC.cagent')).toBeNull()
+
+    // Each project retrieves its own scoped layout
+    const loadedA = loadDockviewLayout('/path/to/projectA.cagent')
+    const loadedB = loadDockviewLayout('/path/to/projectB.cagent')
+
+    expect(loadedA?.activeGroup).toBe('group-file-a')
+    expect(loadedB?.activeGroup).toBe('group-file-b')
+
+    // Clearing project A does not affect project B
+    clearDockviewLayout('/path/to/projectA.cagent')
+    expect(loadDockviewLayout('/path/to/projectA.cagent')).toBeNull()
+    expect(loadDockviewLayout('/path/to/projectB.cagent')?.activeGroup).toBe('group-file-b')
+  })
+
   it('handles chat panel id helpers correctly', () => {
     expect(isChatPanelId('chat:123')).toBe(true)
     expect(isChatPanelId('collar-chat')).toBe(true)

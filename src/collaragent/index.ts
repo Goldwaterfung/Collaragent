@@ -35,14 +35,10 @@ export {
   type SandboxBackendProtocol,
   type MaybePromise,
   // Middleware
-  createFilesystemMiddleware,
   createPatchToolCallsMiddleware,
   createMemoryMiddleware,
-  createSkillsMiddleware,
   createAgentMemoryMiddleware,
   type AgentMemoryMiddlewareOptions,
-  type SkillsMiddlewareOptions,
-  type SkillMetadata,
   MAX_SKILL_FILE_SIZE,
   MAX_SKILL_NAME_LENGTH,
   MAX_SKILL_DESCRIPTION_LENGTH,
@@ -66,6 +62,11 @@ export {
 
 // Export CollarAgent local extensions & loader
 export {
+  createFilesystemMiddleware,
+  createSkillsMiddleware,
+  type SkillsMiddlewareOptions,
+  type SkillMetadata,
+  MANDATORY_SKILL_CONTRACT_PROMPT,
   createSubAgentMiddleware,
   type SubAgentMiddlewareOptions,
   type SubAgent,

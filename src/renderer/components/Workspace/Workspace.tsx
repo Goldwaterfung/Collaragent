@@ -5,10 +5,12 @@ import Cards from '@workspace/editor/components/CardEditor'
 import { SkillEditor } from '@workspace/editor/components/SkillEditor'
 import '@workspace/editor/style/style.css'
 import { useInstanceContext, InstanceScope } from '@workspace/contexts/instance/InstanceContext'
+import { useProjectSession } from '@workspace/contexts/project/ProjectSession'
 import { useSkillsContext } from '@workspace/contexts/skills/SkillsContext'
 import { CanvasProvider } from '@workspace/canvas/store'
 import { ChatContainer } from '../Chat/ChatContainer'
 import { useChatStore } from '../../store/chatStore'
+import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import {
   isChatPanelId,
   getSessionIdFromPanelId,
@@ -22,44 +24,68 @@ import {
   type OpenChatTabDetail
 } from './layoutPersistence'
 
+function PanelErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full p-6 text-center bg-surface-50 text-surface-700">
+      <p className="text-sm font-medium text-red-600 mb-2">Panel failed to render</p>
+      <p className="text-xs text-surface-500 mb-4 max-w-md break-words font-mono">
+        {error instanceof Error ? error.message : String(error)}
+      </p>
+      <button
+        type="button"
+        onClick={resetErrorBoundary}
+        className="px-3 py-1.5 text-xs font-medium bg-surface-200 hover:bg-surface-300 rounded cursor-pointer focus:outline-none"
+      >
+        Retry
+      </button>
+    </div>
+  )
+}
+
 const CanvasComponent = (props: IDockviewPanelProps) => {
   // Determine instance ID from panel ID
   const instanceId = props.api.id
 
   return (
-    <InstanceScope instanceId={instanceId}>
-      <CanvasProvider>
-        <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
-          <Canvas />
-        </div>
-      </CanvasProvider>
-    </InstanceScope>
+    <ErrorBoundary FallbackComponent={PanelErrorFallback}>
+      <InstanceScope instanceId={instanceId}>
+        <CanvasProvider>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Canvas />
+          </div>
+        </CanvasProvider>
+      </InstanceScope>
+    </ErrorBoundary>
   )
 }
 
 const DocumentComponent = (props: IDockviewPanelProps) => {
   const instanceId = props.api.id
   return (
-    <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Cards instanceId={instanceId} />
-    </div>
+    <ErrorBoundary FallbackComponent={PanelErrorFallback}>
+      <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Cards instanceId={instanceId} />
+      </div>
+    </ErrorBoundary>
   )
 }
 
 const SkillComponent = (props: IDockviewPanelProps) => {
   const skillMdPath = props.api.id
   return (
-    <div
-      style={{
-        height: '100%',
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#fff'
-      }}
-    >
-      <SkillEditor skillMdPath={skillMdPath} />
-    </div>
+    <ErrorBoundary FallbackComponent={PanelErrorFallback}>
+      <div
+        style={{
+          height: '100%',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#fff'
+        }}
+      >
+        <SkillEditor skillMdPath={skillMdPath} />
+      </div>
+    </ErrorBoundary>
   )
 }
 
@@ -91,10 +117,12 @@ export const Workspace = (props: { theme?: string }) => {
     setOpenInstanceIds
   } = useInstanceContext()
   const { skills, activeSkillPath, setActiveSkillPath } = useSkillsContext()
+  const { filePath } = useProjectSession()
   const [api, setApi] = useState<DockviewApi | null>(null)
   const layoutDebounceRef = useRef<NodeJS.Timeout | null>(null)
   const lastChatWidthRef = useRef<number>(400)
   const paramsRef = useRef({
+    filePath,
     instanceId,
     instanceIds,
     openInstanceIds,
@@ -109,6 +137,7 @@ export const Workspace = (props: { theme?: string }) => {
 
   // Keep ref updated for event handlers/callbacks that might be stale
   paramsRef.current = {
+    filePath,
     instanceId,
     instanceIds,
     openInstanceIds,
@@ -125,9 +154,12 @@ export const Workspace = (props: { theme?: string }) => {
     paramsRef.current.skills.some((s) => s.skillMdPath === id) || id.endsWith('SKILL.md')
 
   // Helper to look up instance type from summaries or skills
-  const getInstanceType = (id: string): 'canvas' | 'document' | 'skill' => {
+  const getInstanceType = (id: string): 'canvas' | 'document' | 'skill' | null => {
     if (isSkillId(id)) return 'skill'
     const summary = paramsRef.current.instanceSummaries.find((s) => s.instanceId === id)
+    if (summary?.type === 'ledger' || id === 'ledger-default' || summary?.metadata?.isHidden) {
+      return null
+    }
     return summary?.type === 'canvas' ? 'canvas' : 'document'
   }
 
@@ -149,8 +181,8 @@ export const Workspace = (props: { theme?: string }) => {
       paramsRef.current.setOpenInstanceIds(panelIds)
     }
 
-    // Try restoring layout from localStorage
-    const savedLayout = loadDockviewLayout()
+    // Try restoring layout from localStorage (scoped to workspace filePath)
+    const savedLayout = loadDockviewLayout(paramsRef.current.filePath)
     let isRestored = false
     if (savedLayout) {
       try {
@@ -166,12 +198,14 @@ export const Workspace = (props: { theme?: string }) => {
       const currentId = paramsRef.current.instanceId || paramsRef.current.activeSkillPath
       if (currentId && isLoaded) {
         const instanceType = getInstanceType(currentId)
-        event.api.addPanel({
-          id: currentId,
-          component: instanceType,
-          title: getInstanceName(currentId),
-          renderer: 'always'
-        })
+        if (instanceType) {
+          event.api.addPanel({
+            id: currentId,
+            component: instanceType,
+            title: getInstanceName(currentId),
+            renderer: 'always'
+          })
+        }
       }
 
       const initialSessionId = useChatStore.getState().threadId || crypto.randomUUID()
@@ -254,7 +288,7 @@ export const Workspace = (props: { theme?: string }) => {
         clearTimeout(layoutDebounceRef.current)
       }
       layoutDebounceRef.current = setTimeout(() => {
-        saveDockviewLayout(event.api)
+        saveDockviewLayout(event.api, paramsRef.current.filePath)
       }, 300)
     })
 
@@ -360,6 +394,8 @@ export const Workspace = (props: { theme?: string }) => {
     openInstanceIds.forEach((id) => {
       if (!api.getPanel(id)) {
         const instanceType = getInstanceType(id)
+        if (!instanceType) return
+
         const contentPanels = api.panels.filter((p) => !isChatPanelId(p.id))
         const chatPanels = api.panels.filter((p) => isChatPanelId(p.id))
         const position =

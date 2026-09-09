@@ -81,7 +81,7 @@ const CreateInstanceBodySchema = z.object({
   id: z.string().min(1).optional(),
   name: z.string().min(1).max(100),
   projectId: z.string().min(1),
-  type: z.enum(['document', 'canvas']),
+  type: z.enum(['document', 'canvas', 'ledger']),
   content: z.unknown().optional(),
   payload: z.unknown().optional(),
   metadata: z.record(z.string(), z.unknown()).optional()
@@ -104,12 +104,20 @@ const ChatMessageBodySchema = z.object({
   actions: z.array(z.unknown()).optional().default([]),
   usage: z.unknown().optional(),
   metadata: z.record(z.string(), z.unknown()).optional().default({}),
-  timestamp: z.number().optional()
+  timestamp: z.number().optional(),
+  parentMessageId: z.string().nullable().optional(),
+  checkpointId: z.string().nullable().optional(),
+  branchId: z.string().nullable().optional()
 })
 
 const ChatRestoreBodySchema = z.object({
   messageId: z.string().min(1),
   blockIndex: z.number().int().nonnegative().optional()
+})
+
+const ChatBranchBodySchema = z.object({
+  messageId: z.string().min(1),
+  checkpointId: z.string().nullable().optional()
 })
 
 const CheckpointListQuerySchema = z.object({
@@ -641,7 +649,10 @@ export async function startFilesystemApi(
         actions: body.actions,
         usage: body.usage,
         metadata: body.metadata,
-        timestamp: body.timestamp ?? Date.now()
+        timestamp: body.timestamp ?? Date.now(),
+        parentMessageId: body.parentMessageId,
+        checkpointId: body.checkpointId,
+        branchId: body.branchId
       }
 
       storage.appendChatMessage(id, message)
@@ -679,14 +690,19 @@ export async function startFilesystemApi(
       const { id } = IdParamSchema.parse(req.params)
       const body = ChatRestoreBodySchema.parse(req.body)
 
-      if (!storage.truncateChatSession) {
+      if (!storage.truncateChatSession && !storage.setActiveBranch) {
         throw new StorageError(
           StorageErrorCode.STORAGE_TRANSACTION_FAILED,
-          'truncateChatSession is not supported by current storage engine'
+          'Branch restoration is not supported by current storage engine'
         )
       }
 
-      const ok = storage.truncateChatSession(id, body.messageId, body.blockIndex)
+      const ok = storage.setActiveBranch
+        ? storage.setActiveBranch(id, body.messageId)
+        : storage.truncateChatSession
+          ? storage.truncateChatSession(id, body.messageId, body.blockIndex)
+          : false
+
       if (!ok) {
         throw new StorageError(
           StorageErrorCode.STORAGE_SESSION_NOT_FOUND,
@@ -708,6 +724,57 @@ export async function startFilesystemApi(
         messageId: body.messageId,
         blockIndex: body.blockIndex
       })
+    } catch (err: unknown) {
+      handleApiError(res, err)
+    }
+  })
+
+  app.post('/api/chat/sessions/:id/branch', (req, res) => {
+    try {
+      const { id } = IdParamSchema.parse(req.params)
+      const body = ChatBranchBodySchema.parse(req.body)
+
+      if (!storage.setActiveBranch) {
+        throw new StorageError(
+          StorageErrorCode.STORAGE_TRANSACTION_FAILED,
+          'setActiveBranch is not supported by current storage engine'
+        )
+      }
+
+      const ok = storage.setActiveBranch(id, body.messageId, body.checkpointId ?? undefined)
+      if (!ok) {
+        throw new StorageError(
+          StorageErrorCode.STORAGE_SESSION_NOT_FOUND,
+          `Session or message '${body.messageId}' not found`,
+          { sessionId: id, messageId: body.messageId }
+        )
+      }
+
+      res.json({
+        status: 'branch_switched',
+        sessionId: id,
+        messageId: body.messageId,
+        checkpointId: body.checkpointId
+      })
+      notifyWsServer({ type: 'chat:sessionsUpdated' })
+      notifyWsServer({
+        type: 'chat:restored',
+        sessionId: id,
+        messageId: body.messageId
+      })
+    } catch (err: unknown) {
+      handleApiError(res, err)
+    }
+  })
+
+  app.get('/api/chat/sessions/:id/branches/:messageId', (req, res) => {
+    try {
+      const { id } = IdParamSchema.parse(req.params)
+      const { messageId } = z.object({ messageId: z.string().min(1) }).parse(req.params)
+
+      const children = storage.getMessageChildren ? storage.getMessageChildren(id, messageId) : []
+
+      res.json({ sessionId: id, parentMessageId: messageId, children })
     } catch (err: unknown) {
       handleApiError(res, err)
     }
@@ -1184,21 +1251,29 @@ export async function startFilesystemApi(
         })
       }
 
-      // 4. Truncate or clear chat session
+      // 4. Set active chat session branch or clear chat session
       if (
         bundle.chat?.messageId &&
         bundle.chat.messageId !== CHECKPOINT_START_SENTINEL &&
         bundle.chat.messageId !== '__start__' &&
-        storage.truncateChatSession
+        (storage.setActiveBranch || storage.truncateChatSession)
       ) {
-        const ok = storage.truncateChatSession(
-          bundle.threadId,
-          bundle.chat.messageId,
-          bundle.chat.blockIndex
-        )
+        const ok = storage.setActiveBranch
+          ? storage.setActiveBranch(
+              bundle.threadId,
+              bundle.chat.messageId,
+              bundle.agentCheckpointId
+            )
+          : storage.truncateChatSession
+            ? storage.truncateChatSession(
+                bundle.threadId,
+                bundle.chat.messageId,
+                bundle.chat.blockIndex
+              )
+            : false
         if (!ok) {
           console.warn(
-            `[filesystemAPI] Target chat message '${bundle.chat.messageId}' not found for truncation in thread '${bundle.threadId}'. Skipping message truncation.`
+            `[filesystemAPI] Target chat message '${bundle.chat.messageId}' not found for branch restore in thread '${bundle.threadId}'. Skipping message branch update.`
           )
         } else {
           notifyWsServer({ type: 'chat:sessionsUpdated' })

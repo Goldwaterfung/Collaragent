@@ -22,7 +22,8 @@ export async function getDocumentPayload(overrides: GetDocumentOptions = {}) {
   }
 
   // Support both { blocks, comments } and { payload: { blocks, comments } }
-  const payload = (snapshot.blocks ? snapshot : snapshot.payload) as DocumentPayload
+  const s = snapshot as { blocks?: unknown; payload?: DocumentPayload }
+  const payload = (s.blocks ? s : s.payload) as DocumentPayload
 
   return { payload, instanceId, clientId }
 }

@@ -20,6 +20,7 @@ import { $createCodeNode } from '@lexical/code'
 import { $createTableNode, $createTableRowNode, $createTableCellNode } from '@lexical/table'
 import { $createPageBreakNode } from '../nodes/PageBreakNode'
 import { $createEquationNode } from '../nodes/EquationNode'
+import { $createInlineClaimBadgeNode } from '../nodes/InlineClaimBadgeNode'
 import { storeBlockId } from './blockIdentityRegistry'
 
 const COMMENT_PREFIX = 'comment:'
@@ -29,123 +30,158 @@ const encodeCommentStorageId = (id: string, author: string, content: string): st
 
 const dedupeArray = <T>(arr: T[]): T[] => Array.from(new Set(arr))
 
+interface DiffAnnotatedBlock {
+  diffStatus: 'added' | 'removed' | 'updated' | 'none'
+}
+
+function getBlockDiffStatus(block: Block): DiffAnnotatedBlock['diffStatus'] | undefined {
+  if (
+    typeof block === 'object' &&
+    block !== null &&
+    'diffStatus' in block &&
+    typeof (block as unknown as Record<string, unknown>).diffStatus === 'string'
+  ) {
+    return (block as unknown as DiffAnnotatedBlock).diffStatus
+  }
+  return undefined
+}
+
+interface IndentableLexicalNode {
+  setIndent(indent: number): void
+}
+
+function isIndentableLexicalNode(node: unknown): node is IndentableLexicalNode {
+  return (
+    typeof node === 'object' &&
+    node !== null &&
+    'setIndent' in node &&
+    typeof (node as Record<string, unknown>).setIndent === 'function'
+  )
+}
+
 export function applyDocumentToEditor(
   editor: LexicalEditor,
   doc: DocumentPayload,
-  options?: { tag?: string; diffMode?: boolean }
+  options?: { tag?: string; diffMode?: boolean; discrete?: boolean }
 ): void {
-  editor.update(() => {
-    const root = $getRoot()
-    root.clear()
+  editor.update(
+    () => {
+      const root = $getRoot()
+      root.clear()
 
-    const comments = doc.comments ?? {}
-    const blocks = doc.blocks
+      const comments = doc.comments ?? {}
+      const blocks = doc.blocks
 
-    const itemsToIndent: { node: LexicalNode; indent: number }[] = []
+      const itemsToIndent: { node: LexicalNode; indent: number }[] = []
 
-    let i = 0
-    while (i < blocks.length) {
-      const block = blocks[i]
-      const indent = block.indent ?? 0
+      let i = 0
+      while (i < blocks.length) {
+        const block = blocks[i]
+        const indent = block.indent ?? 0
 
-      // Handle List Items
-      if (block.type === 'list-item') {
-        const listType = block.listType || 'bullet'
-        const listNode = $createListNode(listType)
+        // Handle List Items
+        if (block.type === 'list-item') {
+          const listType = block.listType || 'bullet'
+          const listNode = $createListNode(listType)
 
-        // Collect consecutive list items of the same type
-        while (i < blocks.length) {
-          const nextBlock = blocks[i]
-          if (nextBlock.type !== 'list-item') {
-            break
+          // Collect consecutive list items of the same type
+          while (i < blocks.length) {
+            const nextBlock = blocks[i]
+            if (nextBlock.type !== 'list-item') {
+              break
+            }
+            const nextListType = nextBlock.listType || listType
+            if (nextListType !== listType) {
+              break
+            }
+
+            const listItem = createListItemFromBlock(nextBlock, comments)
+            storeBlockId(editor, listItem.getKey(), nextBlock.id)
+
+            if (options?.diffMode) {
+              const status = getBlockDiffStatus(nextBlock)
+              if (status === 'added')
+                listItem.setStyle('background-color: #f0fdf4; border-left: 4px solid #22c55e;')
+              if (status === 'removed')
+                listItem.setStyle(
+                  'background-color: #fef2f2; border-left: 4px solid #ef4444; text-decoration: line-through; opacity: 0.7;'
+                )
+              if (status === 'updated')
+                listItem.setStyle('background-color: #eff6ff; border-left: 4px solid #3b82f6;')
+            }
+
+            const nextIndent = nextBlock.indent ?? 0
+            if (nextIndent > 0) {
+              itemsToIndent.push({ node: listItem, indent: nextIndent })
+            }
+            listNode.append(listItem)
+            i++
           }
-          const nextListType = nextBlock.listType || listType
-          if (nextListType !== listType) {
-            break
-          }
-
-          const listItem = createListItemFromBlock(nextBlock, comments)
-          storeBlockId(editor, listItem.getKey(), nextBlock.id)
+          root.append(listNode)
+          // NOTE: do NOT fall through to table handling here — list items are fully consumed above.
+        } else if (block.type === 'table') {
+          const tableNode = createTableNodeFromBlock(block, comments)
+          storeBlockId(editor, tableNode.getKey(), block.id)
 
           if (options?.diffMode) {
-            const status = (nextBlock as any).diffStatus
+            const status = getBlockDiffStatus(block)
             if (status === 'added')
-              listItem.setStyle('background-color: #f0fdf4; border-left: 4px solid #22c55e;')
+              tableNode.setStyle('background-color: #f0fdf4; border-left: 4px solid #22c55e;')
             if (status === 'removed')
-              listItem.setStyle(
+              tableNode.setStyle(
                 'background-color: #fef2f2; border-left: 4px solid #ef4444; text-decoration: line-through; opacity: 0.7;'
               )
             if (status === 'updated')
-              listItem.setStyle('background-color: #eff6ff; border-left: 4px solid #3b82f6;')
+              tableNode.setStyle('background-color: #eff6ff; border-left: 4px solid #3b82f6;')
           }
 
-          const nextIndent = nextBlock.indent ?? 0
-          if (nextIndent > 0) {
-            itemsToIndent.push({ node: listItem, indent: nextIndent })
+          root.append(tableNode)
+          i++
+        } else if (block.type === 'page-break') {
+          const pageBreakNode = $createPageBreakNode()
+          storeBlockId(editor, pageBreakNode.getKey(), block.id)
+          root.append(pageBreakNode)
+          i++
+        } else {
+          // Handle other block types
+          const element = createBlockNode(block, comments)
+          if (element) {
+            storeBlockId(editor, element.getKey(), block.id)
+
+            if (options?.diffMode) {
+              const status = getBlockDiffStatus(block)
+              if (status === 'added')
+                element.setStyle('background-color: #f0fdf4; border-left: 4px solid #22c55e;')
+              if (status === 'removed')
+                element.setStyle(
+                  'background-color: #fef2f2; border-left: 4px solid #ef4444; text-decoration: line-through; opacity: 0.7;'
+                )
+              if (status === 'updated')
+                element.setStyle('background-color: #eff6ff; border-left: 4px solid #3b82f6;')
+            }
+
+            root.append(element)
+            if (indent > 0) {
+              itemsToIndent.push({ node: element, indent })
+            }
           }
-          listNode.append(listItem)
           i++
         }
-        root.append(listNode)
-        // NOTE: do NOT fall through to table handling here — list items are fully consumed above.
-      } else if (block.type === 'table') {
-        const tableNode = createTableNodeFromBlock(block, comments)
-        storeBlockId(editor, tableNode.getKey(), block.id)
-
-        if (options?.diffMode) {
-          const status = (block as any).diffStatus
-          if (status === 'added')
-            tableNode.setStyle('background-color: #f0fdf4; border-left: 4px solid #22c55e;')
-          if (status === 'removed')
-            tableNode.setStyle(
-              'background-color: #fef2f2; border-left: 4px solid #ef4444; text-decoration: line-through; opacity: 0.7;'
-            )
-          if (status === 'updated')
-            tableNode.setStyle('background-color: #eff6ff; border-left: 4px solid #3b82f6;')
-        }
-
-        root.append(tableNode)
-        i++
-      } else if (block.type === 'page-break') {
-        const pageBreakNode = $createPageBreakNode()
-        storeBlockId(editor, pageBreakNode.getKey(), block.id)
-        root.append(pageBreakNode)
-        i++
-      } else {
-        // Handle other block types
-        const element = createBlockNode(block, comments)
-        if (element) {
-          storeBlockId(editor, element.getKey(), block.id)
-
-          if (options?.diffMode) {
-            const status = (block as any).diffStatus
-            if (status === 'added')
-              element.setStyle('background-color: #f0fdf4; border-left: 4px solid #22c55e;')
-            if (status === 'removed')
-              element.setStyle(
-                'background-color: #fef2f2; border-left: 4px solid #ef4444; text-decoration: line-through; opacity: 0.7;'
-              )
-            if (status === 'updated')
-              element.setStyle('background-color: #eff6ff; border-left: 4px solid #3b82f6;')
-          }
-
-          root.append(element)
-          if (indent > 0) {
-            itemsToIndent.push({ node: element, indent })
-          }
-        }
-        i++
       }
-    }
 
-    // Apply indentation after structural insertion
-    // Lexical structural mutations (like nested Lists) rely on the nodes being attached first.
-    for (const { node, indent } of itemsToIndent) {
-      if (typeof (node as any).setIndent === 'function') {
-        ;(node as any).setIndent(indent)
+      // Apply indentation after structural insertion
+      // Lexical structural mutations (like nested Lists) rely on the nodes being attached first.
+      for (const { node, indent } of itemsToIndent) {
+        if (isIndentableLexicalNode(node)) {
+          node.setIndent(indent)
+        }
       }
+    },
+    {
+      tag: options?.tag,
+      ...(options?.discrete !== false ? { discrete: true as const } : {})
     }
-  }, options)
+  )
 }
 
 function createTableNodeFromBlock(block: Block, comments: Record<string, Comment>): ElementNode {
@@ -266,6 +302,18 @@ function createListItemFromBlock(block: Block, comments: Record<string, Comment>
 
 function createNodesFromRun(run: InlineRun): LexicalNode[] {
   const nodes: LexicalNode[] = []
+
+  if (run.claimBadge !== undefined) {
+    nodes.push(
+      $createInlineClaimBadgeNode(
+        run.claimBadge.targetEntityId,
+        run.claimBadge.rel,
+        run.claimBadge.justification,
+        run.claimBadge.badgeId
+      )
+    )
+    return nodes
+  }
 
   if (run.equation !== undefined) {
     nodes.push($createEquationNode(run.equation, run.inline ?? true))

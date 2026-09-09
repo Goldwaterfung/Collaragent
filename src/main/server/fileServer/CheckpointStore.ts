@@ -1,4 +1,8 @@
-import { CheckpointRecord, CheckpointBlobRecord, CheckpointWriteRecord } from './storageEngine'
+import type {
+  CheckpointRecord,
+  CheckpointBlobRecord,
+  CheckpointWriteRecord
+} from './interfaces/ICheckpointStore'
 
 export interface CheckpointStore {
   // Checkpoints

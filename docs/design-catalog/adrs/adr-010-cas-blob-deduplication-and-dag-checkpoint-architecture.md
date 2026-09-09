@@ -120,7 +120,7 @@ notifyWsServer({
 To prevent unpersisted state loss on window reload, agent tools (`writeGraph`, `writeMindMap`, `createDocument`, `editDocument`) default to direct workspace execution:
 
 - Commands are tagged with `staged: false`.
-- `ws-server.ts` immediately updates the live in-memory document (`docs.set`) and schedules `debouncedSave()`, writing changes to SQLite within 500ms.
+- `ws-server.ts` immediately updates the live in-memory document (`docs.set`) and enqueues a persistence task in `SerializedDrainQueue`, writing changes to SQLite via single-flight execution (superseding legacy 500ms `debouncedSave`, see [ADR-012](file:///Users/goldenfung/Documents/collaragent/docs/design-catalog/adrs/adr-012-event-driven-serialized-drain-system.md)).
 - Staging (`staged: true`) is reserved strictly for workflows where explicit diff review banners (`accept-changes` / `reject-changes`) are desired.
 
 ### 6. Cascading Relationship Cleanup on Node Deletion

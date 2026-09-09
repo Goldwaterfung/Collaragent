@@ -15,20 +15,30 @@ erDiagram
     TABLE_CELL ||--o{ INLINE_RUN : contains
     INLINE_RUN }o--o{ COMMENT : references
 
+    %% Relational Knowledge Ledger Domain
+    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_TRIPLE : contains
+    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_ENTITY : contains
+    RELATIONAL_TRIPLE }o--|| BLOCK : grounded_by_claim
+    BLOCK ||--o{ INLINE_CLAIM_BADGE : contains
+
     %% Unified Checkpoint & Ledger Domain
     CHECKPOINT_BUNDLE ||--o{ INSTANCE_RESTORE_POINT : captures
     CHECKPOINT_BUNDLE ||--|| CHAT_CHECKPOINT : references
     WORKSPACE_SNAPSHOT ||--|| INSTANCE_RESTORE_POINT : targets
     WORKSPACE_COMMAND_LOG ||--|| INSTANCE_LOG_POSITION : indexed_at
 
-    %% Physical SQLite V5 CAS Persistence Schema
+    %% Physical SQLite V7 True DAG & CAS Persistence Schema
     PROJECTS ||--o{ INSTANCES : owns
     PROJECTS ||--o{ CHAT_SESSIONS : contains
     CHAT_SESSIONS ||--o{ CHAT_MESSAGES : logs
+    CHAT_SESSIONS ||--o| CHAT_MESSAGES : active_message
+    CHAT_MESSAGES ||--o{ CHAT_MESSAGES : "parent / child DAG"
+    CHAT_MESSAGES }o--o| LANGGRAPH_CHECKPOINTS : "checkpoint"
     CHAT_SESSIONS ||--o{ LARGE_TOOL_OUTPUTS : attaches
     INSTANCES ||--o{ WORKSPACE_SNAPSHOTS : captures
     INSTANCES ||--o{ WORKSPACE_COMMAND_LOGS : records
     WORKSPACE_BLOBS ||--o{ WORKSPACE_SNAPSHOTS : stores
+    LANGGRAPH_CHECKPOINTS ||--o{ LANGGRAPH_CHECKPOINTS : parent_checkpoint
     LANGGRAPH_CHECKPOINTS ||--o{ LANGGRAPH_WRITES : produces
 
     %% Entity Definitions
@@ -80,6 +90,7 @@ erDiagram
         string align "left|center|right|justify"
         string language
         InlineRun[] children
+        InlineClaimBadge[] claimBadges
     }
 
     INLINE_RUN {
@@ -88,6 +99,34 @@ erDiagram
         boolean italic
         string equation "LaTeX Formula"
         string[] commentIds FK
+    }
+
+    RELATIONAL_LEDGER_PAYLOAD {
+        string instanceId PK
+        Record entitiesById
+        Record triplesById
+    }
+
+    RELATIONAL_TRIPLE {
+        string id PK
+        string source FK
+        string predicate
+        string target FK
+        string claimId FK
+    }
+
+    RELATIONAL_ENTITY {
+        string id PK
+        string label
+        string type
+        Record properties
+    }
+
+    INLINE_CLAIM_BADGE {
+        string claimId PK
+        string quote
+        string sourceDocId FK
+        string blockId FK
     }
 
     CHECKPOINT_BUNDLE {
@@ -106,7 +145,7 @@ erDiagram
 
     INSTANCE_RESTORE_POINT {
         string instanceId PK
-        string instanceType "graph-canvas | document"
+        string instanceType "graph-canvas | document | ledger"
         string snapshotId FK
         string blobHash FK
         integer sequenceNumber
@@ -122,7 +161,7 @@ erDiagram
         Record previousState
     }
 
-    %% Physical SQLite V4 Table Schemas
+    %% Physical SQLite V7 Table Schemas
     PROJECTS {
         string id PK
         string name
@@ -134,7 +173,7 @@ erDiagram
     INSTANCES {
         string id PK
         string project_id FK
-        string type "document | canvas"
+        string type "document | canvas | ledger"
         string name
         blob content_msgpack "MessagePack binary"
         string metadata_json
@@ -148,6 +187,8 @@ erDiagram
         string title
         integer created_at
         integer updated_at
+        string active_message_id FK
+        string active_checkpoint_id FK
     }
 
     CHAT_MESSAGES {
@@ -161,14 +202,17 @@ erDiagram
         string usage_json
         string metadata_json
         integer timestamp
+        string parent_message_id FK
+        string checkpoint_id FK
+        string branch_id
     }
 
     LANGGRAPH_CHECKPOINTS {
         string thread_id PK
         string checkpoint_ns PK
         string checkpoint_id PK
-        string parent_checkpoint_id
-        string checkpoint_json
+        string parent_checkpoint_id FK
+        string checkpoint_json "Self-contained complete channel_values snapshot"
         string metadata_json
         integer created_at
     }

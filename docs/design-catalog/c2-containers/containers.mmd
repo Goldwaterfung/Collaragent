@@ -16,7 +16,7 @@ flowchart TB
         
         MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
         
-        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time synchronization server with thread-segregated proposals, OCC validation, and transactional flush"]:::container
+        WSServer["⚡ In-Process WebSocket Server<br/>[Container: Node.js / ws]<br/>Per-window real-time sync server with SerializedDrainQueue, transactional read barriers, thread proposals, and OCC"]:::container
         
         UtilityServer["🗄️ Storage Utility Process (Daemon)<br/>[Container: Node.js / Express 5]<br/>Per-workspace background worker hosting REST API, SqliteStorageEngine, and SqliteCheckpointStore"]:::container
 
@@ -35,7 +35,8 @@ flowchart TB
     RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
     
     MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer
-    MainHost -->|"Agent tools dispatch staged mutations with threadId & OCC [WebSocket / SyncClient]"| WSServer
+    MainHost -->|"Agent tools dispatch staged mutations & read barriers [WebSocket / SyncClient]"| WSServer
+    WSServer -->|"Single-flight serialized persistence writes [HTTP / REST :fsPort]"| UtilityServer
     MainHost -->|"Encrypts / decrypts API credentials [safeStorage]"| LocalVault
     MainHost -->|"Streams agent completions & tool calls [HTTPS / REST]"| ExternalLLM
     MainHost -->|"Spawns sub-processes & discovers tools [STDIO / SSE]"| ExternalMCP

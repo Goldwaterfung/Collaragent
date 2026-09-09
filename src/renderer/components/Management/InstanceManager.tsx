@@ -483,7 +483,7 @@ export function InstanceManager({ onSelect }: { onSelect?: () => void }) {
 
         if (summary.type === 'canvas') {
           groups[pid].canvases.push(summary)
-        } else if (!isHidden) {
+        } else if (summary.type === 'document' && !isHidden) {
           groups[pid].documents.push(summary)
         }
       }
@@ -598,13 +598,20 @@ export function InstanceManager({ onSelect }: { onSelect?: () => void }) {
 
   const handlePromote = async (id: string) => {
     try {
-      await ctx.renameInstance(id, instanceSummaries.find((s) => s.instanceId === id)?.name || '') // Force refresh
+      const existing = instanceSummaries.find((s) => s.instanceId === id)
+      const currentName = existing?.name || 'Document'
+      const pid = existing?.projectId
+      const uniqueName = pid
+        ? await instanceService.findUniqueName(currentName, pid, 'document')
+        : currentName
+
+      await ctx.renameInstance(id, uniqueName)
       const metadata = {
-        ...(instanceSummaries.find((s) => s.instanceId === id)?.metadata || {}),
+        ...(existing?.metadata || {}),
         isHidden: false,
         parentCanvasId: null
       }
-      await instanceService.update(id, { metadata })
+      await instanceService.update(id, { name: uniqueName, metadata })
       await ctx.refreshInstanceIds()
     } catch (err) {
       console.error('Failed to promote instance:', err)

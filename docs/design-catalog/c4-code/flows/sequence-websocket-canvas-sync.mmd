@@ -30,7 +30,7 @@ sequenceDiagram
             WSS-->>AgentTool: Send { type: 'sync-ack', version: nextSeq, clientVersion: 1 }
             par Broadcast & Direct Persistence
                 WSS-->>CanvasUI: Broadcast { type: 'sync-command', command, version: nextSeq }
-                WSS->>RESTServer: 500ms debouncedSave() persists committed state to SQLite
+                WSS->>RESTServer: drainQueue.enqueue() dispatches single-flight write to SQLite
                 WSS->>RESTServer: POST /api/checkpoints/workspace/logs (Audit Trail)
             end
         end
@@ -59,7 +59,7 @@ sequenceDiagram
             CanvasUI->>WSS: Send { type: 'accept-changes', instanceId, threadId, clientId }
             WSS->>WSS: proposals.get(instanceId).delete(threadId)
             WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
-            WSS->>RESTServer: 500ms debouncedSave() persists committed state to SQLite
+            WSS->>RESTServer: drainQueue.enqueue() dispatches single-flight write to SQLite
         else User clicks "Undo" (Reject Changes for Thread)
             User->>CanvasUI: Clicks "Reject Changes"
             CanvasUI->>WSS: Send { type: 'reject-changes', instanceId, threadId, clientId }
@@ -67,6 +67,6 @@ sequenceDiagram
             WSS->>WSS: proposals.get(instanceId).delete(threadId)
             WSS-->>CanvasUI: Broadcast { type: 'sync-snapshot', graph, layout, from: 'agent-proposal-reverted' }
             WSS-->>CanvasUI: Broadcast { type: 'sync-changes', instanceId, threadId, commands: [] }
-            WSS->>RESTServer: 500ms debouncedSave() persists restored state to SQLite
+            WSS->>RESTServer: drainQueue.enqueue() dispatches single-flight write to SQLite
         end
     end

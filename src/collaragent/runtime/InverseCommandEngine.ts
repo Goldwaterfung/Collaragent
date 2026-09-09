@@ -2,6 +2,7 @@ import { WorkspaceCommandLogEntry } from '@shared/checkpoints/types'
 import { Command } from '@shared/commands'
 import { NodeEntity, RelationshipEntity } from '@shared/canvas'
 import { Block, Comment, DocumentPayload } from '@shared/schemas/instances'
+import { RelationalLedgerEntry } from '@shared/wiki'
 
 export class InverseCommandEngine {
   /**
@@ -133,6 +134,52 @@ export class InverseCommandEngine {
         }
         return null
       }
+
+      // --- Ledger Inversions ---
+
+      case 'ledger:upsert_edge':
+        if (previousState?.existed === false) {
+          return {
+            type: 'ledger:remove_edge',
+            edgeId: cmd.entry.id
+          }
+        }
+        if (previousState?.existed === true && previousState?.entry) {
+          return {
+            type: 'ledger:upsert_edge',
+            entry: previousState.entry as RelationalLedgerEntry
+          }
+        }
+        return null
+
+      case 'ledger:remove_edge':
+        if (previousState?.removedEntry) {
+          return {
+            type: 'ledger:upsert_edge',
+            entry: previousState.removedEntry as RelationalLedgerEntry
+          }
+        }
+        return null
+
+      case 'ledger:degrade_edge':
+        if (previousState?.previousAnchor) {
+          return {
+            type: 'ledger:restore_edge',
+            edgeId: cmd.edgeId,
+            anchor: previousState.previousAnchor
+          }
+        }
+        return null
+
+      case 'ledger:restore_edge':
+        if (previousState?.previousStatus === 'anchor_lost') {
+          return {
+            type: 'ledger:degrade_edge',
+            edgeId: cmd.edgeId,
+            reason: 'anchor_lost'
+          }
+        }
+        return null
 
       default:
         console.warn(

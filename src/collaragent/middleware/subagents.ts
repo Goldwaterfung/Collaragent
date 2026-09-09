@@ -647,11 +647,11 @@ export function createSubAgentMiddleware(options: SubAgentMiddlewareOptions) {
   if (dynamicEnabled) {
     const toolsForDynamicTask = allAvailableTools.length > 0 ? allAvailableTools : defaultTools
     if (toolsForDynamicTask.length > 0) {
-      const dynamicTaskTool = createDynamicTaskTool(
-        toolsForDynamicTask,
+      const dynamicTaskTool = createDynamicTaskTool({
+        availableTools: toolsForDynamicTask,
         defaultModel,
         defaultMiddleware
-      )
+      })
       tools.push(dynamicTaskTool)
     }
   }

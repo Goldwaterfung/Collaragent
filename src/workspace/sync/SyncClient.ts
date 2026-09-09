@@ -1,3 +1,5 @@
+import { SyncError, SyncErrorCode } from '@shared/errors/SyncErrors'
+
 // --- Protocol Definitions ---
 
 /**
@@ -54,6 +56,18 @@ export interface SendOptions {
   timeoutMs?: number
   threadId?: string
   baseVersion?: number
+  signal?: AbortSignal
+}
+
+export interface ConnectOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+interface PendingAck {
+  resolve: (serverSeq: number) => void
+  reject: (err: Error) => void
+  cleanup: () => void
 }
 
 export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
@@ -70,14 +84,7 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
   private readyRejecter: ((reason: Error) => void) | null = null
   private readyPromise: Promise<void> | null = null
   private clientVersionCounter: number = 0
-  private pendingAcks: Map<
-    number,
-    {
-      resolve: (serverSeq: number) => void
-      reject: (err: Error) => void
-      timer?: ReturnType<typeof setTimeout>
-    }
-  > = new Map()
+  private pendingAcks: Map<number, PendingAck> = new Map()
 
   constructor(config: SyncClientConfig<TCommand, TSnapshot> = {}) {
     this.config = {
@@ -115,13 +122,37 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
   /**
    * Connects to the WebSocket server for a specific instance.
    * @param instanceId The ID of the document/canvas to join
+   * @param options Connection options including optional AbortSignal and timeoutMs
    */
-  async connect(instanceId: string): Promise<void> {
+  async connect(instanceId: string, options?: ConnectOptions): Promise<void> {
     this.instanceId = instanceId
     const protocol = this.config.secure ? 'wss' : 'ws'
     const url = `${protocol}://${this.config.host}/${this.config.path}/${instanceId}`
 
     this.ensureReadyPromise()
+
+    const signal = options?.signal
+    const timeoutMs = options?.timeoutMs
+    const effectiveSignal =
+      signal && timeoutMs !== undefined
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : (signal ?? (timeoutMs !== undefined ? AbortSignal.timeout(timeoutMs) : undefined))
+
+    if (effectiveSignal?.aborted) {
+      const isTimeout =
+        effectiveSignal.reason instanceof DOMException &&
+        effectiveSignal.reason.name === 'TimeoutError'
+      return Promise.reject(
+        new SyncError(
+          isTimeout ? SyncErrorCode.SYNC_DRAIN_BARRIER_TIMEOUT : SyncErrorCode.SYNC_DRAIN_ABORTED,
+          isTimeout ? 'Connection timed out before dispatch' : 'Connection aborted before dispatch',
+          {
+            cause: effectiveSignal.reason instanceof Error ? effectiveSignal.reason : undefined,
+            details: { reason: effectiveSignal.reason }
+          }
+        )
+      )
+    }
 
     return new Promise((resolve, reject) => {
       // Isomorphic WebSocket check
@@ -139,7 +170,50 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
 
       this.socket = new WS(url)
 
+      let settled = false
+      let cleanedUp = false
+
+      const cleanup = () => {
+        if (cleanedUp) return
+        cleanedUp = true
+        if (effectiveSignal) {
+          effectiveSignal.removeEventListener('abort', onAbort)
+        }
+      }
+
+      const onAbort = () => {
+        if (settled) return
+        settled = true
+        cleanup()
+        if (this.socket) {
+          this.socket.close()
+          this.socket = null
+        }
+        this.isConnected = false
+        const isTimeout =
+          effectiveSignal!.reason instanceof DOMException &&
+          effectiveSignal!.reason.name === 'TimeoutError'
+        const error = new SyncError(
+          isTimeout ? SyncErrorCode.SYNC_DRAIN_BARRIER_TIMEOUT : SyncErrorCode.SYNC_DRAIN_ABORTED,
+          isTimeout ? 'Connection timed out' : 'Connection aborted',
+          { cause: effectiveSignal!.reason instanceof Error ? effectiveSignal!.reason : undefined }
+        )
+        if (this.readyRejecter) {
+          this.readyRejecter(error)
+          this.readyRejecter = null
+          this.readyResolver = null
+        }
+        reject(error)
+      }
+
+      if (effectiveSignal) {
+        effectiveSignal.addEventListener('abort', onAbort, { once: true })
+      }
+
       this.socket!.onopen = () => {
+        if (settled) return
+        settled = true
+        cleanup()
         this.isConnected = true
         this.sendHandshake()
         resolve()
@@ -168,7 +242,9 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
       this.socket!.onerror = (err) => {
         const error = err instanceof Error ? err : new Error(String(err))
         console.error('WebSocket error', error)
-        if (!this.isConnected) {
+        if (!this.isConnected && !settled) {
+          settled = true
+          cleanup()
           reject(error)
         }
         if (this.readyRejecter) {
@@ -220,22 +296,107 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
     const threadId = typeof versionOrOptions === 'object' ? versionOrOptions?.threadId : undefined
     const baseVersion =
       typeof versionOrOptions === 'object' ? versionOrOptions?.baseVersion : undefined
+    const signal = typeof versionOrOptions === 'object' ? versionOrOptions?.signal : undefined
+
+    // Pre-flight Check: If signal?.aborted on entry, reject immediately without dispatching
+    if (signal?.aborted) {
+      return Promise.reject(
+        new SyncError(SyncErrorCode.SYNC_DRAIN_ABORTED, 'Send operation aborted before dispatch', {
+          details: { version, reason: signal.reason }
+        })
+      )
+    }
+
+    if (!this.socket || this.socket.readyState !== this.socket.OPEN) {
+      return Promise.reject(new Error('Socket not open, cannot send command'))
+    }
+
+    const effectiveSignal =
+      signal && timeoutMs !== undefined
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : (signal ?? (timeoutMs !== undefined ? AbortSignal.timeout(timeoutMs) : undefined))
+
+    if (effectiveSignal?.aborted) {
+      const isTimeout =
+        effectiveSignal.reason instanceof DOMException &&
+        effectiveSignal.reason.name === 'TimeoutError'
+      return Promise.reject(
+        new SyncError(
+          isTimeout ? SyncErrorCode.SYNC_DRAIN_BARRIER_TIMEOUT : SyncErrorCode.SYNC_DRAIN_ABORTED,
+          isTimeout
+            ? `Timed out waiting for sync-ack on clientVersion ${version}`
+            : `Command send aborted on clientVersion ${version}`,
+          {
+            cause: effectiveSignal.reason instanceof Error ? effectiveSignal.reason : undefined
+          }
+        )
+      )
+    }
 
     return new Promise<number>((resolve, reject) => {
-      if (!this.socket || this.socket.readyState !== this.socket.OPEN) {
-        reject(new Error('Socket not open, cannot send command'))
-        return
+      let settled = false
+      let cleanedUp = false
+
+      const cleanup = () => {
+        if (cleanedUp) return
+        cleanedUp = true
+        if (effectiveSignal) {
+          effectiveSignal.removeEventListener('abort', onAbort)
+        }
       }
 
-      let timer: ReturnType<typeof setTimeout> | undefined
-      if (timeoutMs && timeoutMs > 0) {
-        timer = setTimeout(() => {
-          this.pendingAcks.delete(version)
-          reject(new Error(`Timed out waiting for sync-ack on clientVersion ${version}`))
-        }, timeoutMs)
+      const onAbort = () => {
+        if (settled) return
+        settled = true
+        this.pendingAcks.delete(version)
+        cleanup()
+        const isTimeout =
+          effectiveSignal!.reason instanceof DOMException &&
+          effectiveSignal!.reason.name === 'TimeoutError'
+        if (isTimeout) {
+          reject(
+            new SyncError(
+              SyncErrorCode.SYNC_DRAIN_BARRIER_TIMEOUT,
+              `Timed out waiting for sync-ack on clientVersion ${version}`,
+              {
+                cause:
+                  effectiveSignal!.reason instanceof Error ? effectiveSignal!.reason : undefined
+              }
+            )
+          )
+        } else {
+          reject(
+            new SyncError(
+              SyncErrorCode.SYNC_DRAIN_ABORTED,
+              `Command send aborted on clientVersion ${version}`,
+              {
+                cause:
+                  effectiveSignal!.reason instanceof Error ? effectiveSignal!.reason : undefined
+              }
+            )
+          )
+        }
       }
 
-      this.pendingAcks.set(version, { resolve, reject, timer })
+      if (effectiveSignal) {
+        effectiveSignal.addEventListener('abort', onAbort, { once: true })
+      }
+
+      this.pendingAcks.set(version, {
+        resolve: (serverSeq: number) => {
+          if (settled) return
+          settled = true
+          cleanup()
+          resolve(serverSeq)
+        },
+        reject: (err: Error) => {
+          if (settled) return
+          settled = true
+          cleanup()
+          reject(err)
+        },
+        cleanup
+      })
 
       this.sendRaw({
         type: 'sync-command',
@@ -252,6 +413,13 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
    * Sends a batch of commands sequentially and resolves with all server sequence numbers.
    */
   async sendBatch(commands: TCommand[], options?: SendOptions): Promise<number[]> {
+    if (options?.signal?.aborted) {
+      throw new SyncError(
+        SyncErrorCode.SYNC_DRAIN_ABORTED,
+        'Send operation aborted before dispatch',
+        { details: { reason: options.signal.reason } }
+      )
+    }
     const serverSeqs: number[] = []
     let currentOptions = options
     for (const cmd of commands) {
@@ -292,7 +460,7 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
 
   private drainPendingAcks(error: Error) {
     for (const [, pending] of this.pendingAcks) {
-      if (pending.timer) clearTimeout(pending.timer)
+      pending.cleanup()
       pending.reject(error)
     }
     this.pendingAcks.clear()
@@ -391,7 +559,7 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
         const clientVersion = message.clientVersion
         if (clientVersion !== undefined && this.pendingAcks.has(clientVersion)) {
           const pending = this.pendingAcks.get(clientVersion)!
-          if (pending.timer) clearTimeout(pending.timer)
+          pending.cleanup()
           this.pendingAcks.delete(clientVersion)
           pending.resolve(message.version)
         }
@@ -422,10 +590,92 @@ export class SyncClient<TCommand = unknown, TSnapshot = unknown> {
   }
 
   /**
-   * Waits for the initial sync-snapshot to arrive
+   * Returns the count of pending acks currently awaiting server confirmation.
    */
-  async waitForReady(): Promise<void> {
+  getPendingAcksCount(): number {
+    return this.pendingAcks.size
+  }
+
+  /**
+   * Waits for the initial sync-snapshot to arrive
+   * @param options Connection options including optional AbortSignal and timeoutMs
+   */
+  async waitForReady(options?: ConnectOptions): Promise<void> {
     if (this.currentState) return
-    return this.ensureReadyPromise()
+    const signal = options?.signal
+    const timeoutMs = options?.timeoutMs
+
+    const effectiveSignal =
+      signal && timeoutMs !== undefined
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : (signal ?? (timeoutMs !== undefined ? AbortSignal.timeout(timeoutMs) : undefined))
+
+    if (effectiveSignal?.aborted) {
+      const isTimeout =
+        effectiveSignal.reason instanceof DOMException &&
+        effectiveSignal.reason.name === 'TimeoutError'
+      throw new SyncError(
+        isTimeout ? SyncErrorCode.SYNC_DRAIN_BARRIER_TIMEOUT : SyncErrorCode.SYNC_DRAIN_ABORTED,
+        isTimeout
+          ? 'Timed out waiting for initial sync snapshot'
+          : 'Wait for initial sync snapshot aborted',
+        {
+          cause: effectiveSignal.reason instanceof Error ? effectiveSignal.reason : undefined,
+          details: { reason: effectiveSignal.reason }
+        }
+      )
+    }
+
+    if (!effectiveSignal) {
+      return this.ensureReadyPromise()
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false
+      let cleanedUp = false
+
+      const cleanup = () => {
+        if (cleanedUp) return
+        cleanedUp = true
+        effectiveSignal.removeEventListener('abort', onAbort)
+      }
+
+      const onAbort = () => {
+        if (settled) return
+        settled = true
+        cleanup()
+        const isTimeout =
+          effectiveSignal.reason instanceof DOMException &&
+          effectiveSignal.reason.name === 'TimeoutError'
+        reject(
+          new SyncError(
+            isTimeout ? SyncErrorCode.SYNC_DRAIN_BARRIER_TIMEOUT : SyncErrorCode.SYNC_DRAIN_ABORTED,
+            isTimeout
+              ? 'Timed out waiting for initial sync snapshot'
+              : 'Wait for initial sync snapshot aborted',
+            {
+              cause: effectiveSignal.reason instanceof Error ? effectiveSignal.reason : undefined,
+              details: { reason: effectiveSignal.reason }
+            }
+          )
+        )
+      }
+
+      effectiveSignal.addEventListener('abort', onAbort, { once: true })
+
+      this.ensureReadyPromise()
+        .then(() => {
+          if (settled) return
+          settled = true
+          cleanup()
+          resolve()
+        })
+        .catch((err) => {
+          if (settled) return
+          settled = true
+          cleanup()
+          reject(err)
+        })
+    })
   }
 }

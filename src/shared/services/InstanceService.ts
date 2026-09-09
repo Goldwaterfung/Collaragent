@@ -151,10 +151,16 @@ export class InstanceService {
     return asRelationshipId(crypto.randomUUID())
   }
 
-  async findUniqueName(baseName: string, projectId: string): Promise<string> {
+  async findUniqueName(
+    baseName: string,
+    projectId: string,
+    type?: 'document' | 'canvas'
+  ): Promise<string> {
     const instances = await this.getAll()
     const existingNames = new Set(
-      instances.filter((i) => i.projectId === projectId).map((i) => i.name.toLowerCase().trim())
+      instances
+        .filter((i) => i.projectId === projectId && (!type || i.type === type))
+        .map((i) => i.name.toLowerCase().trim())
     )
 
     const normalizedBase = baseName.toLowerCase().trim()
@@ -174,7 +180,7 @@ export class InstanceService {
     projectId: string,
     metadata?: Record<string, any>
   ): Promise<{ instanceId: string; name: string }> {
-    const name = await this.findUniqueName(baseName, projectId)
+    const name = await this.findUniqueName(baseName, projectId, 'document')
     const instanceId = await this.create({
       name,
       type: 'document',

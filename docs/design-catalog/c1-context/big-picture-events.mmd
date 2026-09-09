@@ -27,7 +27,7 @@ flowchart LR
     CmdAddNode[Add Card Node / Connect]:::command
     EvtCanvasMutated[Canvas State Mutated]:::event
     AggGraph[Graph Aggregate]:::aggregate
-    PolBroadcast[Whenever Canvas Mutated -> Broadcast via WebSocket]:::policy
+    PolBroadcast[Whenever Canvas Mutated -> Broadcast via WebSocket & Enqueue DrainQueue]:::policy
     SysWSServer[In-Process WS Server]:::system
 
     User --> CmdAddNode
@@ -62,11 +62,15 @@ flowchart LR
     PolOCC[Whenever Staged Command -> Verify OCC baseVersion >= currentSeq]:::policy
     EvtPropStaged[Workspace Proposal Staged in Thread Buffer]:::event
     AggProposal[Thread-Scoped Proposal Aggregate]:::aggregate
+    PolReadBarrier[Whenever Tool Reads Workspace -> Transactional Barrier flushBeforeRead]:::policy
+    EvtBarrierResolved[Barrier Settled to SQLite Disk]:::event
 
     EvtToolCalled --> CmdStageProp
     CmdStageProp --> PolOCC
     PolOCC --> EvtPropStaged
     EvtPropStaged --> AggProposal
+    EvtToolCalled --> PolReadBarrier
+    PolReadBarrier --> EvtBarrierResolved
 
     %% 6. Thread-Scoped Proposal Acceptance & Commit
     CmdAccept[Accept Thread Proposals]:::command
@@ -80,7 +84,7 @@ flowchart LR
     EvtQuiesced[Workspace Quiesced exclusively for restore]:::event
     PolFailClosed[Whenever Restore -> Validate CAS Blobs Exist or Abort]:::policy
     EvtCASResolved[Snapshots Reconstituted from CAS workspace_blobs]:::event
-    EvtStateRestored[Workspace State & Chat Head Restored]:::event
+    EvtStateRestored[Workspace State Restored & Active Branch Switched]:::event
     PolResume[Whenever Restored -> Emit system-checkpoint-restore & Resume Sync]:::policy
 
     User --> CmdRestore

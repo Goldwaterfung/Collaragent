@@ -30,7 +30,7 @@ flowchart TB
 
     subgraph UtilityProcess ["Node.js Utility Process (Dynamic :apiPort)"]
         RESTServer["Express Storage API"]
-        StorageEngine["Single-File SQLite V4 Engine"]
+        StorageEngine["Single-File SQLite V7 CAS & True DAG Engine"]
     end
 
     subgraph External ["External Services"]
@@ -232,7 +232,7 @@ Restores the complete project state, instance snapshots, and chat history to a d
   }
   ```
 - **Behavioral Guarantees**:
-  1. **Dual-Path Chat Restore**: If `bundle.chat.messageId === '__start__'` or matches `INITIAL_CHECKPOINT_LABEL`, the entire thread history is wiped via `clearChatSession(threadId)`. For conversational turns, messages after `messageId` are truncated via `truncateChatSession(threadId, messageId, blockIndex)`.
+  1. **Non-Destructive True DAG Chat Branch Switching**: Checkpoint restore does not destroy or truncate historical messages. Instead, `setActiveBranch(threadId, activeMessageId, activeCheckpointId)` pivots the active pointer of the thread (`active_message_id = bundle.chat.messageId`, `active_checkpoint_id = bundle.id`, or `NULL` for initial start). When rendering the chat timeline, the storage engine executes a recursive Common Table Expression (CTE) traversing from `active_message_id` upward along `parent_message_id`. All messages across alternate branches and abandoned exploratory paths remain permanently preserved in SQLite.
   2. **Fail-Closed CAS Snapshot Hydration**: Target instance snapshots are resolved from CAS `workspace_blobs` via `blob_hash`. If snapshot data cannot be resolved or is null, the restore operation aborts immediately and throws `StorageError(StorageErrorCode.STORAGE_CHECKPOINT_NOT_FOUND)`, ensuring live instances are never overwritten with empty state.
   3. **DAG Lineage & LangGraph Head Synchronization**: Updates `LANGGRAPH_RESTORE_HEADS` and registers `AgentCheckpointRegistry.setPendingBranch()` and `setEffectiveBundleId()` so subsequent agent turns correctly branch in the DAG tree.
   4. **WebSocket OCC Sequence & Proposal Realignment**: Emits a `system-checkpoint-restore` protocol update to the WebSocket server, resetting `commandSequences.set(instanceId, seq)` to the restore point's cursor and purging any pending proposals in `proposals[instanceId]`. Also emits `chat:restored` and `chat:sessionsUpdated`.
@@ -278,12 +278,12 @@ The WebSocket server provides bidirectional synchronization between UI clients (
 
 All WebSocket endpoints are served over the dynamically bound `${wsPort}` resolved during workspace initialization (`ws://127.0.0.1:${wsPort}`).
 
-| Route                    | Purpose                        | Message Types Handled                                                                                  |
-| ------------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `/ws/canvas/:instanceId` | Realtime Graph Canvas Sync     | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes` |
-| `/ws/editor/:instanceId` | Realtime Document Editor Sync  | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes` |
-| `/ws/editor-content`     | Legacy Single-Doc Route        | Same as editor route                                                                                   |
-| `/ws/instances`          | Live Instance Registry Watcher | `hello`, `watchInstances`, `instancesSync`                                                             |
+| Route                    | Purpose                        | Message Types Handled                                                                                                        |
+| ------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `/ws/canvas/:instanceId` | Realtime Graph Canvas Sync     | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes`, `flush`, `flush-ack` |
+| `/ws/editor/:instanceId` | Realtime Document Editor Sync  | `join`, `sync-request`, `sync-command`, `sync-ack`, `sync-changes`, `accept-changes`, `reject-changes`, `flush`, `flush-ack` |
+| `/ws/editor-content`     | Legacy Single-Doc Route        | Same as editor route                                                                                                         |
+| `/ws/instances`          | Live Instance Registry Watcher | `hello`, `watchInstances`, `instancesSync`                                                                                   |
 
 ### 3.2 Protocol Sequence Flow
 
@@ -373,6 +373,14 @@ sequenceDiagram
     "threadId": "chat-thread-101"
   }
   ```
+- **`flush`**: Dispatches a transactional read barrier request. The WebSocket server awaits completion of active and coalesced writes via `SerializedDrainQueue` for the specified `instanceId` (or all instances if omitted) and responds with `flush-ack`.
+  ```json
+  {
+    "type": "flush",
+    "instanceId": "doc-uuid-1",
+    "flushId": "c4d5e6f7-a8b9-4c0d-1e2f-3a4b5c6d7e8f"
+  }
+  ```
 
 #### 2. Server-to-Client Messages
 
@@ -396,6 +404,13 @@ sequenceDiagram
     "instanceId": "doc-uuid-1",
     "threadId": "chat-thread-101",
     "commands": [ ... ]
+  }
+  ```
+- **`flush-ack`**: Transactional read barrier acknowledgment confirming all in-flight persistence writes have settled to SQLite disk.
+  ```json
+  {
+    "type": "flush-ack",
+    "flushId": "c4d5e6f7-a8b9-4c0d-1e2f-3a4b5c6d7e8f"
   }
   ```
 - **`error`**: Deterministic protocol-level error notification (e.g. OCC conflict, instance not found).
@@ -523,6 +538,54 @@ Creates a brand new document instance with initial HTML content.
   })
   ```
 
+### 5.2 Graph Canvas & Spatial Modeling Tools
+
+#### 1. `manageGraph` (`writeGraph` / `writeMindMap`)
+
+Dispatches declarative graph specifications (`WriteGraphSpec`) or mindmap trees to update canvas nodes, directional relationships, and auto-layouts.
+
+- **Input Parameters (Zod)**:
+  ```typescript
+  export const ManageGraphInputSchema = z.object({
+    action: z
+      .enum(['writeGraph', 'writeMindMap', 'readGraph'])
+      .describe('Graph manipulation action.'),
+    instanceName: z.string().describe('Target canvas instance name or UUID.'),
+    spec: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Declarative GraphSpec containing nodes, links, and layout.'),
+    staged: z
+      .boolean()
+      .optional()
+      .describe('Whether to buffer as a staged proposal (default: false).')
+  })
+  ```
+
+### 5.3 LLM Wiki & Knowledge Ledger Tools (`src/collaragent/tools/wiki`)
+
+CollarAgent provides a specialized tool suite for grounded claims, relational triple ledgers, and semantic validation:
+
+| Tool Function      | Description                                                                                                                                                       | Read Barrier Option                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `loadLedger`       | Retrieves the active relational knowledge ledger triples `(source, predicate, target, claimId)` and entity nodes.                                                 | Supports `flushBeforeRead: true` to guarantee fresh read-after-write state. |
+| `compileGraph`     | Compiles wiki document blocks and claims into knowledge graph card nodes and directional edges.                                                                   | Resolves blocks via `BlockIdPlugin` persistent UUIDs.                       |
+| `lintWorkspace`    | Executes L1 structural integrity audit (`L1StructuralLinter`) for broken anchors and unreferenced claims, and L2 contradiction audits (`L2ContradictionAuditor`). | Supports `flushBeforeAudit: true` to flush pending mutations before audit.  |
+| `ingestSource`     | Ingests external source research into grounded document paragraphs with assigned persistent block IDs.                                                            | Commits blocks to Lexical AST.                                              |
+| `queryAndFileBack` | Queries relational triples and grounded claims, returning structured evidence citations for agent reasoning.                                                      | Supports `flushBeforeRead: true`.                                           |
+
+#### Transactional Read Barrier Contract (`WikiAdapterReadOptions`)
+
+```typescript
+export interface WikiAdapterReadOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+  flushBeforeRead?: boolean
+}
+```
+
+When `flushBeforeRead: true` is passed (or enabled by default in `LiveWikiWorkspaceAdapter`), the adapter executes `await flush(instanceId)` before reading payloads, dispatching `{ type: 'flush', instanceId, flushId }` to the WebSocket server to await disk settlement of in-flight writes.
+
 ---
 
 ## 6. Error Code Taxonomy & Diagnostic Mapping
@@ -534,9 +597,17 @@ CollarAgent enforces a centralized, typed error code taxonomy across all subsyst
 | **Workspace** | `WORKSPACE_` | `WORKSPACE_INSTANCE_NOT_FOUND`     | Document or canvas does not exist. Call `listWorkspaceItems` to verify. |
 |               |              | `WORKSPACE_BLOCK_IDENTITY_MISSING` | Block payload is corrupted. Save/normalize document.                    |
 |               |              | `WORKSPACE_PAYLOAD_INVALID`        | Payload does not match document or canvas schema.                       |
+|               |              | `WORKSPACE_STALE_BASE_VERSION`     | OCC sequence mismatch. Re-fetch current snapshot and retry.             |
 | **System**    | `SYS_`       | `SYS_STORAGE_IO_ERROR`             | Disk read/write failure in storage daemon.                              |
 |               |              | `SYS_UTILITY_PROCESS_CRASHED`      | Storage background process crashed; respawn required.                   |
 | **Agent**     | `AGENT_`     | `AGENT_RECURSION_LIMIT_EXCEEDED`   | Subagent loop exceeded max step count (200).                            |
 |               |              | `AGENT_TOOL_CALL_SCHEMA_ERROR`     | LLM generated invalid tool arguments. Retried with feedback.            |
 | **Sync**      | `SYNC_`      | `SYNC_HANDSHAKE_TIMEOUT`           | WebSocket handshake failed to complete.                                 |
 |               |              | `SYNC_COMMAND_VERSION_MISMATCH`    | Sequence version mismatch. Client re-requests snapshot.                 |
+|               |              | `SYNC_DRAIN_ABORTED`               | Persistence drain or barrier aborted via cancellation token.            |
+|               |              | `SYNC_DRAIN_PERSIST_FAILED`        | Single-flight disk persistence exhausted retry attempts.                |
+|               |              | `SYNC_DRAIN_BARRIER_TIMEOUT`       | Barrier resolution exceeded configured timeout deadline.                |
+|               |              | `SYNC_DRAIN_QUEUE_DISPOSED`        | Drain queue was disposed during active persistence.                     |
+|               |              | `SYNC_DRAIN_PAYLOAD_INVALID`       | Payload failed schema validation prior to write.                        |
+|               |              | `SYNC_DRAIN_WORKER_FAULTED`        | Drain worker entered unrecoverable fault state.                         |
+| **Storage**   | `STORAGE_`   | `STORAGE_CHECKPOINT_NOT_FOUND`     | CAS snapshot blob unresolvable during restore. Fail-closed safeguard.   |

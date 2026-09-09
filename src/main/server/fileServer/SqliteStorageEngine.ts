@@ -76,6 +76,8 @@ interface ChatSessionRow {
   readonly title: string
   readonly created_at: number
   readonly updated_at: number
+  readonly active_message_id?: string | null
+  readonly active_checkpoint_id?: string | null
 }
 
 interface ChatMessageRow {
@@ -89,6 +91,9 @@ interface ChatMessageRow {
   readonly usage_json: string | null
   readonly metadata_json: string
   readonly timestamp: number
+  readonly parent_message_id?: string | null
+  readonly checkpoint_id?: string | null
+  readonly branch_id?: string | null
   readonly rowid?: number
 }
 
@@ -153,7 +158,13 @@ function isChatSessionRow(value: unknown): value is ChatSessionRow {
     typeof row.project_id === 'string' &&
     typeof row.title === 'string' &&
     typeof row.created_at === 'number' &&
-    typeof row.updated_at === 'number'
+    typeof row.updated_at === 'number' &&
+    (row.active_message_id === undefined ||
+      row.active_message_id === null ||
+      typeof row.active_message_id === 'string') &&
+    (row.active_checkpoint_id === undefined ||
+      row.active_checkpoint_id === null ||
+      typeof row.active_checkpoint_id === 'string')
   )
 }
 
@@ -170,7 +181,14 @@ function isChatMessageRow(value: unknown): value is ChatMessageRow {
     typeof row.actions_json === 'string' &&
     (row.usage_json === null || typeof row.usage_json === 'string') &&
     typeof row.metadata_json === 'string' &&
-    typeof row.timestamp === 'number'
+    typeof row.timestamp === 'number' &&
+    (row.parent_message_id === undefined ||
+      row.parent_message_id === null ||
+      typeof row.parent_message_id === 'string') &&
+    (row.checkpoint_id === undefined ||
+      row.checkpoint_id === null ||
+      typeof row.checkpoint_id === 'string') &&
+    (row.branch_id === undefined || row.branch_id === null || typeof row.branch_id === 'string')
   )
 }
 
@@ -300,15 +318,16 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
   private stmtGetChatSessionsByProject!: Statement
   private stmtGetChatSessionById!: Statement
   private stmtCreateChatSession!: Statement
-  private stmtUpdateChatSessionUpdatedAt!: Statement
   private stmtDeleteChatSession!: Statement
+  private stmtSetActiveBranch!: Statement
+  private stmtClearChatSessionActive!: Statement
 
   // Prepared Statements: Chat Messages
   private stmtGetChatMessages!: Statement
-  private stmtGetChatMessagesWithLimit!: Statement
   private stmtGetChatMessageById!: Statement
+  private stmtGetActiveChatMessagesByBranch!: Statement
+  private stmtGetMessageChildren!: Statement
   private stmtAppendChatMessage!: Statement
-  private stmtDeleteChatMessagesAfter!: Statement
   private stmtUpdateChatMessageContentAndBlocks!: Statement
   private stmtDeleteAllChatMessagesInSession!: Statement
 
@@ -523,33 +542,39 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
 
     // Chat Sessions
     this.stmtGetChatSessionsAll = this.db.prepare(`
-      SELECT id, project_id, title, created_at, updated_at
+      SELECT id, project_id, title, created_at, updated_at, active_message_id, active_checkpoint_id
       FROM chat_sessions
       ORDER BY updated_at DESC, rowid DESC
     `)
 
     this.stmtGetChatSessionsByProject = this.db.prepare(`
-      SELECT id, project_id, title, created_at, updated_at
+      SELECT id, project_id, title, created_at, updated_at, active_message_id, active_checkpoint_id
       FROM chat_sessions
       WHERE project_id = ?
       ORDER BY updated_at DESC, rowid DESC
     `)
 
     this.stmtGetChatSessionById = this.db.prepare(`
-      SELECT id, project_id, title, created_at, updated_at
+      SELECT id, project_id, title, created_at, updated_at, active_message_id, active_checkpoint_id
       FROM chat_sessions
       WHERE id = ?
       LIMIT 1
     `)
 
     this.stmtCreateChatSession = this.db.prepare(`
-      INSERT INTO chat_sessions (id, project_id, title, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO chat_sessions (id, project_id, title, created_at, updated_at, active_message_id, active_checkpoint_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
 
-    this.stmtUpdateChatSessionUpdatedAt = this.db.prepare(`
+    this.stmtSetActiveBranch = this.db.prepare(`
       UPDATE chat_sessions
-      SET updated_at = ?
+      SET active_message_id = ?, active_checkpoint_id = ?, updated_at = ?
+      WHERE id = ?
+    `)
+
+    this.stmtClearChatSessionActive = this.db.prepare(`
+      UPDATE chat_sessions
+      SET active_message_id = NULL, active_checkpoint_id = NULL, updated_at = ?
       WHERE id = ?
     `)
 
@@ -560,36 +585,51 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
 
     // Chat Messages
     this.stmtGetChatMessages = this.db.prepare(`
-      SELECT id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp
+      SELECT id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, parent_message_id, checkpoint_id, branch_id
       FROM chat_messages
       WHERE session_id = ?
       ORDER BY timestamp ASC, rowid ASC
     `)
 
-    this.stmtGetChatMessagesWithLimit = this.db.prepare(`
-      SELECT id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp
-      FROM chat_messages
-      WHERE session_id = ? AND timestamp < ?
-      ORDER BY timestamp DESC, rowid DESC
-      LIMIT ?
-    `)
-
     this.stmtGetChatMessageById = this.db.prepare(`
-      SELECT id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, rowid
+      SELECT id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, parent_message_id, checkpoint_id, branch_id, rowid
       FROM chat_messages
       WHERE session_id = ? AND id = ?
       LIMIT 1
     `)
 
-    this.stmtAppendChatMessage = this.db.prepare(`
-      INSERT INTO chat_messages
-      (id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    this.stmtGetActiveChatMessagesByBranch = this.db.prepare(`
+      WITH RECURSIVE branch_path(
+        id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, parent_message_id, checkpoint_id, branch_id, depth
+      ) AS (
+        SELECT 
+          id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, parent_message_id, checkpoint_id, branch_id, 0 AS depth
+        FROM chat_messages
+        WHERE session_id = ? AND id = ?
+        
+        UNION ALL
+        
+        SELECT 
+          m.id, m.session_id, m.role, m.content, m.tool_calls_json, m.blocks_json, m.actions_json, m.usage_json, m.metadata_json, m.timestamp, m.parent_message_id, m.checkpoint_id, m.branch_id, p.depth + 1
+        FROM chat_messages m
+        JOIN branch_path p ON m.id = p.parent_message_id
+      )
+      SELECT id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, parent_message_id, checkpoint_id, branch_id
+      FROM branch_path
+      ORDER BY depth DESC
     `)
 
-    this.stmtDeleteChatMessagesAfter = this.db.prepare(`
-      DELETE FROM chat_messages
-      WHERE session_id = ? AND (timestamp > ? OR (timestamp = ? AND rowid > ?))
+    this.stmtGetMessageChildren = this.db.prepare(`
+      SELECT id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, parent_message_id, checkpoint_id, branch_id
+      FROM chat_messages
+      WHERE session_id = ? AND parent_message_id = ?
+      ORDER BY timestamp ASC, rowid ASC
+    `)
+
+    this.stmtAppendChatMessage = this.db.prepare(`
+      INSERT INTO chat_messages
+      (id, session_id, role, content, tool_calls_json, blocks_json, actions_json, usage_json, metadata_json, timestamp, parent_message_id, checkpoint_id, branch_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     this.stmtUpdateChatMessageContentAndBlocks = this.db.prepare(`
@@ -700,6 +740,11 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     if (this.db && this.db.isOpen) {
       try {
         this.db.walCheckpoint(WAL_CHECKPOINT_MODES.PASSIVE)
+        const freelistCount = this.db.getFreelistCount()
+        if (freelistCount > 0) {
+          const pagesToVacuum = Math.min(freelistCount, this.config.incrementalVacuumPages)
+          this.db.incrementalVacuum(pagesToVacuum)
+        }
       } catch {
         // Non-blocking passive checkpoint: suppress background error
       }
@@ -707,11 +752,27 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     this.setupIdleTimer()
   }
 
+  public incrementalVacuum(pages?: number): void {
+    if (this.db && this.db.isOpen) {
+      this.db.incrementalVacuum(pages ?? this.config.incrementalVacuumPages)
+    }
+  }
+
+  public getFreelistCount(): number {
+    if (this.db && this.db.isOpen) {
+      return this.db.getFreelistCount()
+    }
+    return 0
+  }
+
   public async prepareClose(): Promise<void> {
     this.clearIdleTimer()
 
     if (this.db && this.db.isOpen) {
-      this.db.incrementalVacuum(this.config.incrementalVacuumPages)
+      const freelistCount = this.db.getFreelistCount()
+      if (freelistCount > 0) {
+        this.db.incrementalVacuum(this.config.vacuumAllPages)
+      }
       this.db.walCheckpoint(WAL_CHECKPOINT_MODES.TRUNCATE)
       this.db.close()
     }
@@ -844,7 +905,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
         summaries.push({
           id: raw.id,
           projectId: raw.project_id,
-          type: raw.type === 'canvas' ? 'canvas' : 'document',
+          type: raw.type === 'canvas' ? 'canvas' : raw.type === 'ledger' ? 'ledger' : 'document',
           name: raw.name,
           metadata: parseJsonObject(raw.metadata_json),
           createdAt: raw.created_at,
@@ -868,7 +929,9 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
         const defaultPayload =
           meta.type === 'canvas' || meta.type === 'graph-canvas'
             ? createDefaultCanvasPayload()
-            : createDefaultDocumentPayload()
+            : meta.type === 'ledger'
+              ? { edges: [] }
+              : createDefaultDocumentPayload()
         const buffer = toBuffer(defaultPayload)
         const nowIso = new Date().toISOString()
         this.stmtUpdateInstanceContent.run(buffer, nowIso, instanceId)
@@ -879,7 +942,10 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     return toBuffer(raw.content_msgpack)
   }
 
-  public createInstance(type: 'document' | 'canvas', data: CreateInstanceInput): InstanceSummary {
+  public createInstance(
+    type: 'document' | 'canvas' | 'ledger',
+    data: CreateInstanceInput
+  ): InstanceSummary {
     this.getDb()
     const id = data.id ?? crypto.randomUUID()
     const nowIso = new Date().toISOString()
@@ -892,7 +958,9 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
         ? rawPayload
         : type === 'canvas'
           ? createDefaultCanvasPayload()
-          : createDefaultDocumentPayload()
+          : type === 'ledger'
+            ? { edges: [] }
+            : createDefaultDocumentPayload()
 
     const contentBuffer = toBuffer(finalPayload)
 
@@ -1245,7 +1313,9 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
           projectId: raw.project_id,
           title: raw.title,
           createdAt: raw.created_at,
-          updatedAt: raw.updated_at
+          updatedAt: raw.updated_at,
+          activeMessageId: raw.active_message_id ?? null,
+          activeCheckpointId: raw.active_checkpoint_id ?? null
         })
       }
     }
@@ -1258,25 +1328,20 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     options?: { limit?: number; before?: string | number }
   ): ChatMessageRecord[] {
     this.getDb()
-    const limit = options?.limit ?? SQLITE_ENGINE_CONFIG.defaultPaginationLimit
+    const sessionRaw = this.stmtGetChatSessionById.get(sessionId)
+    const activeMessageId =
+      sessionRaw && isChatSessionRow(sessionRaw) ? sessionRaw.active_message_id : null
 
-    let beforeTimestamp = Number.MAX_SAFE_INTEGER
-    if (options?.before !== undefined) {
-      const num = Number(options.before)
-      if (!isNaN(num) && num > 0) {
-        beforeTimestamp = num
-      } else if (typeof options.before === 'string') {
-        const targetMsg = this.stmtGetChatMessageById.get(sessionId, options.before)
-        if (targetMsg && isChatMessageRow(targetMsg)) {
-          beforeTimestamp = targetMsg.timestamp
-        }
-      }
+    let messageRows: unknown[] = []
+
+    if (activeMessageId) {
+      // Option A: Active branch traversal via recursive CTE
+      messageRows = this.stmtGetActiveChatMessagesByBranch.all(sessionId, activeMessageId)
+    } else {
+      // Fallback for legacy/unlinked sessions without active_message_id
+      messageRows = this.stmtGetChatMessages.all(sessionId)
     }
 
-    const isPaginated = options?.limit !== undefined || options?.before !== undefined
-    const messageRows = isPaginated
-      ? this.stmtGetChatMessagesWithLimit.all(sessionId, beforeTimestamp, limit)
-      : this.stmtGetChatMessages.all(sessionId)
     const messages: ChatMessageRecord[] = []
 
     for (const raw of messageRows) {
@@ -1292,13 +1357,37 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
           actions: parseJsonArray(raw.actions_json),
           usage,
           metadata: parseJsonObject(raw.metadata_json),
-          timestamp: raw.timestamp
+          timestamp: raw.timestamp,
+          parentMessageId: raw.parent_message_id ?? null,
+          checkpointId: raw.checkpoint_id ?? null,
+          branchId: raw.branch_id ?? null
         })
       }
     }
 
-    // Return in chronological order
-    return isPaginated ? messages.reverse() : messages
+    // Return filtered / paginated subset if limit or before is provided
+    if (options?.limit !== undefined || options?.before !== undefined) {
+      let filtered = messages
+      if (options.before !== undefined) {
+        let beforeTimestamp = Number.MAX_SAFE_INTEGER
+        const num = Number(options.before)
+        if (!isNaN(num) && num > 0) {
+          beforeTimestamp = num
+        } else if (typeof options.before === 'string') {
+          const target = messages.find((m) => m.id === options.before)
+          if (target) {
+            beforeTimestamp = target.timestamp
+          }
+        }
+        filtered = filtered.filter((m) => m.timestamp < beforeTimestamp)
+      }
+      if (options.limit !== undefined && options.limit > 0) {
+        filtered = filtered.slice(-options.limit)
+      }
+      return filtered
+    }
+
+    return messages
   }
 
   public getChatSession(sessionId: string): ChatSessionDetail | null {
@@ -1319,6 +1408,8 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       title: sessionRaw.title,
       createdAt: sessionRaw.created_at,
       updatedAt: sessionRaw.updated_at,
+      activeMessageId: sessionRaw.active_message_id ?? null,
+      activeCheckpointId: sessionRaw.active_checkpoint_id ?? null,
       messages
     }
   }
@@ -1330,15 +1421,10 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       return false
     }
 
-    const targetRowId = typeof target.rowid === 'number' ? target.rowid : 0
-
     db.immediateTransaction(() => {
-      this.stmtDeleteChatMessagesAfter.run(
-        sessionId,
-        target.timestamp,
-        target.timestamp,
-        targetRowId
-      )
+      // In Option A (True DAG History), we no longer destructively delete rows from chat_messages.
+      // Instead, we switch the active branch pointer to the target message.
+      this.stmtSetActiveBranch.run(messageId, target.checkpoint_id ?? null, Date.now(), sessionId)
 
       if (typeof blockIndex === 'number' && blockIndex >= 0) {
         const blocks = parseJsonArray(target.blocks_json)
@@ -1359,21 +1445,63 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
           messageId
         )
       }
-
-      const now = Date.now()
-      this.stmtUpdateChatSessionUpdatedAt.run(now, sessionId)
     })
 
     this.setupIdleTimer()
     return true
   }
 
+  public setActiveBranch(sessionId: string, messageId: string, checkpointId?: string): boolean {
+    const db = this.getDb()
+    const target = this.stmtGetChatMessageById.get(sessionId, messageId)
+    if (!target || !isChatMessageRow(target)) {
+      return false
+    }
+
+    const resolvedCheckpointId = checkpointId ?? target.checkpoint_id ?? null
+    const now = Date.now()
+
+    db.immediateTransaction(() => {
+      this.stmtSetActiveBranch.run(messageId, resolvedCheckpointId, now, sessionId)
+    })
+
+    this.setupIdleTimer()
+    return true
+  }
+
+  public getMessageChildren(sessionId: string, messageId: string): ChatMessageRecord[] {
+    this.getDb()
+    const rows = this.stmtGetMessageChildren.all(sessionId, messageId)
+    const messages: ChatMessageRecord[] = []
+    for (const raw of rows) {
+      if (isChatMessageRow(raw)) {
+        const usage = raw.usage_json ? parseJsonObject(raw.usage_json) : undefined
+        messages.push({
+          id: raw.id,
+          sessionId: raw.session_id,
+          role: raw.role as 'user' | 'assistant' | 'system',
+          content: raw.content,
+          toolCalls: parseJsonArray(raw.tool_calls_json),
+          blocks: parseJsonArray(raw.blocks_json),
+          actions: parseJsonArray(raw.actions_json),
+          usage,
+          metadata: parseJsonObject(raw.metadata_json),
+          timestamp: raw.timestamp,
+          parentMessageId: raw.parent_message_id ?? null,
+          checkpointId: raw.checkpoint_id ?? null,
+          branchId: raw.branch_id ?? null
+        })
+      }
+    }
+    return messages
+  }
+
   public clearChatSession(sessionId: string): void {
     const db = this.getDb()
     db.immediateTransaction(() => {
-      this.stmtDeleteAllChatMessagesInSession.run(sessionId)
       const now = Date.now()
-      this.stmtUpdateChatSessionUpdatedAt.run(now, sessionId)
+      this.stmtClearChatSessionActive.run(now, sessionId)
+      this.stmtDeleteAllChatMessagesInSession.run(sessionId)
     })
     this.setupIdleTimer()
   }
@@ -1383,7 +1511,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     const id = crypto.randomUUID()
     const now = Date.now()
 
-    this.stmtCreateChatSession.run(id, projectId, title, now, now)
+    this.stmtCreateChatSession.run(id, projectId, title, now, now, null, null)
     this.setupIdleTimer()
 
     return {
@@ -1391,7 +1519,9 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       projectId,
       title,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      activeMessageId: null,
+      activeCheckpointId: null
     }
   }
 
@@ -1403,7 +1533,7 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       const targetProject = projects[0] ?? this.createProject('Default Project')
       const now = Date.now()
       const title = `Chat ${sessionId.slice(0, 8)}`
-      this.stmtCreateChatSession.run(sessionId, targetProject.id, title, now, now)
+      this.stmtCreateChatSession.run(sessionId, targetProject.id, title, now, now, null, null)
       sessionRaw = this.stmtGetChatSessionById.get(sessionId)
     }
 
@@ -1414,6 +1544,16 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     const actionsJson = JSON.stringify(message.actions ?? [])
     const usageJson = message.usage !== undefined ? JSON.stringify(message.usage) : null
     const metadataJson = JSON.stringify(message.metadata ?? {})
+
+    let parentMessageId: string | null = null
+    if (message.parentMessageId !== undefined) {
+      parentMessageId = message.parentMessageId
+    } else if (sessionRaw && isChatSessionRow(sessionRaw) && sessionRaw.active_message_id) {
+      parentMessageId = sessionRaw.active_message_id
+    }
+
+    const checkpointId = message.checkpointId ?? null
+    const branchId = message.branchId ?? null
 
     db.immediateTransaction(() => {
       this.stmtAppendChatMessage.run(
@@ -1426,9 +1566,12 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
         actionsJson,
         usageJson,
         metadataJson,
-        timestamp
+        timestamp,
+        parentMessageId,
+        checkpointId,
+        branchId
       )
-      this.stmtUpdateChatSessionUpdatedAt.run(timestamp, sessionId)
+      this.stmtSetActiveBranch.run(messageId, checkpointId, timestamp, sessionId)
     })
 
     this.setupIdleTimer()
@@ -1438,6 +1581,9 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
     const db = this.getDb()
 
     db.immediateTransaction(() => {
+      // Clear active message pointer first to satisfy foreign keys
+      this.stmtClearChatSessionActive.run(Date.now(), sessionId)
+
       // Cascade thread lineage in LangGraph tables where thread_id matches sessionId
       this.stmtDeleteThreadWrites.run(sessionId)
       this.stmtDeleteThreadBlobs.run(sessionId)
@@ -1452,7 +1598,32 @@ export class SqliteStorageEngine extends EventEmitter implements IStorageEngine 
       void this.checkpointStore.deleteThread(sessionId).catch(() => {})
     }
 
+    this.pruneSessionCheckpointBundles(sessionId)
+
+    if (this.db && this.db.isOpen) {
+      try {
+        const freelistCount = this.db.getFreelistCount()
+        if (freelistCount > 0) {
+          const pagesToVacuum = Math.min(freelistCount, this.config.incrementalVacuumPages)
+          this.db.incrementalVacuum(pagesToVacuum)
+        }
+      } catch {
+        // Non-blocking incremental vacuum error
+      }
+    }
+
     this.setupIdleTimer()
+  }
+
+  private pruneSessionCheckpointBundles(sessionId: string): void {
+    const projects = this.getProjects()
+    for (const project of projects) {
+      const bundles = this.getProjectBundles(project.id)
+      const filtered = bundles.filter((b) => b.sessionId !== sessionId && b.threadId !== sessionId)
+      if (filtered.length !== bundles.length) {
+        this.saveProjectBundles(filtered, project.id)
+      }
+    }
   }
 
   // ============================================================================

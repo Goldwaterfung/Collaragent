@@ -55,12 +55,12 @@ The Stage 5 Orchestrator coordinates four specialized subagent workers:
 
 ### Worker Roles & Delegation Contracts
 
-| Subagent Worker Role       | Responsibility                                                                                                     | Input Contract                                            | Expected Deliverable                                                |
-| :------------------------- | :----------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------- | :------------------------------------------------------------------ |
-| **`manuscript-assembler`** | Synthesizes prior stage deliverables (Literature Matrix, Hypotheses, Protocol) into an academic narrative.         | Stage 1–4 documents and active canvas state.              | Section drafts for Introduction, Method, and Planned Discussion.    |
-| **`apa-formatter`**        | Formats Title Page, drafts 150–250 word Abstract with keywords, and enforces APA Level 1–3 headings.               | Assembled manuscript sections.                            | Standardized APA 7 document structure with verified word count.     |
-| **`table-ast-specialist`** | Compiles Planned Results Table 1 adhering to the strict 3-horizontal-rule APA table specification.                 | Operational variables and predicted statistical outcomes. | Valid HTML `<table>` with zero vertical lines and rectangular rows. |
-| **`manuscript-stager`**    | Conducts 1-to-1 citation parity audit and writes the full manuscript into `Manuscript_Draft` via `createDocument`. | Formatted text, Table 1, and reference list.              | Persisted Lexical document AST ready for human gate signoff.        |
+| Subagent Worker Role       | Responsibility                                                                                                       | Input Contract                                            | Expected Deliverable                                                |
+| :------------------------- | :------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------- | :------------------------------------------------------------------ |
+| **`manuscript-assembler`** | Synthesizes prior stage deliverables into an academic narrative and files thematic syntheses via `queryAndFileBack`. | Stage 1–4 documents and active canvas state.              | Section drafts and filed-back wiki synthesis documents.             |
+| **`apa-formatter`**        | Formats Title Page, drafts 150–250 word Abstract with keywords, and enforces APA Level 1–3 headings.                 | Assembled manuscript sections.                            | Standardized APA 7 document structure with verified word count.     |
+| **`table-ast-specialist`** | Compiles Planned Results Table 1 adhering to the strict 3-horizontal-rule APA table specification.                   | Operational variables and predicted statistical outcomes. | Valid HTML `<table>` with zero vertical lines and rectangular rows. |
+| **`manuscript-stager`**    | Conducts 1-to-1 citation parity audit and writes the full manuscript into `Manuscript_Draft` via `createDocument`.   | Formatted text, Table 1, and reference list.              | Persisted Lexical document AST ready for human gate signoff.        |
 
 ---
 
@@ -107,9 +107,15 @@ Construct Planned Results Table 1 adhering to strict APA 7 styling rules:
 2. Ensure every reference has complete bibliographic metadata (authors, year, title, source, DOI).
 3. Confirm zero orphan references (citations in text without references, or references without in-text citations).
 
-### Step 6: Persisting Manuscript Document (`manuscript-stager`)
+### Step 6: Persisting Manuscript & Filing Back Thematic Syntheses (`manuscript-stager`)
 
-Invoke `createDocument` to commit `Manuscript_Draft` into the workspace.
+1. **Commit Manuscript Draft (`createDocument`)**:
+   - Invoke `createDocument` to commit `Manuscript_Draft` into the workspace.
+2. **File Back Thematic Syntheses (`queryAndFileBack`)**:
+   - For major cross-cutting theoretical integrations, comparative reviews, or discussion sections, file back persistent wiki synthesis pages via `queryAndFileBack`.
+   - Cites referenced concepts and empirical sources with relational predicate `derived_from` or `supports`, creating reciprocal links in the Relational Ledger, updating `index.md`, and logging to `log.md`.
+3. **Workspace Structural Audit (`lintWorkspace`)**:
+   - Execute `lintWorkspace` to guarantee zero unresolved symbols, valid claim badge anchors, and no degraded or circular relations.
 
 ### Step 7: Human Gate Verification
 
@@ -155,6 +161,27 @@ Present the complete manuscript to the human researcher for scholarly tone revie
 }
 ```
 
+### 4. File Back Cross-Cutting Thematic Synthesis (`queryAndFileBack`)
+
+```json
+{
+  "query": "Synthesize findings on multimodal visual anchoring and latency thresholds",
+  "targetEntity": "Synthesis-VisualAudioBinding",
+  "synthesisTitle": "Multimodal Visual Anchoring & Latency Tolerance",
+  "synthesisContent": "# Theoretical Integration\n\nCongruent visual references relax acoustic latency constraints via optimal Bayesian integration.",
+  "referencedEntities": ["sources/sweller1994", "Cognitive-Load-Theory"],
+  "relationToReferences": "derived_from",
+  "justification": "Synthesizes empirical findings from sweller1994 with core Cognitive Load mechanics.",
+  "summary": "Cross-cutting synthesis on visual anchoring and latency thresholds."
+}
+```
+
+### 5. Workspace Structural Audit (`lintWorkspace`)
+
+```json
+{}
+```
+
 ---
 
 ## Error Handling & Invariant Rules
@@ -180,4 +207,6 @@ Before declaring Stage 5 complete and handing off to Stage 6 (`research-stage-6-
 - [ ] Planned Results Table 1 adheres to the 3-horizontal-border APA rule with zero vertical lines.
 - [ ] All in-text citations match the References list with complete DOIs.
 - [ ] `Manuscript_Draft` document is persisted in the workspace.
+- [ ] Cross-cutting thematic syntheses have been filed back to the wiki using `queryAndFileBack`.
+- [ ] Workspace structural integrity verified with `lintWorkspace`.
 - [ ] The human researcher has verified and approved the complete manuscript draft.

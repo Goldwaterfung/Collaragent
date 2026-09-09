@@ -79,32 +79,46 @@ export class ChatCheckpointSaver extends BaseCheckpointSaver {
       if (!data) return undefined
 
       // Hydrate the channel values from the raw serialized data
-      const channel_values: Record<string, any> = {}
-      if (data.checkpoint && data.checkpoint.channel_values) {
-        for (const [key, value] of Object.entries(data.checkpoint.channel_values)) {
-          // value is { type, blob, serialized }
-          const rawValue = value as any
-          if (rawValue && rawValue.type) {
+      const channel_values: Record<string, unknown> = {}
+      if (
+        data &&
+        typeof data === 'object' &&
+        'checkpoint' in data &&
+        data.checkpoint &&
+        typeof data.checkpoint === 'object' &&
+        'channel_values' in data.checkpoint &&
+        data.checkpoint.channel_values &&
+        typeof data.checkpoint.channel_values === 'object'
+      ) {
+        const rawValues = data.checkpoint.channel_values as Record<string, unknown>
+        for (const [key, value] of Object.entries(rawValues)) {
+          if (
+            value !== null &&
+            typeof value === 'object' &&
+            'type' in value &&
+            typeof (value as { type: unknown }).type === 'string'
+          ) {
+            const typedVal = value as { type: string; blob: unknown; serialized?: boolean }
             try {
-              if (rawValue.serialized) {
+              if (typedVal.serialized) {
                 // Convert blob back to Uint8Array if it was stringified
                 const blobData =
-                  typeof rawValue.blob === 'string'
-                    ? new TextEncoder().encode(rawValue.blob)
-                    : rawValue.blob
-                channel_values[key] = await this.serde.loadsTyped(rawValue.type, blobData)
+                  typeof typedVal.blob === 'string'
+                    ? new TextEncoder().encode(typedVal.blob)
+                    : (typedVal.blob as Uint8Array)
+                channel_values[key] = await this.serde.loadsTyped(typedVal.type, blobData)
               } else {
-                channel_values[key] = rawValue.blob
+                channel_values[key] = typedVal.blob
               }
             } catch (e) {
               console.error(`[ChatCheckpointSaver] Failed to hydrate channel ${key}:`, e)
               throw e
             }
           } else {
-            channel_values[key] = rawValue
+            channel_values[key] = value
           }
         }
-        data.checkpoint.channel_values = channel_values
+        ;(data.checkpoint as Record<string, unknown>).channel_values = channel_values
       }
 
       return data as CheckpointTuple
@@ -121,7 +135,7 @@ export class ChatCheckpointSaver extends BaseCheckpointSaver {
     options?: {
       before?: { configurable?: { checkpoint_id?: string } }
       limit?: number
-      filter?: Record<string, any>
+      filter?: Record<string, unknown>
     }
   ): AsyncGenerator<CheckpointTuple> {
     const thread_id = config.configurable?.thread_id
@@ -161,17 +175,20 @@ export class ChatCheckpointSaver extends BaseCheckpointSaver {
   ): Promise<{
     configurable: { thread_id: string; checkpoint_ns: string; checkpoint_id: string }
   }> {
-    // Serialize blobs locally to preserve types (e.g. ToolMessage) before sending over JSON
-    const blobs: Record<string, any> = {}
-    if (checkpoint.channel_values && newVersions) {
-      for (const [channel] of Object.entries(newVersions)) {
-        const val = checkpoint.channel_values[channel]
+    // Serialize all channel values locally to preserve types (e.g. ToolMessage) before sending over JSON
+    const serializedChannelValues: Record<
+      string,
+      { type: string; blob: string; serialized: boolean }
+    > = {}
+
+    if (checkpoint.channel_values) {
+      for (const [channel, val] of Object.entries(checkpoint.channel_values)) {
         if (val !== undefined) {
           try {
             const [type, serializedValue] = await this.serde.dumpsTyped(val)
             // Convert Uint8Array to string for JSON transport
             const blobData = new TextDecoder().decode(serializedValue)
-            blobs[channel] = {
+            serializedChannelValues[channel] = {
               type,
               blob: blobData,
               serialized: true
@@ -186,10 +203,13 @@ export class ChatCheckpointSaver extends BaseCheckpointSaver {
 
     const payload = {
       config,
-      checkpoint, // send full checkpoint, but server might use blobs priority
+      checkpoint: {
+        ...checkpoint,
+        channel_values: serializedChannelValues
+      },
       metadata,
       newVersions,
-      blobs
+      blobs: serializedChannelValues
     }
 
     const response = await fetch(`${this.baseUrl}/checkpoints`, {

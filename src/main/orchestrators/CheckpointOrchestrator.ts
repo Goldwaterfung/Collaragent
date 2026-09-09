@@ -27,16 +27,8 @@ export type CheckpointRestoreOptions = {
   projectId?: string
 }
 
-export type CheckpointBundleSummary = {
-  id: string
-  createdAt: string
-  label?: string
-  reason?: 'auto' | 'restore'
-  threadId: string
-  sessionId: string
-  chatMessageId?: string
-  projectId?: string
-}
+import type { CheckpointBundleSummary } from '../../shared/ipc/checkpoints/types'
+export type { CheckpointBundleSummary }
 
 export interface CheckpointOrchestrator {
   createCheckpointBundle(options: CheckpointCaptureOptions): Promise<CheckpointBundleSummary>
@@ -100,7 +92,8 @@ export class CheckpointOrchestratorImpl implements CheckpointOrchestrator {
       threadId: persisted.threadId,
       sessionId: persisted.sessionId,
       chatMessageId: persisted.chat?.messageId,
-      projectId: persisted.projectId
+      projectId: persisted.projectId,
+      parentBundleId: persisted.parentBundleId
     }
   }
 
@@ -168,7 +161,8 @@ export class CheckpointOrchestratorImpl implements CheckpointOrchestrator {
       threadId: bundle.threadId,
       sessionId: bundle.sessionId,
       chatMessageId: bundle.chat?.messageId,
-      projectId: bundle.projectId
+      projectId: bundle.projectId,
+      parentBundleId: bundle.parentBundleId
     }))
   }
 

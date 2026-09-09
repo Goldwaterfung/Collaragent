@@ -1,10 +1,11 @@
 import { ConfigManager } from '../config/ConfigManager'
 import { PersistenceManager } from '../storage/Persistence'
 import { AgentConfigLoader } from './config'
-import { createDeepAgent, DeepAgent } from '../../collaragent/index'
+import { createDeepAgent, DeepAgent, createSkillsMiddleware } from '../../collaragent/index'
 import { createModel, createTools, createSubAgents } from './utils'
 import { toolRetryMiddleware } from 'langchain'
-import { FilesystemBackend, createSkillsMiddleware } from 'deepagents'
+import { FilesystemBackend } from 'deepagents'
+import { getBuiltinSkillsDir } from '../handlers/skills'
 import crypto from 'crypto'
 import path from 'node:path'
 import os from 'node:os'
@@ -107,21 +108,27 @@ export class AgentFactory {
 
     // 5. Create Deep Agent using factory function
     const skillsConfig = config.middleware?.skills
-    const skillsSource =
-      skillsConfig?.enabled && skillsConfig.source
-        ? skillsConfig.source.startsWith('~')
-          ? path.join(os.homedir(), skillsConfig.source.slice(1))
-          : skillsConfig.source
-        : null
+    const skillsSource = skillsConfig?.source
+      ? skillsConfig.source.startsWith('~')
+        ? path.join(os.homedir(), skillsConfig.source.slice(1))
+        : skillsConfig.source
+      : null
+
+    const builtinSkillsDir = getBuiltinSkillsDir()
+    const sources = [
+      ...(builtinSkillsDir ? [builtinSkillsDir] : []),
+      ...(skillsSource ? [skillsSource] : [])
+    ]
 
     const fsBackend = new FilesystemBackend({ rootDir: '/' }) // rootDir '/' for absolute paths
 
-    const skillsMiddleware = skillsSource
-      ? createSkillsMiddleware({
-          backend: fsBackend,
-          sources: [skillsSource]
-        })
-      : null
+    const skillsMiddleware =
+      sources.length > 0
+        ? createSkillsMiddleware({
+            backend: fsBackend,
+            sources
+          })
+        : null
 
     const agent: any = createDeepAgent({
       model: cached.model,

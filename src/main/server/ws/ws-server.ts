@@ -4,12 +4,33 @@ import { z } from 'zod'
 
 import { DocumentInstancePayloadSchema, EMPTY_DOCUMENT } from '@workspace/persistence/editorContent'
 import { Command } from '@shared/commands'
-import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '@shared/constants'
+import {
+  DEFAULT_NODE_WIDTH,
+  DEFAULT_NODE_HEIGHT,
+  DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID,
+  DEFAULT_RELATIONAL_LEDGER_NAME,
+  DEFAULT_RELATIONAL_LEDGER_TYPE
+} from '@shared/constants'
 import {
   canonicalizeGraphCanvasDTO,
   isCanonicalNodeId
 } from '@workspace/persistence/graphCanvasDto'
-import { CommandPreviousState, InstanceType } from '@shared/checkpoints/types'
+import { RelationalLedgerStore } from '@workspace/wiki/RelationalLedgerStore'
+import { syncDocumentClaimsToLedger } from '@workspace/wiki/LinkExtractor'
+import type {
+  CommandPreviousState,
+  InstanceType,
+  InstanceLogPosition
+} from '@shared/checkpoints/types'
+import {
+  SerializedDrainQueue,
+  type InstancePersistenceAdapter,
+  type FlushOptions,
+  type ISerializedDrainQueue,
+  isGraphCanvasPayload,
+  isDocumentBlocksPayload
+} from '@workspace/sync/drain'
+import type { GraphCanvasDTO } from '@shared/schemas/instances'
 
 type DocumentPayload = z.infer<typeof DocumentInstancePayloadSchema>
 
@@ -34,7 +55,7 @@ type InternalInstanceCreatedMessage = {
     type: string
     projectId?: string
     updatedAt?: string
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   }
 }
 type InternalInstanceUpdatedMessage = {
@@ -45,7 +66,7 @@ type InternalInstanceUpdatedMessage = {
     type: string
     projectId?: string
     updatedAt?: string
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   }
 }
 type InternalInstanceDeletedMessage = { type: 'internal:instanceDeleted'; instanceId: string }
@@ -84,6 +105,11 @@ type SyncChangesMessage = {
   threadId?: string
   commands: Command[]
 }
+type FlushMessage = {
+  type: 'flush'
+  instanceId?: string
+  flushId: string
+}
 
 type Message =
   | HelloMessage
@@ -102,18 +128,22 @@ type Message =
   | AcceptChangesMessage
   | RejectChangesMessage
   | SyncChangesMessage
+  | FlushMessage
   | SystemPersistenceStatusMessage
   | SystemReloadMessage
 
 export type WsServerHandle = {
   port: number
   close: () => Promise<void>
-  flush: (instanceId?: string) => Promise<void>
+  flush: (instanceId?: string, options?: FlushOptions) => Promise<void>
+  ledgerStore: RelationalLedgerStore
+  drainQueue?: ISerializedDrainQueue
 }
 
 export type StartWsServerOptions = {
   port?: number
   apiBaseUrl?: string
+  ledgerStore?: RelationalLedgerStore
 }
 
 const MessageSchema: z.ZodType<Message> = z.discriminatedUnion('type', [
@@ -142,15 +172,15 @@ const MessageSchema: z.ZodType<Message> = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('watchInstances'), clientId: z.string().optional() }),
   z.object({ type: z.literal('instancesUpdated'), clientId: z.string().optional() }),
-  z.object({ type: z.literal('internal:instanceCreated'), instance: z.any() }),
-  z.object({ type: z.literal('internal:instanceUpdated'), instance: z.any() }),
+  z.object({ type: z.literal('internal:instanceCreated'), instance: z.unknown() }),
+  z.object({ type: z.literal('internal:instanceUpdated'), instance: z.unknown() }),
   z.object({ type: z.literal('internal:instanceDeleted'), instanceId: z.string() }),
   // Canvas bits
   z.object({ type: z.literal('join'), clientId: z.string() }),
   z.object({ type: z.literal('sync-request'), version: z.number().optional() }),
   z.object({
     type: z.literal('sync-command'),
-    command: z.any(),
+    command: z.unknown(),
     clientId: z.string(),
     version: z.number(),
     threadId: z.string().optional(),
@@ -168,6 +198,11 @@ const MessageSchema: z.ZodType<Message> = z.discriminatedUnion('type', [
     clientId: z.string(),
     threadId: z.string().optional()
   }),
+  z.object({
+    type: z.literal('flush'),
+    instanceId: z.string().optional(),
+    flushId: z.string()
+  }),
   z.object({ type: z.literal('system:reload') }),
   z.object({ type: z.literal('system:persistence_status'), status: z.enum(['saving', 'saved']) })
 ]) as z.ZodType<Message>
@@ -180,6 +215,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     `http://localhost:${process.env.API_PORT || 0}/api/instances`
   const apiRoot = apiBaseUrl.replace(/\/api\/instances\/?$/, '/api')
 
+  const ledgerStore = options.ledgerStore ?? new RelationalLedgerStore()
   const docs = new Map<string, DocumentPayload>()
   const channels = new Map<string, Set<WebSocket>>()
   const pendingHydrations = new Map<string, Promise<DocumentPayload | null>>()
@@ -190,13 +226,15 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
       name: string
       type: string
       updatedAt: string
-      metadata?: Record<string, any>
+      metadata?: Record<string, unknown>
     }
   >()
   const instanceWatchers = new Set<WebSocket>()
   const commandSequences = new Map<string, number>()
   const proposals = new Map<string, Map<string, Command[]>>()
   const proposalBaselines = new Map<string, DocumentPayload>()
+
+  let drainQueue!: SerializedDrainQueue
 
   function currentIsoTimestamp() {
     return new Date().toISOString()
@@ -218,23 +256,27 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     instanceId: string
     instanceType: InstanceType
     projectId: string
-    cursor: { seq: number; at?: string }
-    command: unknown
+    cursor: InstanceLogPosition
+    command?: unknown
     source?: 'ui' | 'agent' | 'sync'
     previousState?: CommandPreviousState
   }) {
     try {
-      await requestJson(`${apiRoot}/checkpoints/workspace/logs`, {
+      await requestJson(`${apiRoot}/workspace/commands`, {
         method: 'POST',
         body: JSON.stringify(entry)
       })
-    } catch (err) {
-      console.warn('[ws] Failed to append workspace log entry:', err)
+    } catch (err: unknown) {
+      console.warn(`[ws] Failed to log command for instance ${entry.instanceId}:`, err)
     }
   }
 
   async function sendInstancesSync(targets: Iterable<WebSocket> = instanceWatchers) {
-    if (!targets || typeof (targets as any)[Symbol.iterator] !== 'function') return
+    if (
+      !targets ||
+      typeof (targets as { [Symbol.iterator]?: unknown })[Symbol.iterator] !== 'function'
+    )
+      return
 
     const payload = JSON.stringify({
       type: 'instancesSync',
@@ -264,7 +306,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
       name: string
       type: string
       updatedAt?: string
-      metadata?: Record<string, any>
+      metadata?: Record<string, unknown>
       notify?: boolean
     }
   ) {
@@ -316,7 +358,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
       name: string
       type: string
       updatedAt?: string
-      metadata?: Record<string, any>
+      metadata?: Record<string, unknown>
     }>
   > {
     // API returns { instances: Array<Summary> } where Summary has id, name, type, projectId, updatedAt
@@ -327,7 +369,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         name: string
         type: string
         updatedAt?: string
-        metadata?: Record<string, any>
+        metadata?: Record<string, unknown>
       }>
     }>(apiBaseUrl)
     const items = Array.isArray(result.instances) ? result.instances : []
@@ -348,7 +390,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     type: string
     payload: DocumentPayload
     updatedAt?: string
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   } | null> {
     if (!instanceId) return null
     try {
@@ -360,7 +402,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         projectId?: string
         content: DocumentPayload
         updatedAt?: string
-        metadata?: Record<string, any>
+        metadata?: Record<string, unknown>
       }>(`${apiBaseUrl}/${encodeURIComponent(instanceId)}`)
 
       return {
@@ -398,33 +440,14 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     })
   }
 
-  function isDocumentBlocksPayload(
-    payload: unknown
-  ): payload is Extract<DocumentPayload, { blocks: unknown[] }> {
-    return Boolean(payload && typeof payload === 'object' && 'blocks' in payload)
-  }
-
-  function isGraphCanvasPayload(
-    payload: unknown
-  ): payload is Extract<DocumentPayload, { type: 'graph-canvas' }> {
-    return Boolean(
-      payload &&
-      typeof payload === 'object' &&
-      'type' in payload &&
-      (payload as { type?: unknown }).type === 'graph-canvas'
-    )
-  }
-
   function createDocumentBlockId(): string {
     const randomUuid = globalThis.crypto?.randomUUID?.()
     if (randomUuid) return randomUuid
     return `block-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   }
 
-  function normalizeGraphPayload(
-    payload: Extract<DocumentPayload, { type: 'graph-canvas' }>
-  ): DocumentPayload {
-    return canonicalizeGraphCanvasDTO(payload) as DocumentPayload
+  function normalizeGraphPayload(payload: GraphCanvasDTO): GraphCanvasDTO {
+    return canonicalizeGraphCanvasDTO(payload)
   }
 
   function normalizeDocumentPayload(
@@ -432,8 +455,8 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
   ): DocumentPayload {
     return {
       ...payload,
-      blocks: payload.blocks.map((block: any) =>
-        block?.id ? block : { ...block, id: createDocumentBlockId() }
+      blocks: payload.blocks.map((block) =>
+        block.id ? block : { ...block, id: createDocumentBlockId() }
       )
     }
   }
@@ -472,7 +495,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           return 'graph:add_relationship endpoints must reference canonical UUID nodeIds'
         }
         if (currentPayload && isGraphCanvasPayload(currentPayload)) {
-          const nodes = (currentPayload as any).graph?.nodes ?? {}
+          const nodes = currentPayload.graph?.nodes ?? {}
           if (!nodes[command.relationship.from.nodeId] || !nodes[command.relationship.to.nodeId]) {
             return 'graph:add_relationship endpoints must reference existing nodes'
           }
@@ -485,6 +508,10 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
       case 'editor:replace_document':
       case 'editor:update_block':
       case 'editor:update_comments':
+      case 'ledger:upsert_edge':
+      case 'ledger:remove_edge':
+      case 'ledger:degrade_edge':
+      case 'ledger:restore_edge':
         return null
     }
   }
@@ -496,16 +523,61 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
   ): { payload: DocumentPayload; previousState?: CommandPreviousState } {
     let previousState: CommandPreviousState | undefined = undefined
 
+    if (command.type.startsWith('ledger:')) {
+      switch (command.type) {
+        case 'ledger:upsert_edge': {
+          const res = ledgerStore.upsertEdge(command.entry)
+          previousState = {
+            existed: !res.created,
+            entry: res.previous
+          }
+          break
+        }
+        case 'ledger:remove_edge': {
+          const removed = ledgerStore.removeEdge(command.edgeId)
+          if (removed) {
+            previousState = { removedEntry: removed }
+          }
+          break
+        }
+        case 'ledger:degrade_edge': {
+          const existing = ledgerStore.getAllEdges().find((e) => e.id === command.edgeId)
+          if (existing?.anchor) {
+            previousState = { previousAnchor: existing.anchor }
+          }
+          ledgerStore.degradeEdge(command.edgeId, command.reason)
+          break
+        }
+        case 'ledger:restore_edge': {
+          const existing = ledgerStore.getAllEdges().find((e) => e.id === command.edgeId)
+          if (existing) {
+            previousState = { previousStatus: existing.status }
+          }
+          ledgerStore.restoreEdge(command.edgeId, command.anchor)
+          break
+        }
+      }
+      drainQueue.enqueue({
+        type: 'trigger:ledger_mutation',
+        instanceId: DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID,
+        timestamp: Date.now(),
+        triggerId: crypto.randomUUID(),
+        serializedEdges: ledgerStore.getAllEdges()
+      })
+      return { payload, previousState }
+    }
+
     if (instanceType === 'canvas' && !isGraphCanvasPayload(payload)) {
-      const dto = payload as any
-      dto.schemaVersion = 1
-      dto.type = 'graph-canvas'
-      dto.graph = dto.graph || { nodes: {}, relationships: {} }
-      dto.layout = dto.layout || { layoutByNodeId: {} }
+      payload = {
+        schemaVersion: 1,
+        type: 'graph-canvas',
+        graph: { nodes: {}, relationships: {} },
+        layout: { layoutByNodeId: {} }
+      }
     }
 
     if (isGraphCanvasPayload(payload)) {
-      const dto: any = payload
+      const dto = payload
       switch (command.type) {
         case 'graph:add_node':
           dto.graph.nodes[command.nodeId] = {
@@ -524,9 +596,9 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         case 'graph:update_node':
           const existingNode = dto.graph.nodes[command.nodeId]
           if (existingNode) {
-            const capturedNode: Record<string, any> = { id: command.nodeId }
+            const capturedNode: Record<string, unknown> = { id: command.nodeId }
             for (const key of Object.keys(command.changes)) {
-              capturedNode[key] = (existingNode as any)[key]
+              capturedNode[key] = (existingNode as unknown as Record<string, unknown>)[key]
             }
             previousState = { node: capturedNode }
             Object.assign(existingNode, command.changes)
@@ -548,16 +620,17 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         case 'graph:remove_node':
           const nodeToDel = dto.graph.nodes[command.nodeId]
           const layoutToDel = dto.layout.layoutByNodeId[command.nodeId]
-          const removedRelationships: any[] = []
+          const removedRelationships: unknown[] = []
           if (nodeToDel) {
-            for (const [relId, rel] of Object.entries(dto.graph.relationships || {}) as Array<
-              [string, any]
-            >) {
+            for (const [relId, rel] of Object.entries(dto.graph.relationships || {})) {
               if (rel?.from?.nodeId === command.nodeId || rel?.to?.nodeId === command.nodeId) {
                 removedRelationships.push({ ...rel })
                 delete dto.graph.relationships[relId]
+                ledgerStore.removeEdge(relId)
               }
             }
+            ledgerStore.removeEdgesByQuery({ sourceEntityId: nodeToDel.name })
+            ledgerStore.removeEdgesByQuery({ targetEntityId: nodeToDel.name })
             previousState = {
               removedEntity: { ...nodeToDel },
               layout: layoutToDel ? { ...layoutToDel } : undefined,
@@ -574,20 +647,31 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         case 'graph:update_relationship':
           if (dto.graph.relationships[command.relationshipId]) {
             const rel = dto.graph.relationships[command.relationshipId]
-            previousState = { removedRelationships: [{ ...rel }] as any[] }
+            previousState = { removedRelationships: [{ ...rel }] }
             rel.attrs = { ...(rel.attrs || {}), ...command.changes }
           }
           break
         case 'graph:remove_relationship':
           const relToDel = dto.graph.relationships[command.relationshipId]
           if (relToDel) {
-            previousState = { removedRelationships: [{ ...relToDel }] as any[] }
+            previousState = { removedRelationships: [{ ...relToDel }] }
+            const fromNode = dto.graph.nodes[relToDel.from.nodeId]
+            const toNode = dto.graph.nodes[relToDel.to.nodeId]
+            ledgerStore.removeEdge(command.relationshipId)
+            if (fromNode && toNode) {
+              ledgerStore.removeEdgesByQuery({
+                sourceEntityId: fromNode.name,
+                targetEntityId: toNode.name
+              })
+            }
+          } else {
+            ledgerStore.removeEdge(command.relationshipId)
           }
           delete dto.graph.relationships[command.relationshipId]
           break
       }
     } else if (isDocumentBlocksPayload(payload)) {
-      const doc = payload as any
+      const doc = payload
       switch (command.type) {
         case 'editor:replace_document':
           previousState = { documentPayload: { ...payload } }
@@ -597,11 +681,11 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           doc.comments = command.comments
           break
         case 'editor:update_block':
-          const block = doc.blocks.find((b: any) => b.id === command.blockId)
+          const block = doc.blocks.find((b) => b.id === command.blockId)
           if (block) {
-            const capturedBlock: Record<string, any> = { id: command.blockId }
+            const capturedBlock: Record<string, unknown> = { id: command.blockId }
             for (const key of Object.keys(command.changes)) {
-              capturedBlock[key] = (block as any)[key]
+              capturedBlock[key] = (block as unknown as Record<string, unknown>)[key]
             }
             previousState = { block: capturedBlock }
             Object.assign(block, command.changes)
@@ -611,7 +695,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           doc.blocks.splice(command.index, 0, command.block)
           break
         case 'editor:remove_block':
-          const idx = doc.blocks.findIndex((b: any) => b.id === command.blockId)
+          const idx = doc.blocks.findIndex((b) => b.id === command.blockId)
           if (idx !== -1) {
             previousState = {
               block: { ...doc.blocks[idx] },
@@ -626,83 +710,133 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     return { payload, previousState }
   }
 
-  const saveDebounceTimers = new Map<string, NodeJS.Timeout>()
-
-  async function flush(instanceId?: string): Promise<void> {
-    if (instanceId) {
-      const timer = saveDebounceTimers.get(instanceId)
-      if (timer) {
-        clearTimeout(timer)
-        saveDebounceTimers.delete(instanceId)
-      }
-      const doc = docs.get(instanceId)
-      const meta = instanceMetadata.get(instanceId)
-      const isCanvas = meta?.type === 'canvas' || (doc && isGraphCanvasPayload(doc))
-      if (!isCanvas && proposals.has(instanceId)) return
-      if (doc && meta) {
-        await saveDocumentInstanceToApi({
-          instanceId,
-          projectId: meta.projectId,
-          payload: doc
-        })
-      }
-      return
-    }
-
-    const flushPromises: Promise<void>[] = []
-    for (const [id, timer] of saveDebounceTimers.entries()) {
-      clearTimeout(timer)
-      saveDebounceTimers.delete(id)
-      const doc = docs.get(id)
-      const meta = instanceMetadata.get(id)
-      const isCanvas = meta?.type === 'canvas' || (doc && isGraphCanvasPayload(doc))
-      if (!isCanvas && proposals.has(id)) continue
-      if (doc && meta) {
-        flushPromises.push(
-          saveDocumentInstanceToApi({
-            instanceId: id,
-            projectId: meta.projectId,
-            payload: doc
-          })
-        )
-      }
-    }
-    await Promise.all(flushPromises)
-  }
-
-  async function debouncedSave(
-    instanceId: string,
-    projectId: string | undefined,
-    payload: DocumentPayload
-  ) {
-    // Clear existing timer if any
-    if (saveDebounceTimers.has(instanceId)) {
-      clearTimeout(saveDebounceTimers.get(instanceId)!)
-    }
-
-    // Set new timer for 500ms
-    const timer = setTimeout(async () => {
+  async function persistLedgerToApi(): Promise<void> {
+    const edges = ledgerStore.getAllEdges()
+    try {
+      const existingMeta = instanceMetadata.get(DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID)
+      await saveDocumentInstanceToApi({
+        instanceId: DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID,
+        projectId: existingMeta?.projectId,
+        payload: { edges } as unknown as DocumentPayload
+      })
+    } catch (patchErr: unknown) {
       try {
-        if (!instanceMetadata.has(instanceId)) {
-          console.log(`[ws] Skipping debounced update for deleted instance ${instanceId}`)
-          saveDebounceTimers.delete(instanceId)
-          return
+        let defaultProjectId: string | undefined
+        for (const meta of instanceMetadata.values()) {
+          if (meta.projectId) {
+            defaultProjectId = meta.projectId
+            break
+          }
+        }
+        if (!defaultProjectId) {
+          try {
+            const listRes = await requestJson<{ projects?: Array<{ id: string }> }>(
+              `${apiRoot}/projects`
+            )
+            defaultProjectId = listRes.projects?.[0]?.id
+            if (!defaultProjectId) {
+              const createRes = await requestJson<{ id: string }>(`${apiRoot}/projects`, {
+                method: 'POST',
+                body: JSON.stringify({ name: 'Default Project' })
+              })
+              defaultProjectId = createRes.id
+            }
+          } catch (listErr: unknown) {
+            console.warn(
+              '[ws] Could not retrieve or create project from API to persist ledger:',
+              listErr
+            )
+          }
+        }
+        if (!defaultProjectId) {
+          defaultProjectId = 'default'
         }
 
-        console.log(`[ws] Persisting debounced update for ${instanceId}`)
-        await saveDocumentInstanceToApi({
-          instanceId,
-          projectId,
-          payload
+        await requestJson(apiBaseUrl, {
+          method: 'POST',
+          body: JSON.stringify({
+            id: DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID,
+            name: DEFAULT_RELATIONAL_LEDGER_NAME,
+            projectId: defaultProjectId,
+            type: DEFAULT_RELATIONAL_LEDGER_TYPE,
+            payload: { edges },
+            metadata: { isHidden: true, isSystem: true }
+          })
         })
-        console.log(`[ws] Persist success for ${instanceId}`)
-        saveDebounceTimers.delete(instanceId)
-      } catch (err) {
-        console.error(`[ws] Failed to persist document ${instanceId}:`, err)
-      }
-    }, 500)
 
-    saveDebounceTimers.set(instanceId, timer)
+        registerInstance(DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID, {
+          projectId: defaultProjectId,
+          name: DEFAULT_RELATIONAL_LEDGER_NAME,
+          type: DEFAULT_RELATIONAL_LEDGER_TYPE,
+          metadata: { isHidden: true, isSystem: true },
+          updatedAt: currentIsoTimestamp()
+        })
+      } catch (postErr: unknown) {
+        console.error('[ws] Failed to persist relational ledger:', postErr)
+        throw postErr
+      }
+    }
+  }
+
+  async function loadLedgerFromApi(): Promise<void> {
+    try {
+      const record = await getDocumentInstanceFromApi(DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID)
+      if (record?.payload) {
+        const data = record.payload as unknown as { edges?: unknown }
+        if (Array.isArray(data.edges)) {
+          ledgerStore.loadFromSnapshot(data.edges)
+        }
+      }
+    } catch (err: unknown) {
+      console.warn('[ws] Failed to load relational ledger from API:', err)
+    }
+  }
+
+  const persistenceAdapter: InstancePersistenceAdapter = {
+    saveInstance: async ({ instanceId, projectId, payload }) => {
+      if (instanceId === DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID) {
+        await persistLedgerToApi()
+        return { status: 'saved' }
+      }
+      const meta = instanceMetadata.get(instanceId)
+      const isCanvas = meta?.type === 'canvas' || isGraphCanvasPayload(payload)
+      if (!isCanvas && proposals.has(instanceId)) {
+        return { status: 'ok' }
+      }
+      await saveDocumentInstanceToApi({
+        instanceId,
+        projectId: projectId ?? meta?.projectId,
+        payload: payload as DocumentPayload
+      })
+      if (
+        meta?.type !== 'canvas' &&
+        meta?.type !== DEFAULT_RELATIONAL_LEDGER_TYPE &&
+        isDocumentBlocksPayload(payload)
+      ) {
+        syncDocumentClaimsToLedger(meta?.name || instanceId, payload, ledgerStore)
+      }
+      return { status: 'saved' }
+    }
+  }
+
+  drainQueue = new SerializedDrainQueue({ persistenceAdapter })
+
+  let unsubscribeLedger: (() => void) | null = null
+  let initialLedgerHydration: Promise<void> | null = null
+
+  async function flush(instanceId?: string, options?: FlushOptions): Promise<void> {
+    if (initialLedgerHydration) {
+      await initialLedgerHydration
+    }
+    if (instanceId === DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID) {
+      await drainQueue.flush(undefined, options)
+      await drainQueue.flush(DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID, options)
+      return
+    }
+    await drainQueue.flush(instanceId, options)
+    if (!instanceId) {
+      await drainQueue.flush(DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID, options)
+    }
   }
 
   async function hydrateDocument(instanceId: string) {
@@ -737,7 +871,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
 
           // Phase 2: Initialize sequence counter from log tail on hydration
           try {
-            const logs = await requestJson<{ entries?: any[] }>(
+            const logs = await requestJson<{ entries?: Array<{ cursor?: { seq?: number } }> }>(
               `${apiRoot}/checkpoints/workspace/logs/${encodeURIComponent(instanceId)}`
             )
             const entries = logs.entries || []
@@ -775,7 +909,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     const currentVersion = commandSequences.get(instanceId) ?? 0
     const message = (() => {
       if (isGraphCanvasPayload(payload)) {
-        const dto = normalizeGraphPayload(payload) as any
+        const dto = normalizeGraphPayload(payload)
         return JSON.stringify({
           type: 'sync-snapshot',
           graph: dto.graph,
@@ -786,7 +920,10 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         })
       }
 
-      const doc = (payload || {}) as any
+      const doc = (payload && typeof payload === 'object' ? payload : {}) as {
+        blocks?: unknown[]
+        comments?: unknown
+      }
       return JSON.stringify({
         type: 'sync-snapshot',
         blocks: Array.isArray(doc.blocks) ? doc.blocks : [],
@@ -824,6 +961,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     const pathname = url.pathname
 
     if (
+      pathname === '/' ||
       pathname === '/ws/editor-content' ||
       pathname === '/ws/instances' ||
       pathname.startsWith('/ws/canvas/') ||
@@ -876,6 +1014,20 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
         }
 
         const m = parsed.data
+        if (m.type === 'flush') {
+          try {
+            await flush(m.instanceId)
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'flush-ack', flushId: m.flushId }))
+            }
+          } catch (err: unknown) {
+            if (ws.readyState === WebSocket.OPEN) {
+              const errorMessage = err instanceof Error ? err.message : String(err)
+              ws.send(JSON.stringify({ type: 'error', message: errorMessage, flushId: m.flushId }))
+            }
+          }
+          return
+        }
         if (m.type === 'hello') {
           clientId = m.clientId || clientId || Math.random().toString(36).slice(2)
           ws.send(JSON.stringify({ type: 'hello', clientId }))
@@ -936,7 +1088,10 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           return
         }
         if (m.type === 'update') {
-          // We only skip self-broadcasts but we WANT to process updates
+          // Skip self-persistence confirmations so we don't overwrite newer in-memory mutations
+          if (m.clientId === 'system-persistence-confirm') {
+            return
+          }
 
           if (!instanceMetadata.has(m.instanceId)) {
             await hydrateDocument(m.instanceId)
@@ -949,6 +1104,18 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
               : (m.payload as DocumentPayload)
           docs.set(m.instanceId, normalizedPayload)
 
+          if (
+            m.instanceId === DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID &&
+            m.payload &&
+            typeof m.payload === 'object' &&
+            'edges' in m.payload
+          ) {
+            const data = m.payload as { edges?: unknown }
+            if (Array.isArray(data.edges)) {
+              ledgerStore.loadFromSnapshot(data.edges)
+            }
+          }
+
           const existingMeta = instanceMetadata.get(m.instanceId)
           if (existingMeta) {
             registerInstance(m.instanceId, {
@@ -956,10 +1123,6 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
               updatedAt: currentIsoTimestamp(),
               notify: true
             })
-          }
-
-          if (m.clientId === 'system-persistence-confirm') {
-            return
           }
 
           if (m.clientId === 'system-checkpoint-restore') {
@@ -978,8 +1141,25 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             from: m.clientId || null
           })
 
-          // Use debounced save for regular updates too
-          await debouncedSave(m.instanceId, existingMeta?.projectId, normalizedPayload)
+          drainQueue.enqueue(
+            isGraphCanvasPayload(normalizedPayload)
+              ? {
+                  type: 'trigger:canvas_snapshot',
+                  instanceId: m.instanceId,
+                  projectId: existingMeta?.projectId,
+                  payload: normalizedPayload,
+                  timestamp: Date.now(),
+                  triggerId: crypto.randomUUID()
+                }
+              : {
+                  type: 'trigger:document_edit',
+                  instanceId: m.instanceId,
+                  projectId: existingMeta?.projectId,
+                  payload: normalizedPayload,
+                  timestamp: Date.now(),
+                  triggerId: crypto.randomUUID()
+                }
+          )
           return
         }
         if (m.type === 'watchInstances') {
@@ -997,6 +1177,9 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
                 notify: false
               })
             }
+            if (records.some((r) => r.instanceId === DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID)) {
+              await loadLedgerFromApi()
+            }
           } catch (err) {
             console.error('[ws] Failed to list document instances for watcher:', err)
           }
@@ -1010,11 +1193,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           pendingHydrations.delete(m.instanceId)
           proposals.delete(m.instanceId)
 
-          const timer = saveDebounceTimers.get(m.instanceId)
-          if (timer) {
-            clearTimeout(timer)
-            saveDebounceTimers.delete(m.instanceId)
-          }
+          drainQueue.evict(m.instanceId)
 
           broadcastSync(m.instanceId, EMPTY_DOCUMENT as DocumentPayload, {
             from: clientId || null
@@ -1046,6 +1225,9 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
                 metadata: record.metadata,
                 notify: false
               })
+            }
+            if (records.some((r) => r.instanceId === DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID)) {
+              await loadLedgerFromApi()
             }
             sendInstancesSync()
           } catch (err) {
@@ -1084,11 +1266,7 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             unregisterInstance(m.instanceId, { notify: false })
             docs.delete(m.instanceId)
 
-            const timer = saveDebounceTimers.get(m.instanceId)
-            if (timer) {
-              clearTimeout(timer)
-              saveDebounceTimers.delete(m.instanceId)
-            }
+            drainQueue.evict(m.instanceId)
 
             const payload = JSON.stringify({ type: 'instanceDeleted', instanceId: m.instanceId })
             for (const watcher of instanceWatchers) {
@@ -1137,15 +1315,12 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           const currentVersion = commandSequences.get(instanceId) ?? 0
 
           if (isGraphCanvasPayload(doc)) {
-            const canonicalDoc = normalizeGraphPayload(doc) as Extract<
-              DocumentPayload,
-              { type: 'graph-canvas' }
-            >
+            const canonicalDoc = normalizeGraphPayload(doc)
             ws.send(
               JSON.stringify({
                 type: 'sync-snapshot',
-                graph: (canonicalDoc as any).graph,
-                layout: (canonicalDoc as any).layout.layoutByNodeId,
+                graph: canonicalDoc.graph,
+                layout: canonicalDoc.layout.layoutByNodeId,
                 version: currentVersion
               })
             )
@@ -1308,10 +1483,17 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             })
           }
 
-          // 3. Debounce the Database Persistence (IO efficiency)
+          // 3. Serialized Queue Persistence (IO efficiency)
           // Staged commands are proposals and must NOT be written to SQLite disk
           if (!isStaged) {
-            await debouncedSave(instanceId, meta?.projectId, updatedDoc)
+            drainQueue.enqueue({
+              type: 'trigger:canvas_snapshot',
+              instanceId,
+              projectId: meta?.projectId,
+              payload: updatedDoc as GraphCanvasDTO,
+              timestamp: Date.now(),
+              triggerId: crypto.randomUUID()
+            })
           }
 
           return
@@ -1351,7 +1533,25 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
           const meta = instanceMetadata.get(instanceId)
           const currentDoc = docs.get(instanceId)
           if (currentDoc) {
-            await debouncedSave(instanceId, meta?.projectId, currentDoc)
+            drainQueue.enqueue(
+              isGraphCanvasPayload(currentDoc)
+                ? {
+                    type: 'trigger:canvas_snapshot',
+                    instanceId,
+                    projectId: meta?.projectId,
+                    payload: currentDoc,
+                    timestamp: Date.now(),
+                    triggerId: crypto.randomUUID()
+                  }
+                : {
+                    type: 'trigger:document_edit',
+                    instanceId,
+                    projectId: meta?.projectId,
+                    payload: currentDoc,
+                    timestamp: Date.now(),
+                    triggerId: crypto.randomUUID()
+                  }
+            )
           }
           return
         }
@@ -1426,6 +1626,8 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
             }
           }
 
+          if (!currentDoc) return
+
           docs.set(instanceId, currentDoc)
           if (threadId) {
             instanceProposals.delete(threadId)
@@ -1499,31 +1701,68 @@ export async function startWsServer(options: StartWsServerOptions = {}): Promise
     server.listen(port, () => resolve())
   })
 
+  // Hydrate ledger on startup if API is available
+  initialLedgerHydration = loadLedgerFromApi().catch((err: unknown) => {
+    console.warn('[ws] Initial ledger load skipped or failed:', err)
+  })
+  await initialLedgerHydration
+
+  // Subscribe to mutations after startup hydration has settled
+  unsubscribeLedger = ledgerStore.subscribe(() => {
+    drainQueue.enqueue({
+      type: 'trigger:ledger_mutation',
+      instanceId: DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID,
+      timestamp: Date.now(),
+      triggerId: crypto.randomUUID(),
+      serializedEdges: ledgerStore.getAllEdges()
+    })
+  })
+
   // Resolve the actual bound port (in case port 0 was used)
   try {
     const address = server.address()
-    // address can be string or AddressInfo; handle both
     if (address && typeof address === 'object' && 'port' in address) {
-      // @ts-ignore - node types
-      port = (address as any).port as number
+      port = (address as { port: number }).port
     }
-  } catch (err) {
-    // ignore and keep configured port
+  } catch (err: unknown) {
+    console.warn('[ws] Could not resolve server address port:', err)
   }
 
   console.log(`[ws] listening on ws://localhost:${port}/ws/editor-content`)
 
+  let isClosed = false
+
   return {
     port,
     flush,
+    ledgerStore,
+    drainQueue,
     close: async () => {
-      await flush()
+      if (isClosed) return
+      isClosed = true
+      unsubscribeLedger?.()
+      try {
+        await flush()
+      } catch (err: unknown) {
+        console.warn('[ws] Error during pre-close flush:', err)
+      }
+      await drainQueue.dispose()
       for (const client of wss.clients) {
         try {
-          client.close()
+          client.terminate()
         } catch {
           // ignore
         }
+      }
+      await new Promise<void>((resolve) => {
+        wss.close(() => resolve())
+      })
+      const httpServer = server as unknown as {
+        closeAllConnections?: () => void
+        close: (cb: () => void) => void
+      }
+      if (typeof httpServer.closeAllConnections === 'function') {
+        httpServer.closeAllConnections()
       }
       await new Promise<void>((resolve) => {
         server.close(() => resolve())

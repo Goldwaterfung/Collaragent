@@ -238,7 +238,7 @@ describe('StorageMigrationEngine - End-to-End Migration Pipeline (Task 4.3)', ()
   })
 
   describe('Legacy V2 Monolithic Archive Migration', () => {
-    it('normalizes legacy V2 cagent.json structure and migrates to V4 SQLite', async () => {
+    it('rejects legacy V2 cagent.json monolithic archive as deprecated and unsupported', async () => {
       const sourceZip = path.join(testDir, 'legacy-v2.cagent')
 
       const v2Monolithic = {
@@ -259,36 +259,6 @@ describe('StorageMigrationEngine - End-to-End Migration Pipeline (Task 4.3)', ()
             name: 'Legacy Card',
             content: { text: 'Migrated from V2' }
           }
-        },
-        chat: {
-          sessions: {
-            'sess-v2': {
-              id: 'sess-v2',
-              projectId: 'p-v2',
-              title: 'V2 Chat',
-              messages: [
-                { id: 'm-v2', role: 'user', content: 'V2 prompt', timestamp: 1690000002000 }
-              ]
-            }
-          }
-        },
-        persistence: {
-          checkpoints: {
-            'sess-v2': [
-              {
-                thread_id: 'sess-v2',
-                checkpoint_ns: '',
-                checkpoint_id: 'cp-v2-1',
-                checkpoint: { data: 'legacy' },
-                created_at: 1690000002500
-              }
-            ]
-          },
-          blobs: {},
-          writes: {},
-          restoreHeads: {
-            'sess-v2:': 'cp-v2-1'
-          }
         }
       }
 
@@ -296,21 +266,9 @@ describe('StorageMigrationEngine - End-to-End Migration Pipeline (Task 4.3)', ()
         'cagent.json': pack(v2Monolithic)
       })
 
-      const report = await engine.executeMigration(sourceZip)
-      expect(report.success).toBe(true)
-      expect(detectStorageFormat(sourceZip)).toBe('v4_sqlite')
-
-      const db = new SqliteDatabase(sourceZip)
-      const storageEngine = new SqliteStorageEngine(db)
-
-      const instances = storageEngine.getInstancesMeta()
-      expect(instances).toHaveLength(1)
-      expect(instances[0].name).toBe('Legacy Card')
-
-      const content = storageEngine.getInstanceContent('doc-v2')
-      expect(unpack(content as Buffer)).toEqual({ text: 'Migrated from V2' })
-
-      await storageEngine.close()
+      await expect(engine.executeMigration(sourceZip)).rejects.toThrowError(
+        'Legacy V2 monolithic archive format (cagent.json) is deprecated and unsupported'
+      )
     })
   })
 
@@ -519,6 +477,113 @@ describe('StorageMigrationEngine - End-to-End Migration Pipeline (Task 4.3)', ()
       expect(report.toVersion).toBe(4)
       expect(report.artifactsMigrated).toBe(0)
       expect(report.backupPath).toBe('')
+    })
+  })
+
+  describe('Legacy V3 Archive Relational Ledger Bootstrapping (Spec §7.8 & SC-10)', () => {
+    it('migrates a legacy V3 archive containing canvas nodes and relationships, automatically bootstrapping ledger-default with canvas_relational edges', async () => {
+      const sourceZip = path.join(testDir, 'legacy-v3-with-canvas.cagent')
+
+      const manifest = {
+        header: { magic: 'CAGENT', version: 3 },
+        projects: {
+          'proj-quantum': {
+            id: 'proj-quantum',
+            name: 'Quantum Computing Research',
+            metadata: {},
+            createdAt: 1700000000000,
+            updatedAt: 1700000001000
+          }
+        },
+        instances: {
+          'canvas-q1': {
+            id: 'canvas-q1',
+            projectId: 'proj-quantum',
+            type: 'canvas',
+            name: 'Circuit Graph',
+            metadata: {},
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z'
+          }
+        }
+      }
+
+      const canvasPayload = {
+        graph: {
+          nodes: {
+            n1: { id: 'n1', type: 'card', name: 'Qubit Superposition' },
+            n2: { id: 'n2', type: 'card', name: 'Quantum Entanglement' }
+          },
+          relationships: {
+            r1: {
+              id: '550e8400-e29b-41d4-a716-446655440000',
+              from: { nodeId: 'n1' },
+              to: { nodeId: 'n2' },
+              attrs: { label: 'supports' }
+            }
+          }
+        }
+      }
+
+      const state = {
+        chat: { sessions: {} }
+      }
+
+      // Pack into legacy V3 archive WITHOUT any ledger-default.json
+      await createZipArchive(sourceZip, {
+        'manifest.json': JSON.stringify(manifest),
+        'state.json': JSON.stringify(state),
+        'instances/canvas-q1/content.msgpack': pack(canvasPayload)
+      })
+
+      expect(detectStorageFormat(sourceZip)).toBe('legacy_zip')
+
+      const report = await engine.executeMigration(sourceZip)
+
+      expect(report.success).toBe(true)
+      expect(report.fromVersion).toBe(3)
+      expect(report.toVersion).toBe(4)
+      expect(detectStorageFormat(sourceZip)).toBe('v4_sqlite')
+
+      // Query database via SqliteStorageEngine
+      const db = new SqliteDatabase(sourceZip)
+      const storageEngine = new SqliteStorageEngine(db)
+
+      const instances = storageEngine.getInstancesMeta()
+      expect(instances).toHaveLength(2)
+
+      const canvasInstance = instances.find((i) => i.id === 'canvas-q1')
+      expect(canvasInstance).toBeDefined()
+      expect(canvasInstance?.type).toBe('canvas')
+
+      const ledgerInstance = instances.find((i) => i.id === 'ledger-default')
+      expect(ledgerInstance).toBeDefined()
+      expect(ledgerInstance?.type).toBe('ledger')
+      expect(ledgerInstance?.name).toBe('ledger-default')
+
+      // Inspect synthesized Relational Ledger payload
+      const ledgerContentBuffer = storageEngine.getInstanceContent('ledger-default')
+      expect(ledgerContentBuffer).not.toBeNull()
+      const ledgerPayload = unpack(ledgerContentBuffer as Buffer) as Array<{
+        id: string
+        sourceEntityId: string
+        targetEntityId: string
+        rel: string
+        provenance: string
+        status: string
+        meta: { author: string }
+      }>
+
+      expect(Array.isArray(ledgerPayload)).toBe(true)
+      expect(ledgerPayload).toHaveLength(1)
+      expect(ledgerPayload[0].sourceEntityId).toBe('Qubit Superposition')
+      expect(ledgerPayload[0].targetEntityId).toBe('Quantum Entanglement')
+      expect(ledgerPayload[0].rel).toBe('supports')
+      expect(ledgerPayload[0].provenance).toBe('canvas_relational')
+      expect(ledgerPayload[0].status).toBe('active')
+      expect(ledgerPayload[0].meta.author).toBe('user')
+
+      await storageEngine.close()
     })
   })
 })

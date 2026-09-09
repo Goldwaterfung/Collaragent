@@ -167,6 +167,10 @@ export const Edge: React.FC<EdgeProps> = ({
     })
   }
 
+  const isDashed = attrs?.provenance === 'canvas_relational' || attrs?.status === 'anchor_lost'
+  const anchorBlockId = typeof attrs?.anchorBlockId === 'string' ? attrs.anchorBlockId : undefined
+  const isAnchorLost = attrs?.status === 'anchor_lost'
+
   return (
     <g className="canvas-edge">
       <EdgePath
@@ -174,31 +178,60 @@ export const Edge: React.FC<EdgeProps> = ({
         markerEnd={isSelected ? 'url(#arrowhead-selected)' : 'url(#arrowhead)'}
         selected={isSelected}
         hovered={isHovered}
+        dashed={isDashed}
         onEdgeClick={handleEdgeClick}
         onEdgeMouseEnter={() => setIsHovered(true)}
         onEdgeMouseLeave={() => setIsHovered(false)}
       />
       <foreignObject
-        x={mid.x - 70}
+        x={mid.x - 80}
         y={mid.y - 18}
-        width={140}
+        width={160}
         height={36}
         style={{ overflow: 'visible', pointerEvents: 'none' }}
       >
-        <Attribute
-          value={attrs?.label || ''}
-          edgeSelected={isSelected}
-          edgeHovered={isHovered}
-          onChange={(val) => {
-            dispatchCommand({
-              type: 'UpdateRelationship',
-              payload: {
-                relationshipId: edge.id,
-                patch: { label: val }
-              }
-            })
-          }}
-        />
+        <div className="flex items-center justify-center gap-1 w-full h-full">
+          <Attribute
+            value={attrs?.label || ''}
+            edgeSelected={isSelected}
+            edgeHovered={isHovered}
+            onChange={(val) => {
+              dispatchCommand({
+                type: 'UpdateRelationship',
+                payload: {
+                  relationshipId: edge.id,
+                  patch: { label: val }
+                }
+              })
+            }}
+          />
+          {anchorBlockId && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                window.dispatchEvent(
+                  new CustomEvent('cagent:jump-to-block', {
+                    detail: { blockId: anchorBlockId }
+                  })
+                )
+              }}
+              title="Jump to Document Claim"
+              className="pointer-events-auto inline-flex items-center justify-center w-5 h-5 rounded bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-primary-100 hover:text-primary-700 dark:hover:bg-primary-900/60 dark:hover:text-primary-200 border border-surface-200 dark:border-surface-700 text-[10px] cursor-pointer shadow-xs focus:outline-none"
+            >
+              📄
+            </button>
+          )}
+          {isAnchorLost && (
+            <span
+              title="Anchor block removed from document"
+              className="pointer-events-auto inline-flex items-center justify-center w-5 h-5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-[10px] select-none cursor-help"
+            >
+              ⚠️
+            </span>
+          )}
+        </div>
       </foreignObject>
     </g>
   )

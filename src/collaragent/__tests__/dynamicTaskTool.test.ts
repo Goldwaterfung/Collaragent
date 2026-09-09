@@ -30,13 +30,6 @@ describe('DynamicTaskTool', () => {
     expect(dynamicTool.schema).toBeDefined()
   })
 
-  it('supports legacy argument list signature for backward compatibility', () => {
-    const dynamicTool = createDynamicTaskTool([dummyTool], 'claude-sonnet-4-5-20250929')
-
-    expect(dynamicTool.name).toBe(DYNAMIC_TASK_TOOL_NAME)
-    expect(dynamicTool.schema).toBeDefined()
-  })
-
   it('allows omitting tools in subagent_config and defaults to empty array', () => {
     const dynamicTool = createDynamicTaskTool({
       availableTools: [dummyTool],

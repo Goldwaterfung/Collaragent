@@ -14,8 +14,9 @@ export {
 /**
  * Ensures that WebSocket is available in Node environments.
  */
-if (typeof WebSocket === 'undefined') {
-  ;(global as any).WebSocket = WebSocket
+const globalObject = globalThis as unknown as { WebSocket?: unknown }
+if (typeof globalObject.WebSocket === 'undefined') {
+  globalObject.WebSocket = WebSocket
 }
 
 /**
@@ -23,7 +24,7 @@ if (typeof WebSocket === 'undefined') {
  */
 export async function connectToCanvas(
   instanceId: string,
-  options?: { host?: string; port?: number }
+  options?: { host?: string; port?: number; signal?: AbortSignal; timeoutMs?: number }
 ): Promise<SyncClient<CanvasCommand, CanvasSnapshot>> {
   const host = options?.host || process.env.WS_HOST || 'localhost'
   const port = options?.port || (process.env.WS_PORT ? Number(process.env.WS_PORT) : undefined)
@@ -39,8 +40,12 @@ export async function connectToCanvas(
     clientIdPrefix: 'agent-'
   })
 
-  await client.connect(instanceId)
-  await client.waitForReady()
+  const connectOptions = {
+    signal: options?.signal,
+    timeoutMs: options?.timeoutMs
+  }
+  await client.connect(instanceId, connectOptions)
+  await client.waitForReady(connectOptions)
 
   return client
 }
@@ -50,23 +55,27 @@ export async function connectToCanvas(
  */
 export async function connectToEditor(
   instanceId: string,
-  options?: { host?: string; port?: number }
-): Promise<SyncClient<EditorCommand, any>> {
+  options?: { host?: string; port?: number; signal?: AbortSignal; timeoutMs?: number }
+): Promise<SyncClient<EditorCommand, unknown>> {
   const host = options?.host || process.env.WS_HOST || 'localhost'
   const port = options?.port || (process.env.WS_PORT ? Number(process.env.WS_PORT) : undefined)
   if (!port) {
     throw new Error('No WebSocket port provided for connectToEditor')
   }
 
-  const client = new SyncClient<EditorCommand, any>({
+  const client = new SyncClient<EditorCommand, unknown>({
     host: `${host}:${port}`,
     secure: false,
     path: 'ws/editor',
     clientIdPrefix: 'agent-'
   })
 
-  await client.connect(instanceId)
-  await client.waitForReady()
+  const connectOptions = {
+    signal: options?.signal,
+    timeoutMs: options?.timeoutMs
+  }
+  await client.connect(instanceId, connectOptions)
+  await client.waitForReady(connectOptions)
 
   return client
 }
@@ -79,41 +88,6 @@ export type ConnectionOverrides = {
   port?: number
   instanceId?: string
   clientId?: string
-}
-
-/**
- * createSocket creates a raw WebSocket connection for the editor-content endpoint.
- * This is a legacy/interim utility until the Editor is fully migrated to SyncClient.
- */
-export function createSocket(overrides: ConnectionOverrides = {}) {
-  const host = overrides.host || process.env.WS_HOST || 'localhost'
-  const port = overrides.port || (process.env.WS_PORT ? Number(process.env.WS_PORT) : undefined)
-  const instanceId = overrides.instanceId || 'default'
-  const clientId = overrides.clientId || `agent-${Math.random().toString(36).slice(2)}`
-
-  // Connect to the /ws/editor-content endpoint that the server expects
-  const url = `ws://${host}:${port}/ws/editor-content`
-  const ws = new WebSocket(url)
-
-  const waitForOpen = () =>
-    new Promise<void>((resolve, reject) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        resolve()
-      } else {
-        ws.once('open', () => resolve())
-        ws.once('error', (err) => reject(err))
-      }
-    })
-
-  const waitForClose = () =>
-    new Promise<void>((resolve) => {
-      ws.once('close', () => resolve())
-    })
-
-  return {
-    ws,
-    connection: { instanceId, clientId },
-    waitForOpen,
-    waitForClose
-  }
+  signal?: AbortSignal
+  timeoutMs?: number
 }

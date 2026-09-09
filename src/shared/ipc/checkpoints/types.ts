@@ -7,6 +7,7 @@ export type CheckpointBundleSummary = {
   sessionId: string
   chatMessageId?: string
   projectId?: string
+  parentBundleId?: string
 }
 
 export type CheckpointCreateRequest = {

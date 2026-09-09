@@ -55,7 +55,7 @@ The Stage 2 Orchestrator coordinates four specialized subagent workers:
 | :-------------------------------- | :--------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------- | :---------------------------------------------------------------- |
 | **`literature-scout-specialist`** | Formulates and executes targeted queries across academic sources via `internetSearch`.                           | Subsystem pillars and concept nodes from Stage 1 canvas. | Curated list of peer-reviewed papers with publication metadata.   |
 | **`evidence-matrix-synthesizer`** | Extracts empirical parameters (sample size $N$, paradigms, effect sizes, limitations) into a Lexical table.      | Full text / abstracts from Worker 1.                     | `Literature_Review_Matrix` document created via `createDocument`. |
-| **`canvas-citation-linker`**      | Projects verified citations and the isolated research gap back onto the Concept Canvas.                          | Verified study list and identified gap.                  | Executed `writeGraph` calls in `merge` mode.                      |
+| **`canvas-citation-linker`**      | Projects verified citations and the isolated research gap back onto the Concept Canvas and Workspace Wiki.       | Verified study list and identified gap.                  | Executed `ingestSource` and `writeGraph` calls in `merge` mode.   |
 | **`gap-validator`**               | Evaluates whether the identified gap represents a publishable contribution and verifies construct defensibility. | Drafted matrix and updated canvas.                       | Formalized Research Gap statement ready for human gate signoff.   |
 
 ---
@@ -87,12 +87,19 @@ Invoke `createDocument` to compile `Literature_Review_Matrix` in the workspace.
 - Format the content with an APA-compliant structured table.
 - Table columns: `Study (Citation)`, `Theoretical Focus`, `Experimental Paradigm`, `Key Findings`, `Critical Limitation / Gap`.
 
-### Step 4: Canvas Graph Projection (`canvas-citation-linker`)
+### Step 4: Workspace Wiki & Canvas Projection (`canvas-citation-linker`)
 
 In strict adherence to the **Feedback Loop Mandate**:
 
-1. Connect verified citations to their parent theoretical constructs on the Concept Canvas using `writeGraph` in `merge` mode with `label: "grounded by"`.
-2. Plant a prominent new node: `RESEARCH GAP: [Descriptive Title]` and link it to the affected subsystems with `label: "exposes empirical boundary"`.
+1. **Atomic Literature Ingestion (`ingestSource`)**:
+   - Ingest each verified peer-reviewed paper into the workspace via `ingestSource`.
+   - Specify `sourceTitle` (e.g. `sources/sweller1994`), `sourceContent` (summary, methods, parameters), and `targetClaims` linking findings to target theoretical concept pages via structured claim relations (`supports`, `details`, `contradicts`).
+   - `ingestSource` automatically inserts anchored `InlineClaimBadge` tokens (`[[supports:Construct|justification]]`), registers bidirectional edges in the Relational Ledger, updates `index.md`, and appends an audit record to `log.md` with full transactional rollback safety.
+2. **Visual Canvas Projection (`writeGraph`)**:
+   - Connect verified citations to their parent theoretical constructs on the Concept Canvas using `writeGraph` in `merge` mode with `label: "grounded by"`.
+   - Plant a prominent new node: `RESEARCH GAP: [Descriptive Title]` and link it to the affected subsystems with `label: "exposes empirical boundary"`.
+3. **Integrity Audit (`lintWorkspace`)**:
+   - Run `lintWorkspace` to verify that all newly added source references, concept links, and claim badges are valid, without unresolved symbols or orphan nodes.
 
 ### Step 5: Research Gap Formalization (`gap-validator`)
 
@@ -184,6 +191,31 @@ Present the comparative matrix and updated canvas graph to the human researcher 
 }
 ```
 
+### 5. Atomic Literature Ingestion (`ingestSource`)
+
+```json
+{
+  "sourceTitle": "sources/sweller1994",
+  "sourceType": "paper",
+  "sourceContent": "# Why Some Material is Difficult to Learn\n\nSweller & Chandler (1994) examine cognitive load theory and split-attention effects.",
+  "targetClaims": [
+    {
+      "targetEntity": "Cognitive-Load-Theory",
+      "rel": "supports",
+      "claimText": "Split-attention effect increases extraneous cognitive load and impairs schema acquisition.",
+      "justification": "Empirical validation of split-attention effect in dual-format visual instructional interfaces."
+    }
+  ],
+  "summary": "Foundational empirical paper establishing split-attention and cognitive load mechanics."
+}
+```
+
+### 6. Workspace Structural Audit (`lintWorkspace`)
+
+```json
+{}
+```
+
 ---
 
 ## Error Handling & Invariant Rules
@@ -206,6 +238,8 @@ Before declaring Stage 2 complete and handing off to Stage 3 (`research-stage-3-
 - [ ] At least 4 to 6 relevant peer-reviewed studies have been retrieved and evaluated.
 - [ ] The `Literature_Review_Matrix` document exists in the workspace with complete table rows.
 - [ ] Every included study lists empirical findings, effect sizes/thresholds, and specific limitations.
+- [ ] Newly verified citations have been ingested via `ingestSource` with claim relations recorded in the Relational Ledger.
 - [ ] Newly verified citations have been linked to parent theoretical nodes on the Concept Canvas.
 - [ ] An explicit, defensible scientific research gap is identified and planted on the canvas.
+- [ ] Structural integrity verified via `lintWorkspace` with 0 unresolved symbols or errors.
 - [ ] The human researcher has verified and approved the research gap.

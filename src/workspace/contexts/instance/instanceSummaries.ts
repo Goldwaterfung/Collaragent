@@ -3,8 +3,8 @@ export type InstanceSummary = {
   projectId?: string
   updatedAt?: string
   name?: string
-  type?: 'document' | 'canvas'
-  metadata?: Record<string, any>
+  type?: 'document' | 'canvas' | 'ledger'
+  metadata?: Record<string, unknown>
 }
 
 import { NormalizedInstanceSummary } from '@shared/types/instance'

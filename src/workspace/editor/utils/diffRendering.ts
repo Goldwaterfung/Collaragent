@@ -1,4 +1,4 @@
-import { Block, DocumentPayload } from '@workspace/persistence/editorContent'
+import { Block, DocumentPayload, Comment } from '@workspace/persistence/editorContent'
 import { EditorCommand } from '@shared/commands'
 import { LexicalEditor } from 'lexical'
 import { applyDocumentToEditor } from './editorContentToLexical'
@@ -6,6 +6,19 @@ import { applyDocumentToEditor } from './editorContentToLexical'
 export interface DiffBlock extends Block {
   diffStatus: 'added' | 'removed' | 'updated' | 'none'
   oldBlock?: Block
+}
+
+interface EditorCommandPreviousState {
+  block?: Block
+  index?: number
+  documentPayload?: DocumentPayload
+}
+
+function getPreviousState(cmd: EditorCommand): EditorCommandPreviousState | undefined {
+  if (cmd.previousState && typeof cmd.previousState === 'object' && cmd.previousState !== null) {
+    return cmd.previousState as EditorCommandPreviousState
+  }
+  return undefined
 }
 
 /**
@@ -16,13 +29,13 @@ export interface DiffBlock extends Block {
 export function computeDiffState(
   current: DocumentPayload, // VERSION B (after changes)
   stagedCommands: EditorCommand[]
-): { blocks: DiffBlock[]; comments: Record<string, any> } {
+): { blocks: DiffBlock[]; comments: Record<string, Comment> } {
   // 1. Reconstruct Version A (Baseline)
   // We clone the current state and undo the staged commands in reverse order.
-  let baselineBlocks: any[] = JSON.parse(JSON.stringify(current.blocks))
+  let baselineBlocks: Block[] = JSON.parse(JSON.stringify(current.blocks))
 
   for (const cmd of [...stagedCommands].reverse()) {
-    const prev = (cmd as any).previousState
+    const prev = getPreviousState(cmd)
     if (!prev) continue
 
     switch (cmd.type) {
@@ -56,7 +69,7 @@ export function computeDiffState(
   let resultBlocks: DiffBlock[] = baselineBlocks.map((b) => ({ ...b, diffStatus: 'none' }))
 
   const removedIds = new Set<string>()
-  const updatedMap = new Map<string, any>()
+  const updatedMap = new Map<string, Partial<Block>>()
 
   for (const cmd of stagedCommands) {
     if (cmd.type === 'editor:remove_block' && cmd.blockId) {
@@ -110,7 +123,7 @@ export function computeDiffState(
  */
 export function applyDiffToEditor(
   editor: LexicalEditor,
-  diffState: { blocks: DiffBlock[]; comments: Record<string, any> }
+  diffState: { blocks: DiffBlock[]; comments: Record<string, Comment> }
 ) {
   // For Phase 1, we use a simple approach:
   // We hijack the applyDocumentToEditor and add styling hooks.
@@ -126,6 +139,6 @@ export function applyDiffToEditor(
     // This is a placeholder for the specialized diff rendering logic
     // which will need to integrate with the Theme.
     // For now, we'll just apply the document normally.
-    applyDocumentToEditor(editor, diffState as any, { tag: 'diff-preview' })
+    applyDocumentToEditor(editor, diffState as unknown as DocumentPayload, { tag: 'diff-preview' })
   })
 }

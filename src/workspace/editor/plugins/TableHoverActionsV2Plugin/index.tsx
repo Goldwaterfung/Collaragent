@@ -35,7 +35,7 @@ import {
   type EditorThemeClasses,
   isHTMLElement
 } from 'lexical'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import DropDown, { DropDownItem } from '../../ui/DropDown'
@@ -184,8 +184,6 @@ function TableHoverActionsV2({ anchorElem }: { anchorElem: HTMLElement }): JSX.E
   const leftVirtualRef = useRef<VirtualElement>({
     getBoundingClientRect: () => new DOMRect()
   })
-  const floatingElemRef = useRef<HTMLElement | null>(null)
-  const leftFloatingElemRef = useRef<HTMLElement | null>(null)
   const dragHandleRef = useRef<HTMLButtonElement | null>(null)
   const hoveredLeftCellRef = useRef<HTMLTableCellElement | null>(null)
   const hoveredTopCellRef = useRef<HTMLTableCellElement | null>(null)
@@ -195,13 +193,28 @@ function TableHoverActionsV2({ anchorElem }: { anchorElem: HTMLElement }): JSX.E
   const [canReorder, setCanReorder] = useState(false)
   const [dropIndicatorState, setDropIndicatorState] = useState<DropIndicatorState | null>(null)
 
-  const { refs, floatingStyles, update } = useFloating({
-    middleware: [
+  const topMiddleware = useMemo(
+    () => [
       offset({ mainAxis: -TOP_BUTTON_OVERHANG }),
       shift({
         padding: 8
       })
     ],
+    []
+  )
+
+  const leftMiddleware = useMemo(
+    () => [
+      offset({ mainAxis: -LEFT_BUTTON_OVERHANG }),
+      shift({
+        padding: 8
+      })
+    ],
+    []
+  )
+
+  const { refs, floatingStyles, update } = useFloating({
+    middleware: topMiddleware,
     placement: 'top',
     strategy: 'fixed',
     whileElementsMounted: autoUpdate
@@ -212,12 +225,7 @@ function TableHoverActionsV2({ anchorElem }: { anchorElem: HTMLElement }): JSX.E
     floatingStyles: leftFloatingStyles,
     update: updateLeft
   } = useFloating({
-    middleware: [
-      offset({ mainAxis: -LEFT_BUTTON_OVERHANG }),
-      shift({
-        padding: 8
-      })
-    ],
+    middleware: leftMiddleware,
     placement: 'left',
     strategy: 'fixed',
     whileElementsMounted: autoUpdate
@@ -230,12 +238,12 @@ function TableHoverActionsV2({ anchorElem }: { anchorElem: HTMLElement }): JSX.E
 
     const handleMouseMove = (event: MouseEvent) => {
       if (
-        (floatingElemRef.current &&
+        (refs.floating.current &&
           event.target instanceof Node &&
-          floatingElemRef.current.contains(event.target)) ||
-        (leftFloatingElemRef.current &&
+          refs.floating.current.contains(event.target)) ||
+        (leftRefs.floating.current &&
           event.target instanceof Node &&
-          leftFloatingElemRef.current.contains(event.target))
+          leftRefs.floating.current.contains(event.target))
       ) {
         return
       }
@@ -318,15 +326,15 @@ function TableHoverActionsV2({ anchorElem }: { anchorElem: HTMLElement }): JSX.E
       const nextTarget = event.relatedTarget
       if (
         nextTarget &&
-        floatingElemRef.current &&
-        floatingElemRef.current.contains(nextTarget as Node)
+        refs.floating.current &&
+        refs.floating.current.contains(nextTarget as Node)
       ) {
         return
       }
       if (
         nextTarget &&
-        leftFloatingElemRef.current &&
-        leftFloatingElemRef.current.contains(nextTarget as Node)
+        leftRefs.floating.current &&
+        leftRefs.floating.current.contains(nextTarget as Node)
       ) {
         return
       }
@@ -560,10 +568,7 @@ function TableHoverActionsV2({ anchorElem }: { anchorElem: HTMLElement }): JSX.E
   return (
     <>
       <div
-        ref={(node) => {
-          floatingElemRef.current = node
-          refs.setFloating(node)
-        }}
+        ref={refs.setFloating}
         style={{
           ...floatingStyles,
           opacity: isVisible ? 1 : 0
@@ -596,10 +601,7 @@ function TableHoverActionsV2({ anchorElem }: { anchorElem: HTMLElement }): JSX.E
         />
       </div>
       <button
-        ref={(node) => {
-          leftFloatingElemRef.current = node
-          leftRefs.setFloating(node)
-        }}
+        ref={leftRefs.setFloating}
         style={{
           ...leftFloatingStyles,
           opacity: isLeftVisible ? 1 : 0

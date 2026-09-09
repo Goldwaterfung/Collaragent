@@ -3,9 +3,11 @@ import { HumanMessage } from '@langchain/core/messages'
 import * as Channels from '../../shared/ipc/agent/channels'
 import * as Types from '../../shared/ipc/agent/types'
 import { AgentFactory } from '../agents/factory'
-import { saveMessageToProject } from './chatPersistence'
+import { saveMessageToProject, getSessionDetailFromProject } from './chatPersistence'
 import { agentCheckpointRegistry } from '@collaragent/checkpoint'
+import { randomUUID } from 'node:crypto'
 import { flushTelemetry } from '../../collaragent/telemetry/index'
+import { resolveSkillByName } from './skills'
 
 function isRecord(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)
@@ -82,11 +84,37 @@ export async function streamAgentResponse(
   clientIds?: { clientMessageId?: string; clientAssistantMessageId?: string },
   metrics?: { ipcChunks: number; ipcBytes: number; firstChunkAt?: number }
 ): Promise<void> {
-  const agent = await agentFactory.createAgent({ threadId, apiPort: ports?.apiPort })
-  const input = { messages: [new HumanMessage(userMessage)] }
+  let effectiveMessage = userMessage
+  if (!userMessage.includes('<SKILL>')) {
+    const slashMatch = userMessage.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/)
+    if (slashMatch) {
+      const skillName = slashMatch[1]
+      const promptText = slashMatch[2] || ''
+      const targetSkill = resolveSkillByName(skillName, agentFactory.getConfigManager())
+      if (targetSkill) {
+        effectiveMessage = `<SKILL>The user requested you read and use the "${targetSkill.name}" skill. The path to the skill file is:\n${targetSkill.skillMdPath}</SKILL>\n\n${promptText || `Please apply the ${targetSkill.name} skill to assist me.`}`
+      }
+    }
+  }
 
-  // Save User Message to History
+  const agent = await agentFactory.createAgent({ threadId, apiPort: ports?.apiPort })
+  const input = { messages: [new HumanMessage(effectiveMessage)] }
+
+  const userMessageId = clientIds?.clientMessageId ?? randomUUID()
+  const assistantMessageId = clientIds?.clientAssistantMessageId ?? randomUUID()
+
+  // Save User Message to History with active branch lineage
   if (ports?.apiPort) {
+    let parentMessageId: string | undefined = undefined
+    try {
+      const sessionDetail = await getSessionDetailFromProject(ports.apiPort, threadId)
+      if (sessionDetail?.activeMessageId) {
+        parentMessageId = sessionDetail.activeMessageId
+      }
+    } catch {
+      // Non-blocking lookup failure fallback
+    }
+
     saveMessageToProject(
       ports.apiPort,
       threadId,
@@ -96,7 +124,9 @@ export async function streamAgentResponse(
       undefined,
       undefined,
       undefined,
-      clientIds?.clientMessageId
+      userMessageId,
+      undefined,
+      parentMessageId
     ).catch(() => {})
   }
 
@@ -592,6 +622,24 @@ export async function streamAgentResponse(
     }
   }
 
+  // Update the registry with the new effective checkpoint.
+  // We do this even on abort to ensure the next turn accurately branches from
+  // the state LangGraph actually reached (including completed tools).
+  let newCheckpointId: string | undefined = undefined
+  if (ports?.apiPort) {
+    const persistenceManager = agentFactory.getPersistenceManager()
+    if (persistenceManager) {
+      newCheckpointId =
+        (await persistenceManager.getLatestCheckpointId(threadId, {
+          apiPort: ports.apiPort,
+          checkpointNs: ''
+        })) ?? undefined
+      if (newCheckpointId) {
+        agentCheckpointRegistry.setEffective(threadId, newCheckpointId)
+      }
+    }
+  }
+
   // Save Assistant Message to History (Partial or Full)
   // We save even on abort to align the UI history with the agent's internal state.
   if ((fullResponse || activeToolCalls.length > 0) && ports?.apiPort) {
@@ -607,26 +655,13 @@ export async function streamAgentResponse(
       blocks,
       undefined,
       usage,
-      clientIds?.clientAssistantMessageId
+      assistantMessageId,
+      undefined,
+      userMessageId,
+      newCheckpointId
     ).catch((err) => {
       console.error(`[streaming] FAILED to save assistant message for ${threadId}:`, err)
     })
-  }
-
-  // Update the registry with the new effective checkpoint.
-  // We do this even on abort to ensure the next turn accurately branches from
-  // the state LangGraph actually reached (including completed tools).
-  if (ports?.apiPort) {
-    const persistenceManager = agentFactory.getPersistenceManager()
-    if (persistenceManager) {
-      const newCheckpointId = await persistenceManager.getLatestCheckpointId(threadId, {
-        apiPort: ports.apiPort,
-        checkpointNs: ''
-      })
-      if (newCheckpointId) {
-        agentCheckpointRegistry.setEffective(threadId, newCheckpointId)
-      }
-    }
   }
 
   // Flush any pending telemetry traces asynchronously

@@ -6,6 +6,8 @@ import {
   TableCell,
   Align
 } from '@workspace/persistence/editorContent'
+import { ClaimRelationEnum } from '@shared/wiki/schemas'
+import type { ClaimRelation, ClaimBadge } from '@shared/wiki/types'
 
 // --- HTML -> BlockSchema Conversion ---
 
@@ -151,6 +153,13 @@ function getBlockIdFromAttributes(attributes: Record<string, string>): string | 
 function getInlineRunsHtml(children: InlineRun[]): string {
   return children
     .map((run) => {
+      if (run.claimBadge) {
+        const { rel, targetEntityId, justification } = run.claimBadge
+        return justification && justification.trim().length > 0
+          ? `[[${rel}:${targetEntityId}|${justification.trim()}]]`
+          : `[[${rel}:${targetEntityId}]]`
+      }
+
       if (run.equation) {
         const wrap = run.inline === false ? '$$' : '$'
         return `${wrap}${escapeHtml(run.equation)}${wrap}`
@@ -320,10 +329,11 @@ function parseTableSubtree(
   let boldDepth = 0
   let italicDepth = 0
   let underlineDepth = 0
+  let cellClaimBadgeDepth = 0
 
   const finalizeCell = () => {
     if (!currentCell || !currentRow) return
-    const validRuns = currentCellRuns.filter((r) => r.equation || r.text.length > 0)
+    const validRuns = currentCellRuns.filter((r) => r.equation || r.claimBadge || r.text.length > 0)
     currentCell.children = validRuns.length > 0 ? validRuns : [{ text: '' }]
     currentRow.cells.push(currentCell)
     currentCell = null
@@ -331,6 +341,7 @@ function parseTableSubtree(
     boldDepth = 0
     italicDepth = 0
     underlineDepth = 0
+    cellClaimBadgeDepth = 0
   }
 
   const finalizeRow = () => {
@@ -463,6 +474,48 @@ function parseTableSubtree(
           italic: italicDepth > 0 || undefined,
           underline: underlineDepth > 0 || undefined
         })
+      } else if (tagName === 'span') {
+        if (!isClosing) {
+          if (
+            attributes['data-lexical-claim-badge'] === 'true' ||
+            attributes['data-claim-badge'] === 'true'
+          ) {
+            if (!currentRow) currentRow = { cells: [] }
+            if (!currentCell) currentCell = { children: [], headerState: inThead ? 1 : 0 }
+
+            const targetEntityId =
+              attributes['data-target-entity'] || attributes['data-target'] || ''
+            const relRaw = attributes['data-rel'] || 'relates_to'
+            const parsedRel = ClaimRelationEnum.safeParse(relRaw)
+            const rel: ClaimRelation = parsedRel.success ? parsedRel.data : 'relates_to'
+            const justification = attributes['data-justification'] || ''
+            const badgeId =
+              attributes['data-badge-id'] ||
+              globalThis.crypto?.randomUUID?.() ||
+              `badge-${Math.random().toString(36).substring(2, 11)}`
+
+            if (targetEntityId.length > 0) {
+              currentCellRuns.push({
+                text: '',
+                claimBadge: {
+                  badgeId,
+                  targetEntityId,
+                  rel,
+                  justification
+                }
+              })
+            }
+
+            const isSelfClosing = token.fullMatch.endsWith('/>')
+            if (!isSelfClosing) {
+              cellClaimBadgeDepth++
+            }
+          }
+        } else {
+          if (cellClaimBadgeDepth > 0) {
+            cellClaimBadgeDepth--
+          }
+        }
       }
 
       i++
@@ -470,6 +523,10 @@ function parseTableSubtree(
     }
 
     if (token.type === 'text') {
+      if (cellClaimBadgeDepth > 0) {
+        i++
+        continue
+      }
       if (!currentCell && token.content.trim() === '') {
         i++
         continue
@@ -520,6 +577,7 @@ export function convertHtmlToBlocks(html: string): Block[] {
   let boldDepth = 0
   let italicDepth = 0
   let underlineDepth = 0
+  let claimBadgeDepth = 0
 
   // Track list context
   let currentListType: 'bullet' | 'number' | null = null
@@ -655,8 +713,54 @@ export function convertHtmlToBlocks(html: string): Block[] {
           italic: italicDepth > 0 || undefined,
           underline: underlineDepth > 0 || undefined
         })
+      } else if (tagName === 'span') {
+        if (!isClosing) {
+          if (
+            attributes['data-lexical-claim-badge'] === 'true' ||
+            attributes['data-claim-badge'] === 'true'
+          ) {
+            const targetEntityId =
+              attributes['data-target-entity'] || attributes['data-target'] || ''
+            const relRaw = attributes['data-rel'] || 'relates_to'
+            const parsedRel = ClaimRelationEnum.safeParse(relRaw)
+            const rel: ClaimRelation = parsedRel.success ? parsedRel.data : 'relates_to'
+            const justification = attributes['data-justification'] || ''
+            const badgeId =
+              attributes['data-badge-id'] ||
+              globalThis.crypto?.randomUUID?.() ||
+              `badge-${Math.random().toString(36).substring(2, 11)}`
+
+            if (!currentBlock) {
+              currentBlock = { type: 'paragraph', children: [] }
+            }
+
+            if (targetEntityId.length > 0) {
+              currentRuns.push({
+                text: '',
+                claimBadge: {
+                  badgeId,
+                  targetEntityId,
+                  rel,
+                  justification
+                }
+              })
+            }
+
+            const isSelfClosing = token.fullMatch.endsWith('/>')
+            if (!isSelfClosing) {
+              claimBadgeDepth++
+            }
+          }
+        } else {
+          if (claimBadgeDepth > 0) {
+            claimBadgeDepth--
+          }
+        }
       }
     } else if (token.type === 'text') {
+      if (claimBadgeDepth > 0) {
+        continue
+      }
       // When we are between block-level tags (no open block), skip text that is
       // purely whitespace (spaces, newlines, tabs). LLMs often emit newlines
       // between tags (e.g. </h1>\n<p>), and without this guard those inter-block
@@ -691,6 +795,75 @@ export function convertHtmlToBlocks(html: string): Block[] {
   return blocks
 }
 
+/**
+ * Parses the inner content of a wikilink [[...]] into a typed ClaimBadge.
+ * Supports:
+ * - [[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]]
+ * - [[<targetEntity>|rel:<relation>|<justification>]]
+ * - [[<targetEntity>|<relation>|<justification>]]
+ * - [[<targetEntity>|<justification>]] (defaults rel to 'relates_to')
+ * - [[<targetEntity>]] (defaults rel to 'relates_to')
+ */
+export function parseWikilinkContent(rawContent: string): ClaimBadge | null {
+  const content = rawContent.trim()
+  if (content.length === 0) return null
+
+  const pipeIndex = content.indexOf('|')
+  const firstPart = pipeIndex === -1 ? content : content.slice(0, pipeIndex)
+  const restPart = pipeIndex === -1 ? '' : content.slice(pipeIndex + 1)
+  const colonIndex = firstPart.indexOf(':')
+
+  let targetEntityId = ''
+  let rel: ClaimRelation = 'relates_to'
+  let justification = restPart.trim()
+
+  if (colonIndex !== -1) {
+    const prefix = firstPart.slice(0, colonIndex).trim()
+    const parsedRel = ClaimRelationEnum.safeParse(prefix)
+    if (parsedRel.success) {
+      rel = parsedRel.data
+      targetEntityId = firstPart.slice(colonIndex + 1).trim()
+    } else {
+      targetEntityId = firstPart.trim()
+    }
+  } else {
+    targetEntityId = firstPart.trim()
+  }
+
+  if (restPart.length > 0) {
+    const segments = restPart.split('|').map((s) => s.trim())
+    const relKeywordSeg = segments.find((s) => s.startsWith('rel:'))
+    if (relKeywordSeg) {
+      const parsedRel = ClaimRelationEnum.safeParse(relKeywordSeg.slice(4).trim())
+      if (parsedRel.success) {
+        rel = parsedRel.data
+        justification = segments
+          .filter((s) => s !== relKeywordSeg)
+          .join(' | ')
+          .trim()
+      }
+    } else if (segments.length > 0) {
+      const parsedDirectRel = ClaimRelationEnum.safeParse(segments[0])
+      if (parsedDirectRel.success) {
+        rel = parsedDirectRel.data
+        justification = segments.slice(1).join(' | ').trim()
+      }
+    }
+  }
+
+  if (targetEntityId.length === 0) return null
+
+  const badgeId =
+    globalThis.crypto?.randomUUID?.() || `badge-${Math.random().toString(36).substring(2, 11)}`
+
+  return {
+    badgeId,
+    targetEntityId,
+    rel,
+    justification
+  }
+}
+
 function splitTextIntoRuns(
   text: string,
   bold: boolean | undefined,
@@ -698,11 +871,11 @@ function splitTextIntoRuns(
   underline: boolean | undefined
 ): InlineRun[] {
   const result: InlineRun[] = []
-  // Regex for block equation $$...$$ and inline equation $...$
-  const combinedRegex = /(\$\$.*?\$\$|\$.*?\$)/gs
+  // Regex for block equation $$...$$, inline equation $...$, and wikilink [[...]]
+  const combinedRegex = /(\$\$.*?\$\$|\$.*?\$|\[\[.*?\]\])/gs
 
   let lastIndex = 0
-  let match
+  let match: RegExpExecArray | null
 
   while ((match = combinedRegex.exec(text)) !== null) {
     // Preceding text
@@ -723,13 +896,29 @@ function splitTextIntoRuns(
         equation,
         inline: false
       })
-    } else {
+    } else if (raw.startsWith('$')) {
       const equation = raw.slice(1, -1)
       result.push({
         text: '',
         equation,
         inline: true
       })
+    } else if (raw.startsWith('[[')) {
+      const inner = raw.slice(2, -2)
+      const badge = parseWikilinkContent(inner)
+      if (badge) {
+        result.push({
+          text: '',
+          claimBadge: badge
+        })
+      } else {
+        result.push({
+          text: raw,
+          bold,
+          italic,
+          underline
+        })
+      }
     }
     lastIndex = combinedRegex.lastIndex
   }
@@ -747,8 +936,8 @@ function splitTextIntoRuns(
 }
 
 function finalizeBlock(block: Block, runs: InlineRun[], blocks: Block[]) {
-  // Filter out empty text runs while preserving equation-only runs.
-  const validRuns = runs.filter((r) => r.equation || r.text.length > 0)
+  // Filter out empty text runs while preserving equation-only runs and claim badges.
+  const validRuns = runs.filter((r) => r.equation || r.claimBadge || r.text.length > 0)
 
   if (validRuns.length > 0) {
     block.children = validRuns

@@ -28,6 +28,8 @@
     "eval:live": "node scripts/run-eval.mjs",
     "eval:traces": "node scripts/run-eval.mjs --traces",
     "eval": "node scripts/run-eval.mjs",
+    "wiki:lint": "node scripts/wiki-cli.mjs lint",
+    "wiki:compile": "node scripts/wiki-cli.mjs compile",
     "langfuse:up": "docker compose --env-file .env.eval -f docker-compose.langfuse.yml up -d",
     "langfuse:down": "docker compose --env-file .env.eval -f docker-compose.langfuse.yml down",
     "langfuse:logs": "docker compose --env-file .env.eval -f docker-compose.langfuse.yml logs -f langfuse-server"
