@@ -86,9 +86,9 @@ export class ModelManager {
   }
 
   private buildParameters(m: CatalogModelLike, level?: string): Record<string, unknown> {
-    const params: Record<string, unknown> = {
-      temperature: 0.7,
-      maxTokens: m.maxTokens
+    const params: Record<string, unknown> = {}
+    if (m.maxTokens !== undefined) {
+      params.maxTokens = m.maxTokens
     }
 
     if (level && level !== 'off') {

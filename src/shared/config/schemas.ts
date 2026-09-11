@@ -130,6 +130,7 @@ export const AppConfigSchema = z.object({
     baseUrl: 'http://localhost:3000',
     publicKey: ''
   }),
+  userRules: z.string().optional().default(''),
   recentFiles: z.array(RecentFileSchema).optional().default([])
 })
 

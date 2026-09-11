@@ -6,10 +6,12 @@ import {
 import type { Block } from '@workspace/persistence/editorContent'
 
 export interface PatchOperation {
-  action: 'update' | 'insert' | 'delete'
+  action: 'update' | 'insert' | 'delete' | 'replace_text'
   blockId: string
   anchor?: 'before' | 'after'
   newHtml?: string
+  target?: string
+  replacement?: string
 }
 
 export interface PatchCommandResult {
@@ -93,6 +95,86 @@ export class PatchCommandEngine {
 
       for (let i = 0; i < operations.length; i++) {
         const op = operations[i]
+
+        if (op.action === 'replace_text') {
+          const index = findBlockIndex(workingLines, op.blockId)
+          if (index === -1) {
+            return {
+              applied: false,
+              code: 'PATCH_CONTEXT_MISMATCH',
+              message: `Could not find block ${op.blockId} for replace_text (Operation index ${i}).`,
+              hunkIndex: i
+            }
+          }
+
+          if (!op.target || op.replacement === undefined) {
+            throw new Error(
+              `Operation ${i}: both "target" and "replacement" are required for replace_text action.`
+            )
+          }
+
+          const currentLine = workingLines[index]
+          if (!currentLine.includes(op.target)) {
+            return {
+              applied: false,
+              code: 'PATCH_CONTEXT_MISMATCH',
+              message: `Target text "${op.target}" was not found in block ${op.blockId} (Operation index ${i}).`,
+              hunkIndex: i
+            }
+          }
+
+          const updatedLine = currentLine.replace(op.target, op.replacement)
+          const newBlocks = htmlToBlocks(updatedLine)
+          if (newBlocks.length === 0) {
+            throw new Error(`Operation ${i}: replace_text produced no valid blocks.`)
+          }
+
+          // 1. First new block replaces the targeted block.
+          const firstBlock = newBlocks[0]
+          firstBlock.id = op.blockId
+
+          // Preserve existing block attributes if not explicitly provided in updatedLine
+          const existingBlock = htmlToBlocks(workingLines[index])[0]
+          if (existingBlock) {
+            if (firstBlock.align === undefined && existingBlock.align !== undefined) {
+              firstBlock.align = existingBlock.align
+            }
+            if (
+              firstBlock.listType === undefined &&
+              existingBlock.listType !== undefined &&
+              firstBlock.type === existingBlock.type
+            ) {
+              firstBlock.listType = existingBlock.listType
+            }
+            if (
+              firstBlock.language === undefined &&
+              existingBlock.language !== undefined &&
+              firstBlock.type === 'code'
+            ) {
+              firstBlock.language = existingBlock.language
+            }
+            if (firstBlock.indent === undefined && existingBlock.indent !== undefined) {
+              firstBlock.indent = existingBlock.indent
+            }
+          }
+
+          const { id: _id, ...changes } = firstBlock
+          commands.push({ type: 'editor:update_block', blockId: op.blockId, changes })
+          workingLines[index] = serializeBlock(firstBlock)
+          blocksUpdated++
+
+          // 2. Subsequent blocks are inserted after the targeted block if split.
+          for (let b = 1; b < newBlocks.length; b++) {
+            const nextBlock = newBlocks[b]
+            nextBlock.id = createUniqueBlockId(existingIds)
+            existingIds.add(nextBlock.id)
+            const insertIndex = index + b
+            commands.push({ type: 'editor:insert_block', index: insertIndex, block: nextBlock })
+            workingLines.splice(insertIndex, 0, serializeBlock(nextBlock))
+            blocksInserted++
+          }
+          continue
+        }
 
         if (op.action === 'update') {
           const index = findBlockIndex(workingLines, op.blockId)

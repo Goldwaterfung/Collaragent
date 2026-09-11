@@ -26,5 +26,6 @@ export {
 } from './subagents.js'
 
 export { createWorkspaceMiddleware } from './workspace.js'
+export { createUserRulesMiddleware, type UserRulesMiddlewareOptions } from './user_rules.js'
 export { dateMiddleware } from './date.js'
 export { createModelResponseNormalizerMiddleware } from './model_response_normalizer.js'

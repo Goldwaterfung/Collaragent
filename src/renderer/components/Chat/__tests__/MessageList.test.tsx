@@ -78,10 +78,13 @@ describe('MessageList & CheckpointMarker rendering', () => {
     })
 
     const markers = container?.querySelectorAll('[role="separator"]') || []
-    expect(markers.length).toBe(2)
+    expect(markers.length).toBe(1)
     expect(markers[0].textContent).toContain('Initial checkpoint')
-    expect(markers[1].textContent).toContain('Restore')
-    expect(markers[1].textContent).not.toContain('Turn checkpoint')
+
+    const restoreButtons = container?.querySelectorAll('button') || []
+    expect(restoreButtons.length).toBeGreaterThanOrEqual(1)
+    const restoreTexts = Array.from(restoreButtons).map((b) => b.textContent)
+    expect(restoreTexts).toContain('Restore')
   })
 
   it('filters out internal auto-restore checkpoints (reason: restore)', async () => {
@@ -132,11 +135,8 @@ describe('MessageList & CheckpointMarker rendering', () => {
     })
 
     const markers = container?.querySelectorAll('[role="separator"]') || []
-    // Only the turn checkpoint should be rendered, not the restore snapshot
-    expect(markers.length).toBe(1)
-    expect(markers[0].textContent).toContain('Restore')
-    expect(markers[0].textContent).not.toContain('Turn checkpoint')
-    expect(markers[0].textContent).not.toContain('Auto before restore')
+    expect(markers.length).toBe(0)
+    expect(container?.textContent).not.toContain('Auto before restore')
   })
 
   it('does NOT add extra checkpoint markers after restoring to an earlier checkpoint', async () => {
@@ -189,10 +189,7 @@ describe('MessageList & CheckpointMarker rendering', () => {
     })
 
     const markers = container?.querySelectorAll('[role="separator"]') || []
-    // Only cp-1 should be rendered. cp-2 must NOT be anchored to msg-2 as an added marker!
-    expect(markers.length).toBe(1)
-    expect(markers[0].textContent).toContain('Restore')
-    expect(markers[0].textContent).not.toContain('Turn checkpoint')
+    expect(markers.length).toBe(0)
   })
 
   it('passes the next user message to restoreContent for re-drafting', async () => {
@@ -250,7 +247,7 @@ describe('MessageList & CheckpointMarker rendering', () => {
     expect(onRestoreMock).toHaveBeenCalledWith('cp-1', 'Second turn to be re-drafted')
   })
 
-  it('renders alternate branch switcher and handles branch switching', async () => {
+  it('renders alternate branch switcher and handles branch switching (Bug 2: chronological order & enabled left chevron)', async () => {
     const onRestoreMock = vi.fn()
     const messages: ChatMessage[] = [
       {
@@ -318,17 +315,400 @@ describe('MessageList & CheckpointMarker rendering', () => {
       )
     })
 
-    // Find the Branch 2 button
-    const branchButtons = Array.from(container?.querySelectorAll('button') || []).filter((btn) =>
-      btn.textContent?.includes('Branch 2')
-    )
-    expect(branchButtons.length).toBe(1)
+    // Active branch cp-2b (10:05:00) is chronologically after cp-2a (10:02:00),
+    // so indicator must display '2 / 2' and left chevron must be enabled.
+    const stepperBtn = container?.querySelector('button[aria-label="View turn branches"]')
+    expect(stepperBtn).not.toBeNull()
+    expect(stepperBtn?.textContent).toContain('2 / 2')
+
+    const prevBranchBtn = container?.querySelector(
+      'button[aria-label="Previous branch"]'
+    ) as HTMLButtonElement
+    expect(prevBranchBtn).not.toBeNull()
+    expect(prevBranchBtn.disabled).toBe(false)
+
+    const nextBranchBtn = container?.querySelector(
+      'button[aria-label="Next branch"]'
+    ) as HTMLButtonElement
+    expect(nextBranchBtn).not.toBeNull()
+    expect(nextBranchBtn.disabled).toBe(true)
 
     act(() => {
-      branchButtons[0].click()
+      prevBranchBtn.click()
     })
 
-    // Clicking Branch 2 triggers restore of the alternate branch head bundle cp-2a
+    // Clicking Previous Branch triggers restore of earlier alternate branch head bundle cp-2a
     expect(onRestoreMock).toHaveBeenCalledWith('cp-2a')
+  })
+
+  it('opens BranchPreviewPopover on stepper click and allows selecting an alternate branch', async () => {
+    const onRestoreMock = vi.fn()
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Question 1',
+        timestamp: new Date('2026-09-06T10:00:00Z')
+      },
+      {
+        id: 'msg-2',
+        role: 'assistant',
+        content: 'Answer 1',
+        timestamp: new Date('2026-09-06T10:00:05Z')
+      },
+      {
+        id: 'msg-3',
+        role: 'user',
+        content: 'Question 2 Active',
+        timestamp: new Date('2026-09-06T10:04:00Z')
+      }
+    ]
+
+    const checkpointBundles: CheckpointBundleSummary[] = [
+      {
+        id: 'cp-1',
+        createdAt: '2026-09-06T10:00:06Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-2',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      },
+      {
+        id: 'cp-2-alt',
+        createdAt: '2026-09-06T10:02:00Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-alt-leaf',
+        parentBundleId: 'cp-1',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      }
+    ]
+
+    await act(async () => {
+      root?.render(
+        <MessageList
+          messages={messages}
+          checkpointBundles={checkpointBundles}
+          onRestoreCheckpoint={onRestoreMock}
+        />
+      )
+    })
+
+    const stepperBtn = container?.querySelector(
+      'button[aria-label="View turn branches"]'
+    ) as HTMLButtonElement
+    expect(stepperBtn).not.toBeNull()
+
+    // Open popover
+    act(() => {
+      stepperBtn.click()
+    })
+
+    const popover = container?.querySelector('[role="dialog"][aria-label="Turn branches"]')
+    expect(popover).not.toBeNull()
+
+    const branchOptions = Array.from(popover?.querySelectorAll('[role="option"]') || [])
+    expect(branchOptions.length).toBe(2)
+
+    // Option 0 is cp-2-alt (10:02:00), Option 1 is active branch (10:04:00)
+    expect(branchOptions[0].getAttribute('aria-selected')).toBe('false')
+    expect(branchOptions[1].getAttribute('aria-selected')).toBe('true')
+
+    // Click alternate branch option (Option 0)
+    act(() => {
+      ;(branchOptions[0] as HTMLButtonElement).click()
+    })
+
+    expect(onRestoreMock).toHaveBeenCalledWith('cp-2-alt')
+  })
+
+  it('Bug 1: toggles popover closed when trigger button is clicked while open', async () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Question 1',
+        timestamp: new Date('2026-09-06T10:00:00Z')
+      },
+      {
+        id: 'msg-2',
+        role: 'assistant',
+        content: 'Answer 1',
+        timestamp: new Date('2026-09-06T10:00:05Z')
+      },
+      {
+        id: 'msg-3',
+        role: 'user',
+        content: 'Question 2',
+        timestamp: new Date('2026-09-06T10:04:00Z')
+      }
+    ]
+
+    const checkpointBundles: CheckpointBundleSummary[] = [
+      {
+        id: 'cp-1',
+        createdAt: '2026-09-06T10:00:06Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-2',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      },
+      {
+        id: 'cp-2-alt',
+        createdAt: '2026-09-06T10:02:00Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-alt-leaf',
+        parentBundleId: 'cp-1',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      }
+    ]
+
+    await act(async () => {
+      root?.render(
+        <MessageList
+          messages={messages}
+          checkpointBundles={checkpointBundles}
+          onRestoreCheckpoint={vi.fn()}
+        />
+      )
+    })
+
+    const stepperBtn = container?.querySelector(
+      'button[aria-label="View turn branches"]'
+    ) as HTMLButtonElement
+    expect(stepperBtn).not.toBeNull()
+    expect(stepperBtn.getAttribute('aria-expanded')).toBe('false')
+
+    // 1st click: opens popover
+    act(() => {
+      stepperBtn.click()
+    })
+    expect(stepperBtn.getAttribute('aria-expanded')).toBe('true')
+    expect(container?.querySelector('[role="dialog"][aria-label="Turn branches"]')).not.toBeNull()
+
+    // 2nd click on trigger button: must close popover without glitch
+    act(() => {
+      // Simulate click directly on stepperBtn while popover is open
+      stepperBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      stepperBtn.click()
+    })
+    expect(stepperBtn.getAttribute('aria-expanded')).toBe('false')
+    expect(container?.querySelector('[role="dialog"][aria-label="Turn branches"]')).toBeNull()
+  })
+
+  it('Bug 3: does not trigger full restore when clicking the already-active branch in popover', async () => {
+    const onRestoreMock = vi.fn()
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Question 1',
+        timestamp: new Date('2026-09-06T10:00:00Z')
+      },
+      {
+        id: 'msg-2',
+        role: 'assistant',
+        content: 'Answer 1',
+        timestamp: new Date('2026-09-06T10:00:05Z')
+      },
+      {
+        id: 'msg-3',
+        role: 'user',
+        content: 'Question 2',
+        timestamp: new Date('2026-09-06T10:04:00Z')
+      }
+    ]
+
+    const checkpointBundles: CheckpointBundleSummary[] = [
+      {
+        id: 'cp-1',
+        createdAt: '2026-09-06T10:00:06Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-2',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      },
+      {
+        id: 'cp-2-alt',
+        createdAt: '2026-09-06T10:02:00Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-alt-leaf',
+        parentBundleId: 'cp-1',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      }
+    ]
+
+    await act(async () => {
+      root?.render(
+        <MessageList
+          messages={messages}
+          checkpointBundles={checkpointBundles}
+          onRestoreCheckpoint={onRestoreMock}
+        />
+      )
+    })
+
+    const stepperBtn = container?.querySelector(
+      'button[aria-label="View turn branches"]'
+    ) as HTMLButtonElement
+
+    // Open popover
+    act(() => {
+      stepperBtn.click()
+    })
+
+    const popover = container?.querySelector('[role="dialog"][aria-label="Turn branches"]')
+    const activeOption = popover?.querySelector(
+      '[role="option"][aria-selected="true"]'
+    ) as HTMLButtonElement
+    expect(activeOption).not.toBeNull()
+
+    // Click active branch
+    act(() => {
+      activeOption.click()
+    })
+
+    // Should close popover
+    expect(container?.querySelector('[role="dialog"][aria-label="Turn branches"]')).toBeNull()
+    // Must NOT call restore on active branch
+    expect(onRestoreMock).not.toHaveBeenCalled()
+  })
+
+  it('Bug 4: restores focus to trigger button on Escape and active branch click', async () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Question 1',
+        timestamp: new Date('2026-09-06T10:00:00Z')
+      },
+      {
+        id: 'msg-2',
+        role: 'assistant',
+        content: 'Answer 1',
+        timestamp: new Date('2026-09-06T10:00:05Z')
+      },
+      {
+        id: 'msg-3',
+        role: 'user',
+        content: 'Question 2',
+        timestamp: new Date('2026-09-06T10:04:00Z')
+      }
+    ]
+
+    const checkpointBundles: CheckpointBundleSummary[] = [
+      {
+        id: 'cp-1',
+        createdAt: '2026-09-06T10:00:06Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-2',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      },
+      {
+        id: 'cp-2-alt',
+        createdAt: '2026-09-06T10:02:00Z',
+        label: 'Turn checkpoint',
+        chatMessageId: 'msg-alt-leaf',
+        parentBundleId: 'cp-1',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      }
+    ]
+
+    await act(async () => {
+      root?.render(
+        <MessageList
+          messages={messages}
+          checkpointBundles={checkpointBundles}
+          onRestoreCheckpoint={vi.fn()}
+        />
+      )
+    })
+
+    const stepperBtn = container?.querySelector(
+      'button[aria-label="View turn branches"]'
+    ) as HTMLButtonElement
+
+    // 1. Test Escape key dismissal
+    act(() => {
+      stepperBtn.click()
+    })
+
+    const popover = container?.querySelector('[role="dialog"][aria-label="Turn branches"]')
+    expect(popover).not.toBeNull()
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+
+    expect(container?.querySelector('[role="dialog"][aria-label="Turn branches"]')).toBeNull()
+    expect(document.activeElement).toBe(stepperBtn)
+
+    // 2. Test selecting active branch dismissal
+    act(() => {
+      stepperBtn.click()
+    })
+
+    const popover2 = container?.querySelector('[role="dialog"][aria-label="Turn branches"]')
+    const activeOption = popover2?.querySelector(
+      '[role="option"][aria-selected="true"]'
+    ) as HTMLButtonElement
+
+    act(() => {
+      activeOption.click()
+    })
+
+    expect(container?.querySelector('[role="dialog"][aria-label="Turn branches"]')).toBeNull()
+    expect(document.activeElement).toBe(stepperBtn)
+  })
+
+  it('allows restoring from UserMessageCard and passes current content for re-drafting', async () => {
+    const onRestoreMock = vi.fn()
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Draft query to re-draft',
+        timestamp: new Date('2026-09-06T10:00:00Z')
+      }
+    ]
+
+    const checkpointBundles: CheckpointBundleSummary[] = [
+      {
+        id: 'cp-0',
+        createdAt: '2026-09-06T09:59:00Z',
+        label: 'Initial checkpoint',
+        chatMessageId: '__start__',
+        threadId: 'thread-1',
+        sessionId: 'session-1'
+      }
+    ]
+
+    await act(async () => {
+      root?.render(
+        <MessageList
+          messages={messages}
+          checkpointBundles={checkpointBundles}
+          onRestoreCheckpoint={onRestoreMock}
+        />
+      )
+    })
+
+    const userCard = container?.querySelector('.group.relative')
+    expect(userCard).not.toBeNull()
+
+    const restoreBtn = userCard?.querySelector(
+      'button[title^="Restore to this checkpoint and re-draft"]'
+    ) as HTMLButtonElement
+    expect(restoreBtn).not.toBeNull()
+
+    act(() => {
+      restoreBtn.click()
+    })
+
+    expect(onRestoreMock).toHaveBeenCalledWith('cp-0', 'Draft query to re-draft')
   })
 })

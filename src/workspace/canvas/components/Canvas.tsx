@@ -18,8 +18,16 @@ import { asNodeId, type NodeId } from '../domain/ids'
 import type { CanvasCommand } from '../commands/types'
 
 export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
-  const { state, dispatch, dispatchCommand, dispatchTransaction, runClustering, cancelClustering } =
-    useCanvas()
+  const {
+    state,
+    dispatch,
+    dispatchCommand,
+    dispatchTransaction,
+    runClustering,
+    cancelClustering,
+    undo,
+    redo
+  } = useCanvas()
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [marquee, setMarquee] = useState<{
@@ -449,13 +457,17 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({}) => {
 
     if (key === 'z') {
       e.preventDefault()
-      dispatch({ type: e.shiftKey ? 'REDO' : 'UNDO' })
+      if (e.shiftKey) {
+        redo()
+      } else {
+        undo()
+      }
       return
     }
 
     if (key === 'y') {
       e.preventDefault()
-      dispatch({ type: 'REDO' })
+      redo()
     }
   }
 

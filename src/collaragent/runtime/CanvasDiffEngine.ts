@@ -120,16 +120,24 @@ export class CanvasDiffEngine {
             }
           })
         }
-        // Check layout update (Movement)
+        // Check layout update (Movement and Dimensions)
         if (layout && currNode) {
           const currLayout = currentLayoutByNodeId[nodeId]
-          if (!currLayout || currLayout.x !== layout.x || currLayout.y !== layout.y) {
+          const posChanged = !currLayout || currLayout.x !== layout.x || currLayout.y !== layout.y
+          const sizeChanged = Boolean(
+            currLayout &&
+            ((layout.width !== undefined && currLayout.width !== layout.width) ||
+              (layout.height !== undefined && currLayout.height !== layout.height))
+          )
+
+          if (posChanged || sizeChanged) {
             commands.push({
               type: 'graph:update_node_layout',
               nodeId: asNodeId(nodeId),
               layout: {
                 x: layout.x,
-                y: layout.y
+                y: layout.y,
+                ...(sizeChanged ? { width: layout.width, height: layout.height } : {})
               }
             })
           }

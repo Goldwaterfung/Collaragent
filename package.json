@@ -46,7 +46,7 @@
     "@atlaskit/drag-and-drop-indicator": "^0.11.1",
     "@atlaskit/pragmatic-drag-and-drop": "^3.0.0",
     "@dagrejs/dagre": "^3.1.1",
-    "@earendil-works/pi-ai": "^0.84.4",
+    "@earendil-works/pi-ai": "^0.85.1",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@langchain/anthropic": "^1.5.8",

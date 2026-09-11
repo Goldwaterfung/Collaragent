@@ -4,6 +4,8 @@ import { ChatMessage } from '../../types/ui'
 import ToolCallCard from './ToolCallCard'
 import ReasoningCard from './ReasoningCard'
 import { CheckpointMarker, type AlternateBranch } from './CheckpointMarker'
+import { UserMessageCard } from './UserMessageCard'
+import type { BranchPreviewItem } from './BranchPreviewPopover'
 import { CHECKPOINT_START_SENTINEL } from '@shared/checkpoints/types'
 import type { CheckpointBundleSummary } from '@shared/ipc/checkpoints/types'
 import ProgressContainer from './ProgressContainer'
@@ -20,6 +22,7 @@ type MessageListProps = {
   checkpointBundles: CheckpointBundleSummary[]
   checkpointBusy?: boolean
   onRestoreCheckpoint: (bundleId: string, restoreContent?: string) => void
+  onSelectBranch?: (bundleId: string) => void
   onSystemAction?: (input: string) => void
   onOpenSubagentTask?: (toolCallId: string) => void
 }
@@ -29,6 +32,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   checkpointBundles,
   checkpointBusy,
   onRestoreCheckpoint,
+  onSelectBranch,
   onSystemAction,
   onOpenSubagentTask
 }) => {
@@ -91,8 +95,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     } else if (messageIds.has(messageId)) {
       bundleByMessageId.set(messageId, bundle)
     }
-    // Checkpoints referencing messages that are no longer in `messages` belonged
-    // to rolled-back branches and must not be anchored to earlier remaining messages.
   }
 
   // 1. Identify which bundles are active (on the currently rendered active lineage path)
@@ -152,9 +154,14 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     return undefined
   }
 
+  // Find the deepest active bundle in the session
+  const latestActiveBundle = sortedBundles.filter((b) => activeBundleIds.has(b.id)).pop()
+
   const items: React.ReactNode[] = []
 
+  // Initial checkpoint milestone at top of session
   if (startBundle) {
+    const startAltBranches = alternateBranchesByAnchor.get(startBundle.id)
     items.push(
       <CheckpointMarker
         key={`checkpoint-${startBundle.id}`}
@@ -163,26 +170,128 @@ const MessageListComponent: React.FC<MessageListProps> = ({
         createdAt={startBundle.createdAt}
         restoreContent={findNextUserMessage(0)?.content}
         disabled={checkpointBusy}
-        alternateBranches={alternateBranchesByAnchor.get(startBundle.id)}
+        alternateBranches={startAltBranches}
         onRestore={onRestoreCheckpoint}
+        onSelectBranch={onSelectBranch}
       />
     )
   }
 
   messages.forEach((msg, index) => {
-    const groupedBlocks =
-      msg.role === 'assistant' ? groupBlocksByTodos(msg.blocks, msg.toolCalls) : []
+    if (msg.role === 'user') {
+      // Locate the preceding checkpoint before this turn
+      let precedingBundle: CheckpointBundleSummary | undefined = undefined
+      for (let j = index - 1; j >= 0; j--) {
+        const b = bundleByMessageId.get(messages[j].id)
+        if (b) {
+          precedingBundle = b
+          break
+        }
+      }
+      if (!precedingBundle) {
+        precedingBundle = startBundle
+      }
 
-    items.push(
-      <div
-        key={msg.id}
-        className={`${msg.role === 'user' ? 'bg-surface-100/50 border border-surface-200/50 rounded-xl px-4 py-3' : 'py-2 border-b border-surface-100/50'}`}
-      >
-        <div className="space-y-4">
-          {msg.role === 'user' && renderContent(msg.content)}
-          {msg.role === 'system' && renderContent(msg.content)}
-          {msg.role === 'assistant' &&
-            groupedBlocks.map((group, gIdx) => (
+      // Check if this preceding bundle has divergent branches
+      let userBranches: BranchPreviewItem[] | undefined = undefined
+      if (precedingBundle) {
+        const altBranches = alternateBranchesByAnchor.get(precedingBundle.id)
+        if (altBranches && altBranches.length > 0) {
+          const timestampIso =
+            typeof msg.timestamp === 'number'
+              ? new Date(msg.timestamp).toISOString()
+              : msg.timestamp instanceof Date
+                ? msg.timestamp.toISOString()
+                : new Date().toISOString()
+
+          const activeCreatedAt =
+            (latestActiveBundle && latestActiveBundle.id !== precedingBundle.id
+              ? latestActiveBundle.createdAt
+              : undefined) || timestampIso
+
+          userBranches = [
+            {
+              headBundleId: latestActiveBundle?.id || precedingBundle.id,
+              createdAt: activeCreatedAt,
+              label: 'Active branch',
+              promptSnippet: msg.content,
+              isActive: true
+            },
+            ...altBranches.map((alt) => ({
+              headBundleId: alt.headBundleId,
+              createdAt: alt.createdAt,
+              label: alt.label,
+              promptSnippet: alt.promptSnippet,
+              isActive: false
+            }))
+          ]
+
+          userBranches.sort(
+            (a, b) =>
+              a.createdAt.localeCompare(b.createdAt) || a.headBundleId.localeCompare(b.headBundleId)
+          )
+        }
+      }
+
+      items.push(
+        <UserMessageCard
+          key={msg.id}
+          content={msg.content}
+          timestamp={msg.timestamp}
+          renderContent={renderContent}
+          branches={userBranches}
+          disabled={checkpointBusy}
+          anchorBundleId={precedingBundle?.id}
+          restoreContent={msg.content}
+          onRestore={onRestoreCheckpoint}
+          onSelectBranch={onSelectBranch || onRestoreCheckpoint}
+        />
+      )
+      return
+    }
+
+    if (msg.role === 'system') {
+      items.push(
+        <div key={msg.id} className="py-2 border-b border-surface-100/50">
+          <div className="space-y-4">
+            {renderContent(msg.content)}
+            {msg.actions && msg.actions.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {msg.actions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className="px-3 py-1 text-xs font-semibold rounded bg-surface-100 text-[var(--ev-c-text-1)] border border-surface-200 hover:bg-surface-200 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
+                    onClick={() => onSystemAction?.(action.input)}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="text-[10px] font-mono text-[var(--ev-c-text-3)] mt-3 text-right opacity-70">
+            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+      )
+      return
+    }
+
+    if (msg.role === 'assistant') {
+      const groupedBlocks = groupBlocksByTodos(msg.blocks, msg.toolCalls)
+      const bundle = bundleByMessageId.get(msg.id)
+      const isCustomMilestone =
+        bundle?.label && bundle.label.trim().toLowerCase() !== 'turn checkpoint'
+      const hasTrailingBranches =
+        index === messages.length - 1 &&
+        bundle &&
+        (alternateBranchesByAnchor.get(bundle.id)?.length ?? 0) > 0
+
+      items.push(
+        <div key={msg.id} className="py-2 border-b border-surface-100/50 group relative">
+          <div className="space-y-4">
+            {groupedBlocks.map((group, gIdx) => (
               <ProgressContainer key={gIdx} inProgressTodos={group.inProgressTodos}>
                 <div className="space-y-4">
                   {group.blocks.map((block, i) =>
@@ -206,41 +315,33 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 </div>
               </ProgressContainer>
             ))}
-          {msg.role === 'system' && msg.actions && msg.actions.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {msg.actions.map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  className="px-3 py-1 text-xs font-semibold rounded bg-surface-100 text-[var(--ev-c-text-1)] border border-surface-200 hover:bg-surface-200 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
-                  onClick={() => onSystemAction?.(action.input)}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="text-[10px] text-gray-400 mt-3 text-right opacity-70">
-          {new Date(msg.timestamp).toLocaleTimeString()}
-        </div>
-      </div>
-    )
+          </div>
 
-    const bundle = bundleByMessageId.get(msg.id)
-    if (bundle) {
-      items.push(
-        <CheckpointMarker
-          key={`checkpoint-${bundle.id}`}
-          bundleId={bundle.id}
-          label={bundle.label}
-          createdAt={bundle.createdAt}
-          restoreContent={findNextUserMessage(index + 1)?.content}
-          disabled={checkpointBusy}
-          alternateBranches={alternateBranchesByAnchor.get(bundle.id)}
-          onRestore={onRestoreCheckpoint}
-        />
+          <div className="text-[10px] font-mono text-[var(--ev-c-text-3)] mt-3 text-right opacity-70">
+            {new Date(msg.timestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </div>
+        </div>
       )
+
+      // Only render explicit milestone markers or trailing branches at the end of the conversation
+      if (bundle && (isCustomMilestone || hasTrailingBranches)) {
+        items.push(
+          <CheckpointMarker
+            key={`checkpoint-${bundle.id}`}
+            bundleId={bundle.id}
+            label={bundle.label}
+            createdAt={bundle.createdAt}
+            restoreContent={findNextUserMessage(index + 1)?.content}
+            disabled={checkpointBusy}
+            alternateBranches={alternateBranchesByAnchor.get(bundle.id)}
+            onRestore={onRestoreCheckpoint}
+            onSelectBranch={onSelectBranch}
+          />
+        )
+      }
     }
   })
 

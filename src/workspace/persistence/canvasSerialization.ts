@@ -9,7 +9,7 @@ import {
   asRelationshipId,
   createCardinalPorts
 } from '@workspace/canvas/domain'
-import type { CanvasState, NodeLayout } from '@workspace/canvas/types'
+import type { CanvasHistorySnapshot, CanvasState, NodeLayout } from '@workspace/canvas/types'
 import { migrateGraphCanvasDTO, type GraphCanvasDTO } from './graphCanvasDto'
 import { DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT } from '@shared/constants'
 
@@ -29,14 +29,14 @@ export class CanvasHydrationError extends Error {
 function sanitizeNodeAttrs(attrs: Record<string, unknown>): Record<string, unknown> | undefined {
   // Phase 5 rule: do not embed editor/Lexical content in the canvas document.
   // Some UI flows still attach transient `content` for initial card state; strip it here.
-  const { content, editorState, ...rest } = attrs as any
+  const { content, editorState, ...rest } = attrs as Record<string, unknown>
   const keys = Object.keys(rest)
   return keys.length > 0 ? rest : undefined
 }
 
-export function serializeCanvas(state: CanvasState): GraphCanvasDTO {
+export function serializeCanvasSnapshot(snapshot: CanvasHistorySnapshot): GraphCanvasDTO {
   const nodes: GraphCanvasDTO['graph']['nodes'] = {}
-  for (const node of Object.values(state.domain.graph.nodesById)) {
+  for (const node of Object.values(snapshot.graph.nodesById)) {
     nodes[String(node.id)] = {
       id: String(node.id),
       type: 'card',
@@ -46,7 +46,7 @@ export function serializeCanvas(state: CanvasState): GraphCanvasDTO {
   }
 
   const relationships: GraphCanvasDTO['graph']['relationships'] = {}
-  for (const rel of Object.values(state.domain.graph.relationshipsById)) {
+  for (const rel of Object.values(snapshot.graph.relationshipsById)) {
     relationships[String(rel.id)] = {
       id: String(rel.id),
       from: {
@@ -67,7 +67,7 @@ export function serializeCanvas(state: CanvasState): GraphCanvasDTO {
     graph: { nodes, relationships },
     layout: {
       layoutByNodeId: Object.fromEntries(
-        Object.entries(state.layout.layoutByNodeId).map(([nodeId, layout]) => [
+        Object.entries(snapshot.layoutByNodeId).map(([nodeId, layout]) => [
           String(nodeId),
           { x: layout.x, y: layout.y, width: layout.width, height: layout.height }
         ])
@@ -77,6 +77,13 @@ export function serializeCanvas(state: CanvasState): GraphCanvasDTO {
       updatedAt: new Date().toISOString()
     }
   }
+}
+
+export function serializeCanvas(state: CanvasState): GraphCanvasDTO {
+  return serializeCanvasSnapshot({
+    graph: state.domain.graph,
+    layoutByNodeId: state.layout.layoutByNodeId
+  })
 }
 
 export function deserializeCanvas(

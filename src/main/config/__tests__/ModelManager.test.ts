@@ -52,4 +52,11 @@ describe('ModelManager with OpenCode Go', () => {
     expect(thinking.type).toBe('enabled')
     expect(thinking.budget_tokens).toBeGreaterThanOrEqual(1024)
   })
+
+  it('does not attach temperature parameter to any model presets', () => {
+    const models = modelManager.getAvailableModels()
+    for (const m of models) {
+      expect(m.parameters?.temperature).toBeUndefined()
+    }
+  })
 })

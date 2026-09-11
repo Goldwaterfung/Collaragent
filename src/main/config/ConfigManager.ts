@@ -237,7 +237,7 @@ export class ConfigManager {
     const newConfig = { ...this.currentConfig }
     newConfig.model = {
       ...modelConfig,
-      parameters: catalogModel?.parameters ?? modelConfig.parameters ?? { temperature: 0.7 }
+      parameters: catalogModel?.parameters ?? modelConfig.parameters
     }
     return this.saveConfig(newConfig)
   }

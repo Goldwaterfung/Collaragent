@@ -24,13 +24,27 @@ import {
 import {
   createFilesystemMiddleware,
   createWorkspaceMiddleware,
+  createUserRulesMiddleware,
   dateMiddleware,
   createModelResponseNormalizerMiddleware,
   createSubAgentMiddleware
 } from '../middleware/index.js'
 
-export const BASE_PROMPT =
-  'In order to complete the objective that the user asks of you, you have access to a number of standard tools.'
+export const BASE_PROMPT = `
+You are an expert primarily operating inside a workspace. A workspace may include more than one project. A project may include a set of documents and/or a set of concept maps.
+
+### Studio Architecture
+You operate across synchronized surfaces:
+1. Visual Canvas: Infinite concept maps and relationship graphs.
+2. Document Workspace: A block-based HTML document editor for structured academic prose.
+
+### Operating Principles
+- Evidence-Based & Pragmatic: State facts, empirical evidence, and direct citations. Avoid speculative assumptions and hyperbole.
+- High-Signal Communication: Be direct, objective, and concise. Avoid conversational filler, meta-announcements, and redundant restatements.
+- Grounded Reasoning: Base conclusions on verified workspace contents or validated external literature or book contents. When context is ambiguous, inspect available resources or seek clarification rather than hallucinating references.
+- Collaborative Co-Authoring: Respect existing author voice and structure. Summarize substantive changes clearly when editing documents.
+- Mechanism Over Description: Differentiate observations from structural insights. Explain why systems behave as they do by identifying root constraints, trade-offs, and incentives rather than merely summarizing facts.
+- Zero Scaffolding & Orthogonality: Deliver direct conclusions without framework labels or step tags. State core premises once, analyze non-overlapping variables, and avoid theatrical melodrama or repetitive slogans.`.trim()
 
 function resolveSystemPrompt(
   prompt: string | SystemMessage | SystemPromptConfig | undefined
@@ -81,6 +95,7 @@ export interface CreateCollarAgentParams<
   workspaceReadOnly?: boolean
   middleware?: TMiddleware | AgentMiddleware[]
   subagents?: TSubagents
+  userRules?: string
 }
 
 export { type CreateCollarAgentParams as CreateDeepAgentParams }
@@ -138,7 +153,8 @@ export function createDeepAgent<
     backend,
     interruptOn,
     name,
-    store
+    store,
+    userRules
   } = params
 
   const effectiveTools: StructuredTool[] = [...(tools as StructuredTool[])]
@@ -159,10 +175,11 @@ export function createDeepAgent<
             defaultTools: effectiveTools,
             allAvailableTools: effectiveAllAvailableTools,
             defaultMiddleware: [
-              dateMiddleware(),
               createWorkspaceMiddleware({ readOnly: workspaceReadOnly }),
               createFilesystemMiddleware({ backend: filesystemBackend }),
-              createPatchToolCallsMiddleware()
+              createPatchToolCallsMiddleware(),
+              ...(userRules ? [createUserRulesMiddleware({ rules: userRules })] : []),
+              dateMiddleware()
             ],
             defaultInterruptOn: interruptOn,
             subagents: subagents as readonly (SubAgent | CompiledSubAgent)[],
@@ -173,7 +190,6 @@ export function createDeepAgent<
       : []
 
   const builtInMiddleware: AgentMiddleware[] = [
-    dateMiddleware(),
     createWorkspaceMiddleware({ readOnly: workspaceReadOnly }),
     createFilesystemMiddleware({ backend: filesystemBackend }),
     createSummarizationMiddleware({ backend: filesystemBackend }),
@@ -191,9 +207,13 @@ export function createDeepAgent<
     (m) => m.name !== 'modelResponseNormalizerMiddleware'
   )
 
+  // userRulesMiddleware is placed before dateMiddleware so user constraints are enforced
+  // while preserving static prefix KV prompt caching before dynamic runtime context.
   const allMiddleware: AgentMiddleware[] = [
     ...builtInMiddleware,
     ...filteredCustomMiddleware,
+    ...(userRules ? [createUserRulesMiddleware({ rules: userRules })] : []),
+    dateMiddleware(),
     createModelResponseNormalizerMiddleware()
   ]
 

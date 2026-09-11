@@ -1,10 +1,10 @@
-import { createMiddleware } from 'langchain'
+import { createMiddleware, SystemMessage } from 'langchain'
 
 /**
  * Middleware for injecting the current date and time into the system prompt.
  *
- * This ensures the agent is always aware of the current date and time
- * at the moment each request is processed.
+ * Appends runtime context to the end of the system prompt to preserve
+ * static prefix caching for upstream prompts, workspace definitions, and subagents.
  */
 export function dateMiddleware() {
   return createMiddleware({
@@ -20,15 +20,30 @@ export function dateMiddleware() {
         day: 'numeric'
       })
 
-      const dateSection = `## Current Date\n- **Date**: ${formattedDate}\n`
+      const dateSection = `## Runtime Context\n- **Current Date**: ${formattedDate}`
 
-      // Prepend the date section to the system prompt
-      const currentSystemPrompt = request.systemPrompt || ''
-      const newSystemPrompt = currentSystemPrompt
-        ? `${dateSection}\n${currentSystemPrompt}`
-        : dateSection
+      if (request.systemPrompt !== undefined) {
+        const currentSystemPrompt = request.systemPrompt || ''
+        const newSystemPrompt = currentSystemPrompt
+          ? `${currentSystemPrompt}\n\n${dateSection}`
+          : dateSection
+        return handler({ ...request, systemPrompt: newSystemPrompt })
+      }
 
-      return handler({ ...request, systemPrompt: newSystemPrompt })
+      if (request.systemMessage !== undefined) {
+        const sysMsg = request.systemMessage
+        let newSysMsg = sysMsg
+        if (typeof sysMsg.concat === 'function') {
+          newSysMsg = sysMsg.concat(`\n\n${dateSection}`)
+        } else if (typeof sysMsg.content === 'string') {
+          newSysMsg = new SystemMessage({
+            content: `${sysMsg.content}\n\n${dateSection}`
+          })
+        }
+        return handler({ ...request, systemMessage: newSysMsg })
+      }
+
+      return handler({ ...request, systemPrompt: dateSection })
     }
   })
 }

@@ -6,13 +6,14 @@ import { SubagentList } from './SubagentList'
 import { SkillsSettings } from './SkillsSettings'
 import { MCPServerSettings } from './MCPServerSettings'
 import { TelemetrySettings } from './TelemetrySettings'
+import { UserRulesSettings } from './UserRulesSettings'
 
 export const Settings = () => {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
-    'general' | 'subagents' | 'skills' | 'tools' | 'telemetry'
+    'general' | 'rules' | 'subagents' | 'skills' | 'tools' | 'telemetry'
   >('general')
 
   const loadConfig = async () => {
@@ -96,6 +97,12 @@ export const Settings = () => {
             General & Model
           </button>
           <button
+            className={`px-4 py-2 font-medium transition-colors ${activeTab === 'rules' ? 'border-b-2 border-primary text-black' : 'text-black/60 hover:text-black hover:bg-surface-100/50 rounded-t-lg'}`}
+            onClick={() => setActiveTab('rules')}
+          >
+            User Rules
+          </button>
+          <button
             className={`px-4 py-2 font-medium transition-colors ${activeTab === 'subagents' ? 'border-b-2 border-primary text-black' : 'text-black/60 hover:text-black hover:bg-surface-100/50 rounded-t-lg'}`}
             onClick={() => setActiveTab('subagents')}
           >
@@ -125,6 +132,12 @@ export const Settings = () => {
           {activeTab === 'general' && (
             <div className="mt-1">
               <ModelSelector currentConfig={config.model} onUpdate={loadConfig} />
+            </div>
+          )}
+
+          {activeTab === 'rules' && (
+            <div className="mt-1">
+              <UserRulesSettings config={config} onUpdate={loadConfig} />
             </div>
           )}
 

@@ -72,6 +72,8 @@ export {
   type SubAgent,
   type CompiledSubAgent,
   createWorkspaceMiddleware,
+  createUserRulesMiddleware,
+  type UserRulesMiddlewareOptions,
   dateMiddleware,
   createModelResponseNormalizerMiddleware
 } from './middleware/index.js'

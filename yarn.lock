@@ -35,12 +35,13 @@
     package-manager-detector "^1.7.0"
     tinyexec "^1.2.4"
 
-"@anthropic-ai/sdk@0.91.1", "@anthropic-ai/sdk@^0.91.1":
-  version "0.91.1"
-  resolved "https://registry.yarnpkg.com/@anthropic-ai/sdk/-/sdk-0.91.1.tgz#09eeee4b12b91ba6d827ca249c2ede61e521aa00"
-  integrity sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw==
+"@anthropic-ai/sdk@0.123.0":
+  version "0.123.0"
+  resolved "https://registry.yarnpkg.com/@anthropic-ai/sdk/-/sdk-0.123.0.tgz#c11bb1f1976a83b6cbece3dcca0c50f4fe6c6985"
+  integrity sha512-Y9oX9mPNGZClHQOFqrWRk43Srcu/UHuPq3rfxxOq7JgW0gi+lJA2MAOK4Ul3k/+AUrwRWFJvd0tK3oC0Pw25dw==
   dependencies:
     json-schema-to-ts "^3.1.1"
+    standardwebhooks "^1.0.0"
 
 "@anthropic-ai/sdk@^0.115.0":
   version "0.115.0"
@@ -49,6 +50,13 @@
   dependencies:
     json-schema-to-ts "^3.1.1"
     standardwebhooks "^1.0.0"
+
+"@anthropic-ai/sdk@^0.91.1":
+  version "0.91.1"
+  resolved "https://registry.yarnpkg.com/@anthropic-ai/sdk/-/sdk-0.91.1.tgz#09eeee4b12b91ba6d827ca249c2ede61e521aa00"
+  integrity sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw==
+  dependencies:
+    json-schema-to-ts "^3.1.1"
 
 "@asamuzakjp/css-color@^3.2.0":
   version "3.2.0"
@@ -896,14 +904,14 @@
   resolved "https://registry.npmjs.org/@dmsnell/diff-match-patch/-/diff-match-patch-1.1.0.tgz"
   integrity sha512-yejLPmM5pjsGvxS9gXablUSbInW7H976c/FJ4iQxWIm7/38xBySRemTPDe34lhg1gVLbJntX0+sH0jYfU+PN9A==
 
-"@earendil-works/pi-ai@^0.84.4":
-  version "0.84.4"
-  resolved "https://registry.yarnpkg.com/@earendil-works/pi-ai/-/pi-ai-0.84.4.tgz#348f1be5c2a0f4d17cc167fe1e5a7cabb191d079"
-  integrity sha512-AClAZxf5+c4RRu44NJPS6wyQy+Nmq+Mzyyrdvm4ZVMNuixelO02RZX4G4Aq1F145Yzp43wnM5S+hLlSI7ypfVw==
+"@earendil-works/pi-ai@^0.85.1":
+  version "0.85.1"
+  resolved "https://registry.yarnpkg.com/@earendil-works/pi-ai/-/pi-ai-0.85.1.tgz#3f5726032c30149f6060a3aeacb79436c7387a37"
+  integrity sha512-+VgVIJDkDO2efYJKEEqvPTH4zmnIaXdAppGbO+vKFA9qy5PdhFiAenuFAkU+oiCSfOC4dMHDyrjdQeL4ZoC5CQ==
   dependencies:
-    "@anthropic-ai/sdk" "0.91.1"
+    "@anthropic-ai/sdk" "0.123.0"
     "@aws-sdk/client-bedrock-runtime" "3.1048.0"
-    "@earendil-works/pi-telemetry" "^0.84.4"
+    "@earendil-works/pi-telemetry" "^0.85.1"
     "@google/genai" "1.52.0"
     "@smithy/node-http-handler" "4.7.3"
     http-proxy-agent "7.0.2"
@@ -912,10 +920,10 @@
     partial-json "0.1.7"
     typebox "1.3.7"
 
-"@earendil-works/pi-telemetry@^0.84.4":
-  version "0.84.4"
-  resolved "https://registry.yarnpkg.com/@earendil-works/pi-telemetry/-/pi-telemetry-0.84.4.tgz#0eefd361fab1db773496384c87bfd91be2772790"
-  integrity sha512-8e2CuxM+ht+hedQXTZmi5JVl6/xDK9RpSDL2+MbITevKYQhMZ/z6lJOTFgox3HQyGxO8mOZEtYGVeQNaD4OzqA==
+"@earendil-works/pi-telemetry@^0.85.1":
+  version "0.85.1"
+  resolved "https://registry.yarnpkg.com/@earendil-works/pi-telemetry/-/pi-telemetry-0.85.1.tgz#b4dbe9155fff8aedb3ff752e7a954b9c7201ddf1"
+  integrity sha512-Bg/YN6kA7Swja/NQxka8xFdecb4E/auIEGF2G5A25EaQXhRnPj300/7/KpgsDDMYUzHTDAv4RyUxaQPJKW81Rw==
 
 "@electron-internal/extract-zip@^1.0.1":
   version "1.0.5"

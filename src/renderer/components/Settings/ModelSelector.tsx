@@ -71,7 +71,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
       const selectedModel = availableModels.find(
         (m) => m.id === targetModelId && m.provider === provider
       )
-      const parameters = selectedModel?.parameters || { temperature: 0.7 }
+      const parameters = selectedModel?.parameters
 
       const response = await window.configIPC.setModel({
         provider,

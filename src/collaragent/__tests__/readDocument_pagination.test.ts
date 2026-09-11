@@ -56,24 +56,82 @@ describe('readDocument block-level pagination', () => {
     })
   })
 
-  it('reads the first chunk by default (offset 0, limit 50) and indicates hasMore with nextOffset', async () => {
+  it('reads the first chunk by default (offset 0, limit 15) and indicates hasMore with nextOffset', async () => {
     const result = await readDocument.invoke({ instanceName: 'Architecture-Doc' })
 
     expect(result.status).toBe('success')
     if (result.status === 'success') {
       expect(result.totalBlocks).toBe(120)
       expect(result.offset).toBe(0)
-      expect(result.limit).toBe(50)
+      expect(result.limit).toBe(15)
       expect(result.hasMore).toBe(true)
-      expect(result.nextOffset).toBe(50)
-      expect(result.editable_blocks).toHaveLength(50)
-      expect(result.editable_blocks[0].id).toBe('blk-0')
-      expect(result.editable_blocks[49].id).toBe('blk-49')
+      expect(result.nextOffset).toBe(15)
+      expect(result.editable_blocks).toHaveLength(15)
+      expect(result.editable_blocks?.[0].id).toBe('blk-0')
+      expect(result.editable_blocks?.[14].id).toBe('blk-14')
 
       // Verifies comment pruning: c1 (block 5) is visible, c2 (block 70) is pruned
       expect(result.comments).toBeDefined()
       expect(result.comments?.c1).toBeDefined()
       expect(result.comments?.c2).toBeUndefined()
+    }
+  })
+
+  it('returns compact structural outline when outlineOnly: true', async () => {
+    const mixedBlocks: Block[] = [
+      { id: 'h-1', type: 'h1', children: [{ text: 'Introduction Title' }] },
+      {
+        id: 'p-1',
+        type: 'paragraph',
+        children: [{ text: 'Detailed paragraph with lots of words...' }]
+      },
+      { id: 'h-2', type: 'h2', children: [{ text: 'Methodology' }] }
+    ]
+    vi.mocked(getDocumentPayload).mockResolvedValueOnce({
+      payload: { blocks: mixedBlocks },
+      instanceId: 'inst-uuid-1',
+      clientId: 'test-client'
+    })
+
+    const result = await readDocument.invoke({
+      instanceName: 'Architecture-Doc',
+      outlineOnly: true
+    })
+
+    expect(result.status).toBe('success')
+    if (result.status === 'success') {
+      expect(result.action).toBe('Read Outline')
+      expect(result.totalBlocks).toBe(3)
+      expect(result.outline).toBeDefined()
+      expect(result.outline).toHaveLength(3)
+      expect(result.outline?.[0]).toEqual({
+        id: 'h-1',
+        type: 'h1',
+        headingText: 'Introduction Title',
+        preview: 'Introduction Title'
+      })
+      expect(result.outline?.[1].headingText).toBeUndefined()
+      expect(result.outline?.[1].preview).toContain('Detailed paragraph')
+    }
+  })
+
+  it('reads targeted neighborhood when targetBlockId and radius are provided', async () => {
+    const result = await readDocument.invoke({
+      instanceName: 'Architecture-Doc',
+      targetBlockId: 'blk-20',
+      radius: 2
+    })
+
+    expect(result.status).toBe('success')
+    if (result.status === 'success') {
+      expect(result.action).toBe('Read Target Neighborhood')
+      expect(result.targetBlockId).toBe('blk-20')
+      expect(result.radius).toBe(2)
+      expect(result.offset).toBe(18)
+      expect(result.editable_blocks).toHaveLength(5)
+      expect(result.editable_blocks?.[0].id).toBe('blk-18')
+      expect(result.editable_blocks?.[2].id).toBe('blk-20')
+      expect(result.editable_blocks?.[4].id).toBe('blk-22')
     }
   })
 

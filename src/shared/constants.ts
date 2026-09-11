@@ -40,7 +40,7 @@ export const CLUSTER_PROGRESS_MAX_WIDTH_PX = 260
 export const CLUSTER_FILL_OPACITY_PERCENT = 5
 
 // Workspace Document Tool Constants
-export const DEFAULT_DOCUMENT_BLOCK_LIMIT = 50
+export const DEFAULT_DOCUMENT_BLOCK_LIMIT = 15
 export const MAX_DOCUMENT_BLOCK_LIMIT = 200
 
 export const WORKSPACE_TOOL_NAMES = [

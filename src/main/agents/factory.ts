@@ -58,6 +58,7 @@ export class AgentFactory {
       tools: enabledTools,
       subagents: enabledSubagents,
       middleware: config.middleware,
+      userRules: config.userRules || '',
       mcpServers: (config.mcpServers ?? [])
         .filter((s: any) => s.enabled)
         .map((s: any) => ({ id: s.id, transport: s.transport }))
@@ -137,6 +138,7 @@ export class AgentFactory {
       allAvailableTools: cached.allAvailableTools,
       dynamicEnabled: config.middleware?.subAgent?.dynamicEnabled ?? true,
       subagents: cached.subagents,
+      userRules: config.userRules,
       checkpointer,
       middleware: [
         toolRetryMiddleware({ maxRetries: 2, onFailure: 'continue' }),

@@ -24,6 +24,9 @@ export interface AppConfig {
   /** Telemetry and observability configuration */
   telemetry?: TelemetryConfig
 
+  /** User-defined rules and behavioral constraints injected into agent prompt */
+  userRules?: string
+
   /** Recent files list */
   recentFiles: RecentFile[]
 }

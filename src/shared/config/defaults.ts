@@ -5,7 +5,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     provider: 'openai',
     modelId: 'gpt-5.2-medium',
     parameters: {
-      temperature: 0.7,
       maxTokens: 32768,
       reasoning: {
         effort: 'medium',
@@ -57,5 +56,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     baseUrl: 'http://localhost:3000',
     publicKey: ''
   },
+  userRules: '',
   recentFiles: []
 }

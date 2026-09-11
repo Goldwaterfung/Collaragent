@@ -134,7 +134,27 @@ const getDocumentInputSchema = z
       .default(DEFAULT_DOCUMENT_BLOCK_LIMIT)
       .describe(
         `Maximum number of blocks to return (default: ${DEFAULT_DOCUMENT_BLOCK_LIMIT}, max: ${MAX_DOCUMENT_BLOCK_LIMIT}). Use to read documents incrementally in chunks.`
-      )
+      ),
+    outlineOnly: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, returns only headings and compact block previews with IDs. Highly token-efficient for discovering block IDs and document structure.'
+      ),
+    targetBlockId: z
+      .string()
+      .optional()
+      .describe(
+        'Optional block ID to anchor reading around. Fetches this target block and immediate surrounding context blocks.'
+      ),
+    radius: z
+      .number()
+      .int()
+      .min(0)
+      .max(10)
+      .optional()
+      .default(2)
+      .describe('Number of context blocks before and after targetBlockId to include (default: 2).')
   })
   .refine((data) => !!(data.instanceId || data.instanceName), {
     message: 'Either instanceId or instanceName must be provided.'
@@ -189,20 +209,45 @@ const editDocumentSchema = z
       ),
     operations: z
       .array(
-        z.object({
-          action: z.enum(['update', 'insert', 'delete']).describe('The action to perform.'),
-          blockId: z.string().describe('The target block ID (or anchor ID for insert).'),
-          anchor: z
-            .enum(['before', 'after'])
-            .optional()
-            .describe('Placement relative to the blockId. Required only for "insert".'),
-          newHtml: z
-            .string()
-            .optional()
-            .describe(
-              'The new HTML content. Required for "update" and "insert". Can contain multiple tags.'
-            )
-        })
+        z
+          .object({
+            action: z
+              .enum(['update', 'insert', 'delete', 'replace_text'])
+              .describe('The action to perform.'),
+            blockId: z.string().describe('The target block ID (or anchor ID for insert).'),
+            anchor: z
+              .enum(['before', 'after'])
+              .optional()
+              .describe('Placement relative to the blockId. Required only for "insert".'),
+            newHtml: z
+              .string()
+              .optional()
+              .describe(
+                'The new HTML content. Required for "update" and "insert". Can contain multiple tags.'
+              ),
+            target: z
+              .string()
+              .optional()
+              .describe(
+                'Exact substring within the block to replace. Required for "replace_text".'
+              ),
+            replacement: z
+              .string()
+              .optional()
+              .describe('Replacement string or HTML snippet. Required for "replace_text".')
+          })
+          .refine(
+            (op) => {
+              if (op.action === 'replace_text') return !!(op.target && op.replacement !== undefined)
+              if (op.action === 'update') return !!op.newHtml
+              if (op.action === 'insert') return !!(op.anchor && op.newHtml)
+              return true
+            },
+            {
+              message:
+                'Missing required fields: "target" and "replacement" for replace_text; "newHtml" for update; "anchor" and "newHtml" for insert.'
+            }
+          )
       )
       .min(1)
       .describe('An array of edit operations to apply in order.'),
@@ -331,21 +376,31 @@ export interface ResolveResourceOptions {
   context?: ToolConnectionContext
 }
 
+export interface DocumentOutlineItem {
+  id: string
+  type: string
+  headingText?: string
+  preview: string
+}
+
 export interface ReadDocumentSuccessResult {
   status: 'success'
-  action: 'Read'
+  action: 'Read' | 'Read Outline' | 'Read Target Neighborhood'
   instanceId: string
   instanceName: string
   projectName?: string
   totalBlocks: number
-  offset: number
-  limit: number
-  hasMore: boolean
+  offset?: number
+  limit?: number
+  hasMore?: boolean
   nextOffset?: number
-  editable_blocks: Array<{
+  editable_blocks?: Array<{
     id: string
     html: string
   }>
+  outline?: DocumentOutlineItem[]
+  targetBlockId?: string
+  radius?: number
   comments?: Record<string, Comment>
 }
 
@@ -371,12 +426,14 @@ interface EditDocumentErrorResult {
   message: string
   recommendFix?: string
   failedHunk?: number
+  failedBlockId?: string
   failedHeader?: string
   // Optional: only populated when the document was successfully fetched before the error
   current_editable_blocks?: Array<{
     id: string
     html: string
   }>
+  valid_outline?: DocumentOutlineItem[]
 }
 
 interface EditDocumentSuccessResult {
@@ -493,6 +550,39 @@ function stripBlockId(line: string): string {
   return line.replace(/\sdata-block-id="[^"]*"/, '')
 }
 
+function extractBlockText(block: Block): string {
+  if (typeof block.content === 'string') {
+    return block.content.trim()
+  }
+  if (block.children) {
+    return block.children
+      .map((c) => c.text || '')
+      .join('')
+      .trim()
+  }
+  if (block.type === 'table' && block.tableRows) {
+    const rowCount = block.tableRows.length
+    const colCount = block.tableRows[0]?.cells?.length ?? 0
+    return `[Table: ${rowCount} rows x ${colCount} cols]`
+  }
+  return ''
+}
+
+export function buildDocumentOutline(blocks: Block[]): DocumentOutlineItem[] {
+  if (!Array.isArray(blocks)) return []
+  return blocks.map((block) => {
+    const isHeading = !!(block.type && /^h[1-6]$/.test(block.type))
+    const text = extractBlockText(block)
+    const preview = text.length > 60 ? `${text.slice(0, 57)}...` : text
+    return {
+      id: block.id ?? '',
+      type: block.type,
+      ...(isHeading ? { headingText: text } : {}),
+      preview
+    }
+  })
+}
+
 export function buildEditableBlocks(blocks: Block[]): Array<{ id: string; html: string }> {
   if (!Array.isArray(blocks)) {
     throw new WorkspaceToolError(
@@ -565,6 +655,12 @@ function generateUnifiedDiff(currentPatchView: string, updatedPatchView: string)
 }
 
 function getRecommendFix(message: string): string | undefined {
+  if (message.includes('both "target" and "replacement" are required')) {
+    return 'Both "target" and "replacement" fields are mandatory for replace_text operations.'
+  }
+  if (message.includes('Target text') && message.includes('was not found')) {
+    return 'The target text to replace was not found in the block. Verify exact spelling, spacing, or run readDocument.'
+  }
   if (message.includes('newHtml is required')) {
     return 'The "newHtml" field is mandatory for update and insert operations.'
   }
@@ -572,10 +668,13 @@ function getRecommendFix(message: string): string | undefined {
     return 'The "anchor" field ("before" or "after") is mandatory for insert operations.'
   }
   if (message.includes('Could not find block')) {
-    return 'Re-run readDocument to confirm valid block IDs. The targeted block may have been deleted or moved.'
+    return 'Re-run readDocument to confirm valid block IDs, or inspect the valid_outline provided in this error response.'
   }
-  if (message.includes('update newHtml contained no valid blocks')) {
-    return 'The "newHtml" string must contain at least one valid HTML tag (e.g. <p>...</p>).'
+  if (
+    message.includes('update newHtml contained no valid blocks') ||
+    message.includes('replace_text produced no valid blocks')
+  ) {
+    return 'The operation produced no valid blocks. Ensure content is wrapped in standard HTML tags such as <p>...</p>.'
   }
   return undefined
 }
@@ -770,6 +869,63 @@ async function readDocumentHandler(
     const allBlocks = payload.blocks || []
     const totalBlocks = allBlocks.length
 
+    if (input.outlineOnly) {
+      return {
+        status: 'success',
+        action: 'Read Outline',
+        instanceId: resolved.instanceId,
+        instanceName: resolved.name,
+        projectName: input.projectName,
+        totalBlocks,
+        outline: buildDocumentOutline(allBlocks)
+      }
+    }
+
+    if (input.targetBlockId) {
+      const targetIdx = allBlocks.findIndex((b) => b.id === input.targetBlockId)
+      if (targetIdx === -1) {
+        throw new WorkspaceToolError(
+          `Target block "${input.targetBlockId}" not found in document "${resolved.name}".`,
+          WorkspaceErrorCode.WORKSPACE_BLOCK_IDENTITY_MISSING
+        )
+      }
+
+      const rad = input.radius ?? 2
+      const start = Math.max(0, targetIdx - rad)
+      const end = Math.min(totalBlocks, targetIdx + rad + 1)
+      const slicedBlocks = allBlocks.slice(start, end)
+      const editableBlocks = buildEditableBlocks(slicedBlocks)
+
+      let filteredComments: Record<string, Comment> | undefined
+      if (payload.comments) {
+        const visibleCommentIds = extractCommentIdsFromBlocks(slicedBlocks)
+        const result: Record<string, Comment> = {}
+        for (const [id, comment] of Object.entries(payload.comments)) {
+          if (visibleCommentIds.has(id)) {
+            result[id] = comment
+          }
+        }
+        filteredComments = Object.keys(result).length > 0 ? result : undefined
+      }
+
+      return {
+        status: 'success',
+        action: 'Read Target Neighborhood',
+        instanceId: resolved.instanceId,
+        instanceName: resolved.name,
+        projectName: input.projectName,
+        totalBlocks,
+        targetBlockId: input.targetBlockId,
+        radius: rad,
+        offset: start,
+        limit: slicedBlocks.length,
+        hasMore: end < totalBlocks,
+        nextOffset: end < totalBlocks ? end : undefined,
+        editable_blocks: editableBlocks,
+        comments: filteredComments
+      }
+    }
+
     const offset = Math.max(0, Math.min(input.offset ?? 0, totalBlocks))
     const limit = Math.max(
       1,
@@ -944,6 +1100,10 @@ async function editDocumentHandler(
     const compiled = PatchCommandEngine.compile(currentPatchView, input.operations)
 
     if (!compiled.applied) {
+      const isContextMismatch = compiled.code === 'PATCH_CONTEXT_MISMATCH'
+      const failedHunkOp = input.operations[compiled.hunkIndex ?? 0]
+      const failedBlockId = failedHunkOp?.blockId
+
       return {
         status: 'error',
         action: 'Failed to edit',
@@ -955,7 +1115,9 @@ async function editDocumentHandler(
         message: compiled.message,
         recommendFix: getRecommendFix(compiled.message),
         failedHunk: compiled.hunkIndex,
-        current_editable_blocks: buildEditableBlocks(payload.blocks)
+        failedBlockId,
+        // On context mismatch, provide compact structural outline rather than dumping all raw block HTML
+        ...(isContextMismatch ? { valid_outline: buildDocumentOutline(payload.blocks) } : {})
       }
     }
 
@@ -1216,34 +1378,18 @@ async function resolveOrCreateResourceId(options: {
  */
 export const readDocument = tool(readDocumentHandler, {
   name: 'readDocument',
-  description: `Read a document and return its content as a list of editable blocks and associated comments.
-Supports pagination via 'offset' and 'limit' to read large documents in manageable slices without token exhaustion.
+  description: `Read a document and return its content as editable blocks and associated comments. Supports pagination ('offset'/'limit'), structural discovery ('outlineOnly'), and anchored neighborhood reading ('targetBlockId'/'radius').
 
-The editable_blocks are the preferred source for editDocument patches. Each item contains:
-- id: the stable block ID
-- html: the exact current block HTML without data-block-id attributes.
+Modes:
+- outlineOnly: Set outlineOnly: true to retrieve headings and short previews with block IDs. Use this first to locate sections and block IDs with minimal token usage.
+- targetBlockId: Pass targetBlockId (and optional radius: 2) to read only that block and immediate surrounding context.
+- pagination: Read sequentially in chunks using 'offset' and 'limit'. When 'hasMore' is true, call again with 'offset' set to 'nextOffset'.
 
-If a block contains comment references, they will appear in the HTML as <span data-comment-ids="c1,c2">text</span>. 
-Only comments referenced within the returned slice are provided in the 'comments' record.
-
-WIKI & CLAIM BADGE LINKAGE:
-Inline entity relationships and claim badges are represented in editable_blocks HTML using wikilink syntax:
-[[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]].
-Example: "<p>Architecture [[supports:Storage-Engine-Evaluation|Ensures zero data loss]] verified.</p>"
-
-PAGINATION:
-- If 'hasMore' is true, call readDocument again with 'offset' set to 'nextOffset' to retrieve subsequent blocks.
-
-Example editable_blocks:
-[
-  { "id": "abc123", "html": "<h1>My Document</h1>" },
-  { "id": "xyz789", "html": "<p>This is a section <span data-comment-ids=\"c1\">with a comment</span>.</p>" }
-]
-
-Example comments:
-{
-  "c1": { "id": "c1", "author": "Alice", "content": "This needs more detail." }
-}`,
+Output:
+- editable_blocks: Array of { id: string, html: string }. Use these stable block IDs for editDocument patches.
+- outline: Array of { id, type, headingText?, preview } when outlineOnly: true.
+- comments: Record of comment metadata referenced by <span data-comment-ids="..."> in returned blocks.
+- wikilinks: Entity relationships appear as [[<relation>:<targetEntity>|<justification>]].`,
   schema: getDocumentInputSchema
 })
 
@@ -1254,34 +1400,18 @@ Example comments:
  */
 export const createDocument = tool(createDocumentHandler, {
   name: 'createDocument',
-  description: `Create a new document (or completely replace an existing one) using standard HTML tags.
+  description: `Create a new document (or completely replace an existing one) using semantic HTML.
 
-Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>, <table>, <thead>, <tbody>, <tfoot>, <tr>, <th>, <td>.
-Supported styles: <b>, <i>, <u>; style="text-align: center|right"; colspan, rowspan, background-color.
+Structure Guidelines:
+- Tags: <h1>-<h4>, <p>, <ul>, <ol>, <li>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <b>, <i>, <u>, <br>.
+- Tables: Multi-attribute comparisons, metrics, and parameters belong in <table> with <thead> and <td><b>Key</b></td>.
+- Lists: Parallel points belong in <ul>/<li> with bold lead-ins (<li><b>Label:</b> Description</li>).
+- Narrative Prose: Use <p> for cohesive conceptual synthesis (one central thesis per paragraph).
 
-Each top-level HTML tag (like <p> or <h2> or <table>) becomes a separate block in the document.
-
-DOCUMENT STRUCTURE GUIDELINES:
-• Extract 2D Data to Tables: Comparisons, timelines, options, and metrics belong in <table> with <thead> and <th>. Bold row keys in <td><b>Key</b></td>.
-• High-Density Lists: Use <ul>/<li> with a 2-4 word bold lead-in phrase (<li><b>Label:</b> description</li>) for parallel points.
-• Narrative Cohesion: Use <p> for continuous conceptual reasoning and synthesis. Preserve thematic unity (one core idea per paragraph); do not bury tabular data in prose.
-For comprehensive layouts, refer to the 'workspace-document-presentation' skill.
-
-WIKI & CLAIM BADGE LINKAGE:
-Link to other documents, concepts, claims, or sources using typed wikilinks:
-• Syntax: [[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]]
-• Supported relations: 'supports', 'contradicts', 'supersedes', 'details', 'derived_from', 'cites', 'relates_to'
-• DOM representation: <span data-lexical-claim-badge="true" data-target-entity="..." data-rel="..." data-justification="...">...</span> is also supported.
-• Examples:
-  - "<p>Our benchmark [[supports:Storage-Engine-Evaluation|Multi-process WAL matches P99 latency SLA]] confirms performance.</p>"
-  - "<p>V4 storage engine [[supersedes:V3-Monolith|Eliminates serialization bottleneck]].</p>"
-All embedded wikilinks are automatically extracted into the workspace Relational Ledger and projected onto the Concept Canvas.
-
-Example Input:
-{
-  "instanceName": "Storage-Engine-Evaluation",
-  "html_content": "<h2>Storage Engine Evaluation</h2><p>This evaluation benchmarks relational and sharded key-value engines for local document persistence [[supports:Architecture-Spec|Matches multi-process isolation guarantees]], focusing on retrieval latency and cross-process concurrency guarantees.</p><table><thead><tr><th>Engine</th><th>Read Latency</th><th>Concurrency</th><th>Assessment</th></tr></thead><tbody><tr><td><b>SQLite (WAL)</b></td><td>&lt;2ms</td><td>Multi-reader, single-writer</td><td>Recommended for metadata</td></tr><tr><td><b>Sharded MsgPack</b></td><td>&lt;1ms</td><td>Process-isolated shards</td><td>Optimal for binary snapshots</td></tr></tbody></table><h3>Selection Criteria</h3><ul><li><b>Throughput Resilience:</b> Must handle rapid micro-edits without UI thread blocking.</li><li><b>Crash Consistency:</b> Atomic file swaps prevent corruption during unexpected shutdowns.</li></ul>"
-} `,
+Wikilinks & Relational Ledger:
+- Syntax: [[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]].
+- Supported relations: 'supports', 'contradicts', 'supersedes', 'details', 'derived_from', 'cites', 'relates_to'.
+- Embedded wikilinks automatically extract into the Relational Ledger and project onto the Concept Canvas.`,
   schema: createDocumentHtmlSchema
 })
 
@@ -1292,51 +1422,35 @@ Example Input:
  */
 export const editDocument = tool(editDocumentHandler, {
   name: 'editDocument',
-  description: `Edit an existing document using structured JSON operations.
- 
-This tool allows you to update, insert, or delete blocks in a document without needing to provide the old HTML content or adhere to a strict text grammar.
+  description: `Edit an existing document using granular block operations. Call readDocument first to obtain valid block IDs.
 
-OPERATIONS:
-• update: Replaces the block at 'blockId' with 'newHtml'. If 'newHtml' contains multiple tags, they are all inserted sequentially.
-• insert: Adds 'newHtml' 'before' or 'after' the 'blockId'.
-• delete: Removes the block at 'blockId'.
+Operations:
+- replace_text: Surgically replaces a specific substring within a block. Requires 'blockId', 'target', and 'replacement'. Highly recommended for minor edits, typo fixes, or metric updates (saves 90%+ tokens).
+- update: Replaces entire block at 'blockId' with 'newHtml' (can contain multiple sequential HTML tags).
+- insert: Inserts 'newHtml' 'before' or 'after' the specified 'blockId'.
+- delete: Removes the block at 'blockId'.
 
-BEST PRACTICES:
-• Batching: Combine multiple updates, inserts, and deletes into a single tool call for maximum efficiency.
-• Targeted Edits: Always call readDocument first to retrieve the current state and valid blockIds.
-• Multi-Block Support: Use a single 'update' or 'insert' to add multiple tags at once rather than making separate calls.
-• Valid HTML: Ensure 'newHtml' contains valid, semantic HTML tags (e.g., <p>, <ul>, <h2>, <table>). Keep comparisons in <table> with <thead> and bold keys, and use bold lead-ins for <li>.
+Rules:
+- Batching: Combine all operations (replace_text, update, insert, delete) for a document into a single tool call.
+- Valid HTML: Use semantic tags (<h1>-<h4>, <p>, <ul>, <li>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <b>, <i>). Keep comparisons in <table> and bold lead-ins in <li>.
+- Wikilinks: Embed [[<relation>:<targetEntity>|<justification>]] to update Relational Ledger edges and Concept Canvas projections.
 
-WIKI & CLAIM BADGE LINKAGE:
-You can insert, update, or remove entity relationships in 'newHtml' using wikilink syntax:
-• [[<relation>:<targetEntity>|<justification>]] or [[<relation>:<targetEntity>]]
-• Supported relations: 'supports', 'contradicts', 'supersedes', 'details', 'derived_from', 'cites', 'relates_to'
-Any edits with wikilinks immediately update the Relational Ledger and project changes onto the Concept Canvas.
-
-Supported tags: <h1>, <h2>, <h3>, <h4>, <ul>, <ol>, <li>, <p>, <br>, <table>, <thead>, <tbody>, <tfoot>, <tr>, <th>, <td>.
-Supported styles: <b>, <i>, <u>; style="text-align: center|right"; colspan, rowspan, background-color.
-
-Example Input (Batch Refinement):
+Examples:
+1. Surgical text replacement:
 {
-  "instanceName": "Storage-Engine-Evaluation",
+  "instanceName": "Doc-Name",
   "operations": [
-    {
-      "action": "update",
-      "blockId": "summary-p1",
-      "newHtml": "<p>Updated analysis incorporating recent stress-test benchmarks [[supports:Architecture-Spec|Matches multi-process isolation guarantees]] under concurrent worker loads.</p>"
-    },
-    {
-      "action": "insert",
-      "blockId": "criteria-heading",
-      "anchor": "after",
-      "newHtml": "<table><thead><tr><th>Metric</th><th>Target</th><th>Observed</th><th>Status</th></tr></thead><tbody><tr><td><b>Sync P99</b></td><td>&lt;15ms</td><td>8.2ms</td><td>Pass</td></tr><tr><td><b>Memory Peak</b></td><td>&lt;120MB</td><td>94MB</td><td>Pass</td></tr></tbody></table>"
-    },
-    {
-      "action": "delete",
-      "blockId": "deprecated-draft-note"
-    }
-  ],
-  "explanation": "Incorporate latest benchmark findings, insert metrics table, and remove obsolete draft notes."
+    { "action": "replace_text", "blockId": "k9f2x8z1a", "target": "old text", "replacement": "new text" }
+  ]
+}
+2. Block replacement and insertion:
+{
+  "instanceName": "Doc-Name",
+  "operations": [
+    { "action": "update", "blockId": "k9f2x8z1a", "newHtml": "<p>Updated text</p>" },
+    { "action": "insert", "blockId": "k9f2x8z1a", "anchor": "after", "newHtml": "<table>...</table>" },
+    { "action": "delete", "blockId": "m4n5p6q7r" }
+  ]
 }`,
   schema: editDocumentSchema
 })
@@ -1518,69 +1632,22 @@ export const writeGraph = tool(
   },
   {
     name: 'writeGraph',
-    description: `Declaratively create or update a knowledge graph.
-    
-Nodes are identified solely by their "entity" alias (usually the name). Canvas edges automatically synchronize with the workspace Relational Ledger without modifying document prose.
+    description: `Declaratively create, merge, or update a knowledge graph canvas. Canvas edges automatically synchronize with the Relational Ledger.
 
-RULES:
-1. Every edge "from" and "to" MUST refer to an entity alias.
-2. Any alias used in an edge must appear in the "nodes" array of the same request, or already exist on the canvas.
-3. If an edge endpoint cannot be resolved to a known node (either incoming or existing), the entire operation fails.
-4. Always call readGraph first to confirm existing entity aliases before using them in edges.
-5. The memo field is always in Markdown format.
+Parameters & Invariants:
+- entity: Unique identifier for each node (matches a document name). Call readGraph first to inspect existing aliases.
+- mode: "replace" (overwrites canvas with provided nodes/edges) or "merge" (extends canvas, optionally anchored with 'startFrom', or removes via 'deleteNodes'/'deleteEdges').
+- direction: "LR" (left-to-right) or "TD" (top-down).
+- edges: 'from' and 'to' must reference valid entity aliases in 'nodes' or existing on canvas.
+- memo: Optional Markdown description for each node.
 
-MODE:
-- "replace": Overwrites the entire graph with the new spec
-- "merge": Extends the existing graph, optionally starting from an anchor entity
-
-DIRECTION:
-- "LR": Left-to-right layout (nodes flow horizontally)
-- "TD": Top-down layout (nodes flow vertically)
-
-EXAMPLE (replace mode - create new graph):
+Example:
 {
-  "instanceName": "AI-Overview",
+  "instanceName": "System-Architecture",
   "direction": "LR",
-  "mode": "replace",
-  "nodes": [
-    { "entity": "Machine Learning", "memo": "A subfield of AI.", "group": "Theory" },
-    { "entity": "Deep Learning", "group": "Applied" },
-    { "entity": "Neural Networks", "group": "Applied" }
-  ],
-  "edges": [
-    { "from": "Machine Learning", "to": "Deep Learning", "label": "includes" },
-    { "from": "Deep Learning", "to": "Neural Networks", "label": "uses" }
-  ]
-}
-
-EXAMPLE (merge mode - extend existing graph):
-{
-  "instanceName": "AI-Overview",
-  "direction": "TD",
-  "mode": "merge",
-  "startFrom": "Deep Learning",
-  "nodes": [
-    { "entity": "CNN", "memo": "Convolutional Neural Network" },
-    { "entity": "RNN" }
-  ],
-  "edges": [
-    { "from": "Deep Learning", "to": "CNN", "label": "type" },
-    { "from": "Deep Learning", "to": "RNN", "label": "type" }
-  ]
-}
-
-EXAMPLE (merge mode - delete entities):
-{
-  "instanceName": "AI-Overview",
-  "direction": "LR",
-  "mode": "merge",
-  "nodes": [],
-  "edges": [],
-  "deleteNodes": ["RNN"],
-  "deleteEdges": [{ "from": "Machine Learning", "to": "Deep Learning" }]
-}
-
-Use meaningful document instance names in the "entity" field.`,
+  "nodes": [{ "entity": "ServiceA" }, { "entity": "ServiceB" }],
+  "edges": [{ "from": "ServiceA", "to": "ServiceB", "label": "calls" }]
+}`,
     schema: writeGraphInputSchema
   }
 )
@@ -1642,44 +1709,19 @@ export const writeMindMap = tool(
   },
   {
     name: 'writeMindMap',
-    description: `Create a professional hierarchical mind map on a canvas.
-    
-The input is a recursive "root" node with "children". This tool automatically handles layout, connection ports, and ensures each node is linked to a document.
-The memo field is always in Markdown format.
+    description: `Create a hierarchical mind map on a canvas from a recursive tree.
 
-EXAMPLE:
+Input Schema:
+- root: Recursive node { entity: string, memo?: string, children?: [...] }.
+- direction: Optional "LR" or "TD".
+Automatically calculates ports, layout, and canvas links without manual edge definitions.
+
+Example:
 {
-  "instanceName": "Project-Architecture",
+  "instanceName": "System-Overview",
   "root": {
-    "entity": "Core Platform",
-    "children": [
-      {
-        "entity": "Frontend Layer",
-        "children": [
-          {
-            "entity": "Web Client",
-            "children": [
-              { "entity": "User Dashboard" },
-              { "entity": "Admin Portal" }
-            ]
-          },
-          { "entity": "Design System" }
-        ]
-      },
-      {
-        "entity": "Backend Layer",
-        "children": [
-          {
-            "entity": "Microservices",
-            "children": [
-              { "entity": "Auth Service" },
-              { "entity": "Payment Gateway" }
-            ]
-          },
-          { "entity": "Data Persistence" }
-        ]
-      }
-    ]
+    "entity": "Core",
+    "children": [{ "entity": "ModuleA" }, { "entity": "ModuleB" }]
   }
 }`,
     schema: writeMindMapInputSchema

@@ -16,10 +16,16 @@ import type { CanvasCommand as SharedCanvasCommand } from '@shared/commands'
 import { asGraphId, asNodeId, createEmptyGraph } from './domain'
 import type { CanvasHistorySnapshot } from './types'
 import { useInstanceContext } from '@workspace/contexts/instance/InstanceContext'
-import { deserializeCanvas } from '@workspace/persistence/canvasSerialization'
+import {
+  deserializeCanvas,
+  serializeCanvas,
+  serializeCanvasSnapshot
+} from '@workspace/persistence/canvasSerialization'
 import { instanceService } from '@shared/services/InstanceService'
 import { canvasStateReducer } from './domain/canvasStateReducer'
 import type { GraphCanvasDTO } from '@workspace/persistence/graphCanvasDto'
+import { CanvasDiffEngine } from '@collaragent/runtime/CanvasDiffEngine'
+import { mapSharedToLocal } from './commands/commandMapping'
 import {
   runCanvasClustering,
   type ClusteringMode
@@ -477,6 +483,8 @@ const CanvasContext = createContext<{
   runClustering: (mode?: ClusteringMode) => Promise<void>
   cancelClustering: () => void
   clearClusters: () => void
+  undo: () => void
+  redo: () => void
 } | null>(null)
 
 export const CanvasProvider = ({ children }: { children: ReactNode }) => {
@@ -760,6 +768,48 @@ export const CanvasProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [])
 
+  const undo = useCallback(() => {
+    const currentState = stateRef.current
+    const undoStack = currentState.history.undoStack
+    if (undoStack.length === 0) return
+
+    const targetSnapshot = undoStack[undoStack.length - 1]
+    const currentDto = serializeCanvas(currentState)
+    const targetDto = serializeCanvasSnapshot(targetSnapshot)
+
+    const diffCommands = CanvasDiffEngine.diffDtos(currentDto, targetDto)
+
+    dispatch({ type: 'UNDO' })
+
+    for (const sharedCmd of diffCommands) {
+      const localCmd = mapSharedToLocal(sharedCmd)
+      if (localCmd) {
+        subscribersRef.current.forEach((cb) => cb(localCmd))
+      }
+    }
+  }, [dispatch])
+
+  const redo = useCallback(() => {
+    const currentState = stateRef.current
+    const redoStack = currentState.history.redoStack
+    if (redoStack.length === 0) return
+
+    const targetSnapshot = redoStack[redoStack.length - 1]
+    const currentDto = serializeCanvas(currentState)
+    const targetDto = serializeCanvasSnapshot(targetSnapshot)
+
+    const diffCommands = CanvasDiffEngine.diffDtos(currentDto, targetDto)
+
+    dispatch({ type: 'REDO' })
+
+    for (const sharedCmd of diffCommands) {
+      const localCmd = mapSharedToLocal(sharedCmd)
+      if (localCmd) {
+        subscribersRef.current.forEach((cb) => cb(localCmd))
+      }
+    }
+  }, [dispatch])
+
   return (
     <CanvasContext.Provider
       value={{
@@ -771,7 +821,9 @@ export const CanvasProvider = ({ children }: { children: ReactNode }) => {
         subscribe,
         runClustering,
         cancelClustering,
-        clearClusters
+        clearClusters,
+        undo,
+        redo
       }}
     >
       {children}
@@ -789,6 +841,8 @@ export const useCanvas = (): {
   runClustering: (mode?: ClusteringMode) => Promise<void>
   cancelClustering: () => void
   clearClusters: () => void
+  undo: () => void
+  redo: () => void
 } => {
   const context = useContext(CanvasContext)
   if (!context) {

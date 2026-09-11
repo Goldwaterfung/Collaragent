@@ -1,9 +1,12 @@
 import React from 'react'
+import { BranchStepper } from './BranchStepper'
+import type { BranchPreviewItem } from './BranchPreviewPopover'
 
 export interface AlternateBranch {
   headBundleId: string
   label?: string
   createdAt: string
+  promptSnippet?: string
 }
 
 export interface CheckpointMarkerProps {
@@ -30,24 +33,66 @@ export const CheckpointMarker: React.FC<CheckpointMarkerProps> = ({
   const isTurnCheckpoint = label?.trim().toLowerCase() === 'turn checkpoint'
   const displayLabel = isTurnCheckpoint ? undefined : label
 
+  // Build branch preview items for the stepper if multiple branches exist
+  const branchItems: BranchPreviewItem[] = []
+  if (alternateBranches && alternateBranches.length > 0) {
+    // Branch 1 is the active branch at this checkpoint
+    branchItems.push({
+      headBundleId: bundleId,
+      createdAt: createdAt || new Date().toISOString(),
+      label: displayLabel || 'Initial state',
+      promptSnippet: restoreContent,
+      isActive: true
+    })
+    // Subsequent branches are the alternates
+    alternateBranches.forEach((b) => {
+      branchItems.push({
+        headBundleId: b.headBundleId,
+        createdAt: b.createdAt,
+        label: b.label,
+        promptSnippet: b.promptSnippet,
+        isActive: false
+      })
+    })
+
+    branchItems.sort(
+      (a, b) =>
+        a.createdAt.localeCompare(b.createdAt) || a.headBundleId.localeCompare(b.headBundleId)
+    )
+  }
+
+  const timeStr = createdAt
+    ? new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : undefined
+
   return (
     <div
-      className="flex items-center gap-3 my-2 text-xs text-[var(--ev-c-text-3)]"
+      className="flex items-center justify-between py-1 px-3 rounded-lg border border-surface-200/40 bg-surface-100/20 text-xs text-[var(--ev-c-text-3)] my-2"
       role="separator"
-      aria-label="Checkpoint"
-      title={
-        createdAt
-          ? new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : undefined
-      }
+      aria-label={displayLabel || 'Checkpoint'}
     >
-      <div className="flex-1 border-t border-dashed border-surface-200" />
       <div className="flex items-center gap-2">
         {displayLabel && (
-          <span className="text-[10px] tracking-wide uppercase text-[var(--ev-c-text-2)] opacity-70">
+          <span className="text-[10px] font-mono tracking-wider uppercase text-[var(--ev-c-text-2)] opacity-80">
             {displayLabel}
           </span>
         )}
+        {timeStr && (
+          <span className="text-[10px] font-mono text-[var(--ev-c-text-3)] opacity-60">
+            {timeStr}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        {branchItems.length > 1 && onSelectBranch && (
+          <BranchStepper
+            branches={branchItems}
+            disabled={disabled}
+            onSelectBranch={onSelectBranch}
+          />
+        )}
+
         <button
           type="button"
           onClick={() => onRestore(bundleId, restoreContent)}
@@ -57,39 +102,11 @@ export const CheckpointMarker: React.FC<CheckpointMarkerProps> = ({
               ? `Restore to this checkpoint and re-draft "${restoreContent.slice(0, 30)}..."`
               : 'Restore to this checkpoint'
           }
-          className="px-2.5 py-0.5 rounded-full border border-surface-200 bg-surface-50 text-[11px] font-medium text-[var(--ev-c-text-2)] hover:text-[var(--ev-c-text-1)] hover:bg-surface-100 hover:border-surface-300 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          className="px-2 py-0.5 rounded border border-surface-200/80 bg-surface-50 text-[11px] font-medium text-[var(--ev-c-text-2)] hover:text-[var(--ev-c-text-1)] hover:bg-surface-100 hover:border-surface-300 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
         >
           Restore
         </button>
-        {alternateBranches && alternateBranches.length > 0 && (
-          <div className="flex items-center gap-1.5 ml-1">
-            {alternateBranches.map((branch, idx) => {
-              const bTime = new Date(branch.createdAt).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit'
-              })
-              return (
-                <button
-                  key={branch.headBundleId}
-                  type="button"
-                  onClick={() =>
-                    onSelectBranch
-                      ? onSelectBranch(branch.headBundleId)
-                      : onRestore(branch.headBundleId)
-                  }
-                  disabled={disabled}
-                  title={`Switch to alternate branch created at ${bTime}`}
-                  className="px-2 py-0.5 rounded-full border border-primary/30 bg-primary/5 text-[11px] font-medium text-primary hover:bg-primary/10 hover:border-primary/50 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
-                >
-                  <span aria-hidden="true">🔀</span>
-                  <span>Branch {idx + 2}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
       </div>
-      <div className="flex-1 border-t border-dashed border-surface-200" />
     </div>
   )
 }
