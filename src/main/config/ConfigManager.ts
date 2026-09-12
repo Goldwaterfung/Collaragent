@@ -229,15 +229,26 @@ export class ConfigManager {
       return false
     }
 
-    const availableModels = this.modelManager.getAvailableModels()
-    const catalogModel = availableModels.find(
-      (m) => m.id === modelConfig.modelId && m.provider === modelConfig.provider
-    )
+    const resolved = this.modelManager.resolveModel(modelConfig.provider, modelConfig.modelId)
+    const reasoningEffort = modelConfig.reasoningEffort ?? resolved.legacyReasoningEffort
+
+    if (
+      reasoningEffort &&
+      resolved.modelInfo?.supportedReasoningLevels &&
+      !resolved.modelInfo.supportedReasoningLevels.includes(reasoningEffort)
+    ) {
+      logger.error(
+        `Reasoning effort "${reasoningEffort}" is not supported by ${modelConfig.provider}/${resolved.modelInfo.id}`
+      )
+      return false
+    }
 
     const newConfig = { ...this.currentConfig }
     newConfig.model = {
       ...modelConfig,
-      parameters: catalogModel?.parameters ?? modelConfig.parameters
+      modelId: resolved.modelInfo?.id ?? modelConfig.modelId,
+      reasoningEffort,
+      parameters: resolved.modelInfo?.parameters ?? modelConfig.parameters
     }
     return this.saveConfig(newConfig)
   }

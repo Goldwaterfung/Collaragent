@@ -1,7 +1,8 @@
 import {
   type RelationalLedgerEntry,
   RelationalLedgerEntrySchema,
-  ClaimRelation
+  ClaimRelation,
+  EdgeProvenance
 } from '@shared/wiki'
 import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 import { assertNoSupersedenceCycle } from './TarjanCycleDetector'
@@ -216,18 +217,36 @@ export class RelationalLedgerStore {
   }
 
   /**
-   * Removes edges matching a query filter (sourceEntityId, targetEntityId, rel).
+   * Removes all edges connected to an entity (both outbound and inbound incident edges).
+   */
+  public removeEdgesForEntity(entityId: string): RelationalLedgerEntry[] {
+    const outEdgeIds = Array.from(this.outlinksBySource.get(entityId) || [])
+    const inEdgeIds = Array.from(this.backlinksByTarget.get(entityId) || [])
+    const uniqueIds = new Set([...outEdgeIds, ...inEdgeIds])
+
+    const removed: RelationalLedgerEntry[] = []
+    for (const id of uniqueIds) {
+      const edge = this.removeEdge(id)
+      if (edge) removed.push(edge)
+    }
+    return removed
+  }
+
+  /**
+   * Removes edges matching a query filter (sourceEntityId, targetEntityId, rel, provenance).
    */
   public removeEdgesByQuery(query: {
     sourceEntityId?: string
     targetEntityId?: string
     rel?: ClaimRelation
+    provenance?: EdgeProvenance
   }): RelationalLedgerEntry[] {
     const matched: RelationalLedgerEntry[] = []
     for (const edge of this.getAllEdges()) {
       if (query.sourceEntityId && edge.sourceEntityId !== query.sourceEntityId) continue
       if (query.targetEntityId && edge.targetEntityId !== query.targetEntityId) continue
       if (query.rel && edge.rel !== query.rel) continue
+      if (query.provenance && edge.provenance !== query.provenance) continue
       matched.push(edge)
     }
 

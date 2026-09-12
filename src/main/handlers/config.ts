@@ -100,6 +100,7 @@ export function registerConfigHandlers(configManager: ConfigManager, modelManage
         modelId: request.modelId,
         name: request.name,
         baseUrl: request.baseUrl,
+        reasoningEffort: request.reasoningEffort,
         parameters: request.parameters
       }
 

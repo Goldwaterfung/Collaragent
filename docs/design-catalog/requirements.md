@@ -34,14 +34,14 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 ### 2.2 Rich-Text Document Engine (`src/workspace/editor`)
 
 - Full-featured document editor built on Lexical (`CardEditor.tsx`) with typography, headings, code syntax highlighting (Prism), GFM tables, and LaTeX mathematical formulas (KaTeX).
-- Native block drag-and-drop handles for reordering and dragging blocks onto the graph canvas.
+- Native block drag-and-drop handles for intra-document block reordering via `DraggableBlockPlugin`.
 - Inline review comments and annotations bound to text spans.
-- Native export to Microsoft Word (`.docx`) format.
+- Native export to Microsoft Word (`.docx`) format via `docxExportUtils.ts`.
 
 ### 2.3 Agent Runtime & Multi-Agent Orchestration (`src/collaragent`)
 
 - LangGraph ReAct execution loop (`createDeepAgent`) supporting streaming tokens, reasoning traces (extended CoT), and function calling.
-- Multi-provider LLM support: OpenAI (GPT-4o, GPT-5.2), Anthropic (Claude Sonnet 3.5/4.5 with prompt caching), Google (Gemini 2.5), and Ollama.
+- Multi-provider LLM support: OpenAI (GPT-4o, GPT-5.2), Anthropic (Claude Sonnet 3.5/4.5 with prompt caching), Google (Gemini 2.5), Ollama, and OpenCode Go (`@earendil-works/pi-ai/providers/opencode-go`).
 - Subagent delegation via `task` and `dynamic_task` tools with state isolation and recursion ceilings (`recursionLimit: 200`).
 - Multi-chat concurrent execution: Supports parallel chat docks within the Dockview layout running concurrent agent streams isolated by unique `streamId` and `threadId`.
 - Progressive disclosure skills system following the Agent Skills specification (`https://agentskills.io/specification`).
@@ -63,9 +63,9 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 
 - Grounded claim architecture linking document paragraphs to knowledge graph triples via immutable Lexical block UUIDs (`BlockIdPlugin`) and inline badges (`InlineClaimBadgeNode`).
 - Persistent relational ledger (`RelationalLedgerPayload`) stored as first-class workspace instance (`instances` table with `type = 'ledger'`) tracking entity nodes, typed predicates, and claim anchors `(source, predicate, target, claimId)`.
-- Two-tier semantic linting: L1 deterministic structural audit (`L1StructuralLinter`) for broken anchors and unreferenced claims, and L2 LLM-powered contradiction audit (`L2ContradictionAuditor`) for epistemological conflict detection.
-- Mathematical ledger command inversion (`InverseLedgerCommand.ts`) ensuring 100% reversible rollback of ledger mutations upon proposal rejection.
-- Unified wiki tool suite (`compileGraph`, `lintWorkspace`, `ingestSource`, `queryAndFileBack`, `loadLedger`) enabling autonomous agents to ground claims directly in document evidence.
+- Two-tier semantic linting: L1 deterministic structural audit (`L1StructuralLinter`) for broken anchors and unreferenced claims, and L2 LLM-powered contradiction audit (`L2SemanticLinter`) for epistemological conflict detection.
+- Mathematical ledger command inversion unified inside `InverseCommandEngine.ts` (`invertWikiLedgerPatch`) ensuring 100% reversible rollback of ledger mutations upon proposal rejection.
+- Unified wiki tool suite (`compileGraph`, `lintWorkspace`, `ingestSource`, `queryAndFileBack`, `pruneLedger`, and adapter `loadLedger`) enabling autonomous agents to ground claims directly in document evidence.
 
 ### 2.6 Event-Driven Serialized Drain Queue & Read Barriers (`src/workspace/sync/drain`, `src/main/server/ws`)
 
@@ -102,5 +102,5 @@ Modern knowledge workers and software engineers navigate complex cognitive tasks
 7. **Non-Destructive True DAG History**: Time-travel checkpoint restoration and branch switching must never physically delete historical messages from `chat_messages`. Alternate branches must remain permanently addressable via `parent_message_id` and active branch pointers (`active_message_id`), loaded via recursive Common Table Expressions (CTE).
 8. **Self-Contained LangGraph Checkpoint Blobs**: LangGraph checkpoints in `langgraph_checkpoints` must store complete, self-contained `channel_values` payloads directly within `checkpoint_json`. External blob deduplication keyed on step sequence numbers that collide across branches is strictly forbidden.
 9. **Zero Temporal Timers in Persistence & Sync**: Throttling or debouncing persistence writes with arbitrary `setTimeout` delays (e.g. `setTimeout(..., 500)`) and relying on sleep delays in test suites are strictly prohibited. All persistent transitions, batching, and flushes must be driven by deterministic lifecycle events (`SerializedDrainQueue`).
-10. **Read-After-Write Consistency via Transactional Barriers**: All agent tool queries and workspace audit tools (`getDocument`, `getCanvas`, `loadLedger`, `runL1Audit`) must pass `flushBeforeRead: true` to await disk settlement of in-flight mutations before reading, guaranteeing zero stale reads with zero artificial delay.
+10. **Read-After-Write Consistency via Transactional Barriers**: All agent tool queries and workspace audit tools (`readDocument`, `readGraph`, `pruneLedger`, `lintWorkspace`, and adapter `loadLedger`) must pass `flushBeforeRead: true` to await disk settlement of in-flight mutations before reading, guaranteeing zero stale reads with zero artificial delay.
 11. **Zero `any` & Deprecated Legacy Code Purge**: Strict zero `any` policy across all production and test code. Obsolete storage engines (`storageEngine.ts`, `ArchiveManager.ts`, `FileCheckpointStore.ts`, legacy V2/V3 monolith handlers) must be purged to maintain an unencumbered, maintainable V4 SQLite Embedded Storage Architecture.

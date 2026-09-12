@@ -71,7 +71,7 @@ flowchart TB
 
 - **Block Identity WeakMap**: Uses `blockIdentityRegistry.ts` to map transient Lexical AST `NodeKey` identifiers to persistent, immutable UUID `blockId` strings.
 - **HTML <-> Block Conversions**: `htmlContentConversion.ts` serializes Lexical state into clean semantic HTML without leaking internal Lexical node attributes, while preserving `data-block-id` markers in patch views.
-- **Plugin Architecture**: KaTeX math formulas, Prism code blocks, GFM tables, and block drag-and-drop handles for dragging paragraphs directly into the graph canvas.
+- **Plugin Architecture**: KaTeX math formulas, Prism code blocks, GFM tables, and block drag-and-drop handles (`DraggableBlockPlugin`) for fluid intra-document block reordering.
 
 ### 2.3 Agent Tool Calling Engine (`src/collaragent/tools`)
 
@@ -90,8 +90,8 @@ flowchart TB
 
 - **Block Identity Integration**: `BlockIdPlugin` assigns and preserves immutable UUIDs for Lexical blocks. The relational ledger anchors knowledge triples directly to block IDs via `InlineClaimBadgeNode` elements.
 - **Relational Ledger Triple Store**: Maintains the active `RelationalLedgerPayload` (`instances` table with `type = 'ledger'`) tracking entity nodes, predicates, and claim anchors `(source, predicate, target, claimId)`.
-- **Epistemological Integrity Linters**: `L1StructuralLinter` validates structural graph integrity and claim references; `L2ContradictionAuditor` evaluates semantic contradictions across document assertions.
-- **Deterministic Ledger Rollback**: `InverseLedgerCommand.ts` mathematically generates inverse operations for ledger triples, ensuring exact rollback on proposal rejection.
+- **Epistemological Integrity Linters**: `L1StructuralLinter` validates structural graph integrity and claim references; `L2SemanticLinter` evaluates semantic contradictions across document assertions.
+- **Deterministic Ledger Rollback**: Ledger command inversion is unified directly inside `InverseCommandEngine.ts` (`invertWikiLedgerPatch`), ensuring exact rollback on proposal rejection.
 
 ### 2.6 Event-Driven Serialized Drain Queue & Read Barrier Architecture (`src/workspace/sync/drain`)
 
@@ -125,9 +125,9 @@ sequenceDiagram
     Tools->>wstools: resolveResourceId("Architecture Spec")
     wstools->>REST: GET /api/instances
     REST->>Storage: Query instances table
-    Storage-->>REST: Return { instances: [...] }
+    Storage-->>REST: Return { instances: [...], projects: [...] }
     REST-->>wstools: 200 OK with JSON Envelope
-    wstools->>wstools: Validate with Zod (InstancesApiResponseSchema)
+    wstools->>wstools: Validate with Zod (ListInstancesResponseSchema)
     wstools-->>Tools: Resolved UUID "4a73ec31-..."
 
     Note over Tools,WSServer: Step 2: Realtime Snapshot Fetch
@@ -173,10 +173,10 @@ sequenceDiagram
     participant UI as Editor UI / Review Banner
     actor User as Knowledge Worker
 
-    LLM->>Tools: editDocument({ instanceName: "Spec", operation: "update", targetBlockId: "blk-2", newHtml: "<p>New text</p>" })
+    LLM->>Tools: editDocument({ instanceName: "Spec", operations: [{ action: "update", blockId: "blk-2", newHtml: "<p>New text</p>" }] })
 
     Tools->>Tools: Fetch current snapshot & baseVersion via SyncClient
-    Tools->>DiffEngine: computePatch(currentBlocks, { op: "update", blkId: "blk-2", html: "..." })
+    Tools->>DiffEngine: computePatch(currentBlocks, [{ action: "update", blockId: "blk-2", newHtml: "..." }])
     DiffEngine-->>Tools: { patchCommand, inverseCommand, unifiedDiff }
 
     Note over Tools,WSServer: Dispatch Staged Mutation with Thread Lineage & OCC
@@ -209,7 +209,7 @@ sequenceDiagram
 
 ---
 
-### 3.3 Canvas-to-Editor Cross-Wiring & Drag-and-Drop
+### 3.3 Canvas-to-Editor Cross-Wiring & Knowledge Grounding
 
 CollarAgent provides fluid cross-modal interaction between visual graph cards and linear documents:
 
@@ -217,24 +217,24 @@ CollarAgent provides fluid cross-modal interaction between visual graph cards an
 flowchart LR
     subgraph EditorSubsystem ["Lexical Document Editor"]
         LexicalBlock["Document Block<br/>[<p data-block-id='blk-1'>]"]
-        DragHandle["@atlaskit Drag Handle"]
+        DragHandle["DraggableBlockPlugin Handle<br/>[application/x-lexical-drag-block]"]
+        ClaimBadge["InlineClaimBadgeNode<br/>[claimId -> Ledger Entry]"]
         LexicalBlock --- DragHandle
+        LexicalBlock --- ClaimBadge
     end
 
-    subgraph DnDBridge ["Pragmatic Drag-and-Drop Bridge"]
-        MIMEPayload["Custom MIME Payload<br/>application/x-collar-block<br/>{ blockId, html, text, sourceDocId }"]
+    subgraph RelationalBridge ["Relational Knowledge Ledger & Wiki Bridge"]
+        LedgerEntry["RelationalLedgerEntry<br/>{ sourceEntityId, targetEntityId, rel, anchor }"]
     end
 
     subgraph CanvasSubsystem ["Visual Graph Canvas"]
-        DropTarget["Canvas Surface Drop Target"]
-        NewNode["Created Graph Card Node<br/>{ id: uuid, title: 'Excerpt', content: html }"]
-        EdgeConnect["Automatic Dependency Edge<br/>[Source Doc -> Canvas Node]"]
+        CanvasCardNode["Graph Card Node<br/>{ id: NodeId, title: 'Concept', content: html }"]
+        CanvasEdge["Directional Edge<br/>[from: NodeId, to: NodeId]"]
     end
 
-    DragHandle -->|"Drag start"| MIMEPayload
-    MIMEPayload -->|"Drop on canvas coordinate (x,y)"| DropTarget
-    DropTarget -->|"Convert block to node"| NewNode
-    NewNode -->|"Optional reference link"| EdgeConnect
+    ClaimBadge -->|"Grounds claim to block UUID"| LedgerEntry
+    LedgerEntry -->|"Compiled via compileGraph"| CanvasCardNode
+    CanvasCardNode -->|"Visualizes relation"| CanvasEdge
 ```
 
 ---

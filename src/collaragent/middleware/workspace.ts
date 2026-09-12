@@ -12,7 +12,8 @@ import {
   ingestSource,
   queryAndFileBack,
   lintWorkspace,
-  compileGraph
+  compileGraph,
+  pruneLedger
 } from '@collaragent/tools'
 
 interface WorkspaceMiddlewareConfig {
@@ -23,6 +24,13 @@ const WORKSPACE_BASE_PROMPT = `
 ## Workspace System
 
 The workspace is an interconnected knowledge environment of documents and visual concept canvases.
+
+### Tool Precedence & Operational Boundaries
+- **PRIMARY: Workspace Tools (Studio Knowledge Surfaces)**
+  - Surfaces: Block-based Document Workspace (prose, notes, papers) & Infinite Visual Canvas (concept maps, relationship graphs, mind maps).
+  - Tools: \`listWorkspaceItems\`, \`readDocument\`, \`createDocument\`, \`editDocument\`, \`readGraph\`, \`writeGraph\`, \`writeMindMap\`, \`compileGraph\`, \`ingestSource\`, \`queryAndFileBack\`, \`lintWorkspace\`, \`pruneLedger\`.
+  - Invariant: ALL user-facing documents, notes, research syntheses, and concept graphs are managed EXCLUSIVELY via Workspace Tools. Studio documents and canvases are internal workspace entities managed by live editors and databases—they DO NOT exist as raw files on the host filesystem.
+  - Strict Prohibitions: NEVER attempt to use filesystem tools (\`write_file\`, \`edit_file\`, \`read_file\`, \`delete\`) to create, edit, read, or delete studio documents or canvases. NEVER use \`ls\` or \`glob\` to discover workspace documents; always use \`listWorkspaceItems\`.
 
 ### Operating Protocols
 1. **Discovery First**: Inspect existing context using \`listWorkspaceItems\`, \`readDocument\`, or \`readGraph\` before planning modifications.
@@ -38,7 +46,7 @@ const WORKSPACE_WRITING_SECTION = `
    - Link entities and literature claims using typed wikilinks (\`[[<relation>:<targetEntity>|<justification>]]\`).
    - Supported relations: 'supports', 'contradicts', 'supersedes', 'details', 'derived_from', 'cites', 'relates_to'.
    - Ingest papers with \`ingestSource\`, file syntheses back with \`queryAndFileBack\`, and materialize graphs with \`compileGraph\`.
-   - Maintain structural integrity: run \`lintWorkspace\` to identify broken links, anchor losses, and circular dependencies.`
+   - Maintain structural integrity: run \`lintWorkspace\` to identify broken links, anchor losses, and circular dependencies; run \`pruneLedger\` to clean up obsolete, orphan, or degraded edges.`
 
 export const createWorkspaceMiddleware = (
   config: WorkspaceMiddlewareConfig = {}
@@ -53,6 +61,7 @@ export const createWorkspaceMiddleware = (
     compileGraph,
     ingestSource,
     queryAndFileBack,
+    pruneLedger,
     createProjectTool,
     removeProjectTool
   ]

@@ -2,6 +2,8 @@
 // APP CONFIGURATION TYPES
 // ============================================================================
 
+import type { ReasoningEffort } from './constants'
+
 /**
  * Application configuration stored in config.json
  */
@@ -74,6 +76,9 @@ export interface ModelConfig {
 
   /** Base URL (required for Ollama, optional for others) */
   baseUrl?: string
+
+  /** Selected reasoning/thinking effort level (for reasoning-capable models) */
+  reasoningEffort?: ReasoningEffort
 
   /** Additional model parameters */
   parameters?: {
@@ -234,6 +239,12 @@ export interface ModelInfo {
 
   /** Context window size */
   contextWindow?: number
+
+  /** Maximum output tokens from catalog */
+  maxTokens?: number
+
+  /** Reasoning/thinking levels supported by this model (from pi-ai catalog) */
+  supportedReasoningLevels?: ReasoningEffort[]
 
   /** Pricing information */
   pricing?: {

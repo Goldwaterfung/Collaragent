@@ -26,6 +26,9 @@ import {
 } from '@shared/checkpoints/types'
 import { applyWorkspaceCommands } from '@workspace/persistence/checkpointRestoreHelpers'
 import { InverseCommandEngine } from '@collaragent/runtime/InverseCommandEngine'
+import { DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID } from '@shared/constants'
+import { RelationalLedgerStore } from '@workspace/wiki/RelationalLedgerStore'
+import { normalizeEntityTitle } from '@workspace/wiki/L1StructuralLinter'
 
 import { SQLITE_ENGINE_CONFIG } from './config/sqliteConfig'
 import { SqliteStorageEngine } from './SqliteStorageEngine'
@@ -481,14 +484,70 @@ export async function startFilesystemApi(
     try {
       const { id } = IdParamSchema.parse(req.params)
       const instances = storage.getInstancesMeta()
-      const exists = instances.some((inst) => inst.id === id)
+      const targetInstance = instances.find((inst) => inst.id === id)
 
-      if (!exists) {
+      if (!targetInstance) {
         throw new StorageError(
           StorageErrorCode.STORAGE_INSTANCE_NOT_FOUND,
           `Instance with id '${id}' not found`,
           { instanceId: id }
         )
+      }
+
+      // If deleted instance is a document, cascade delete incident edges from relational ledger
+      if (targetInstance.type === 'document') {
+        try {
+          const ledgerBuffer = storage.getInstanceContent(DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID)
+          if (ledgerBuffer !== null) {
+            let ledgerPayload: unknown = undefined
+            try {
+              ledgerPayload = unpack(ledgerBuffer)
+            } catch {
+              ledgerPayload = ledgerBuffer
+            }
+
+            const rawEdges =
+              ledgerPayload && typeof ledgerPayload === 'object' && 'edges' in ledgerPayload
+                ? (ledgerPayload as { edges: unknown }).edges
+                : Array.isArray(ledgerPayload)
+                  ? ledgerPayload
+                  : undefined
+
+            if (Array.isArray(rawEdges)) {
+              const ledgerStore = new RelationalLedgerStore()
+              ledgerStore.loadFromSnapshot(rawEdges)
+
+              const docName = targetInstance.name || targetInstance.id
+              const removedByName = ledgerStore.removeEdgesForEntity(docName)
+              const removedById =
+                targetInstance.id !== docName
+                  ? ledgerStore.removeEdgesForEntity(targetInstance.id)
+                  : []
+
+              const normTitle = normalizeEntityTitle(docName)
+              const removedByNorm =
+                normTitle !== docName ? ledgerStore.removeEdgesForEntity(normTitle) : []
+
+              if (removedByName.length > 0 || removedById.length > 0 || removedByNorm.length > 0) {
+                const updatedEdges = ledgerStore.getAllEdges()
+                storage.updateInstance(DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID, {
+                  payload: { edges: updatedEdges }
+                })
+                notifyWsServer({
+                  type: 'update',
+                  instanceId: DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID,
+                  payload: { edges: updatedEdges },
+                  clientId: 'api-cascade-delete'
+                })
+              }
+            }
+          }
+        } catch (cascadeErr) {
+          console.error(
+            `[filesystemAPI] Failed to cascade prune ledger edges for document "${targetInstance.name}":`,
+            cascadeErr
+          )
+        }
       }
 
       storage.deleteInstance(id)

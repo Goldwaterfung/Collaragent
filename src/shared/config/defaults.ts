@@ -3,13 +3,10 @@ import { AppConfig } from './types'
 export const DEFAULT_CONFIG: AppConfig = {
   model: {
     provider: 'openai',
-    modelId: 'gpt-5.2-medium',
+    modelId: 'gpt-5.2',
+    reasoningEffort: 'medium',
     parameters: {
-      maxTokens: 32768,
-      reasoning: {
-        effort: 'medium',
-        summary: 'auto'
-      }
+      maxTokens: 32768
     }
   },
   subagents: [

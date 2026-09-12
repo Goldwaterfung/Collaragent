@@ -64,7 +64,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
             ) : (
               <div
                 key={idx}
-                className="chat-markdown prose max-w-none text-sm sm:text-base wrap-break-word"
+                className="chat-markdown prose max-w-none text-sm sm:text-base leading-relaxed sm:leading-relaxed wrap-break-word"
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.content) }}
               />
             )

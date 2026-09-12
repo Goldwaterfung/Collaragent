@@ -21,12 +21,20 @@ export async function createModel(
   apiKey?: string,
   options?: CreateModelOptions
 ) {
-  // Resolve actual model ID (apiModelId) if the ID is a UI-specific one
-  const availableModels = new ModelManager().getAvailableModels()
-  const modelInfo = availableModels.find(
-    (m) => m.id === modelConfig.modelId && m.provider === modelConfig.provider
+  // Resolve actual model ID (apiModelId) and catalog metadata, including legacy
+  // `<id>-<level>` composite ids from the previous thinking-variant catalog.
+  const modelManager = new ModelManager()
+  const resolved = modelManager.resolveModel(modelConfig.provider, modelConfig.modelId)
+  const apiModelId = resolved.apiModelId
+  const modelInfo = resolved.modelInfo
+
+  const reasoningEffort = modelConfig.reasoningEffort ?? resolved.legacyReasoningEffort
+  const reasoningParams = modelManager.buildReasoningParameters(
+    modelConfig.provider,
+    modelInfo?.id ?? modelConfig.modelId,
+    reasoningEffort
   )
-  const apiModelId = modelInfo?.apiModelId || modelConfig.modelId
+  const effectiveParameters = { ...modelConfig.parameters, ...reasoningParams }
 
   // Determine if this model/request targets OpenCode Go
   const isOpenCode =
@@ -59,7 +67,7 @@ export async function createModel(
             baseURL: effectiveBaseUrl,
             defaultHeaders: opencodeHeaders
           },
-          ...modelConfig.parameters
+          ...effectiveParameters
         })
       }
 
@@ -74,7 +82,7 @@ export async function createModel(
         modelKwargs: {
           parallel_tool_calls: true
         },
-        ...modelConfig.parameters
+        ...effectiveParameters
       })
     }
     case 'openai': {
@@ -93,7 +101,7 @@ export async function createModel(
         modelKwargs: {
           parallel_tool_calls: true
         },
-        ...modelConfig.parameters
+        ...effectiveParameters
       })
     }
     case 'anthropic': {
@@ -110,7 +118,7 @@ export async function createModel(
                 defaultHeaders
               }
             : undefined,
-        ...modelConfig.parameters
+        ...effectiveParameters
       })
     }
     case 'google':
@@ -120,14 +128,14 @@ export async function createModel(
         maxOutputTokens: modelConfig.parameters?.maxTokens,
         streaming: true,
         streamUsage: true,
-        ...modelConfig.parameters
+        ...effectiveParameters
       })
     case 'ollama':
       return new ChatOllama({
         model: apiModelId,
         baseUrl: modelConfig.baseUrl,
         streaming: true,
-        ...modelConfig.parameters
+        ...effectiveParameters
       })
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)

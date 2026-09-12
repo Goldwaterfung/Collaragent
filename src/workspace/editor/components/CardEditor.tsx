@@ -125,7 +125,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
                   contentEditable={
                     <ContentEditable
                       className="editor-input"
-                      style={{ outline: 'none', minHeight: '100%', padding: '16px 48px' }}
+                      style={{ outline: 'none', minHeight: '100%', padding: '28px 48px' }}
                     />
                   }
                   placeholder={<Placeholder />}
@@ -182,7 +182,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
                 contentEditable={
                   <ContentEditable
                     className="editor-input"
-                    style={{ outline: 'none', minHeight: '100%', padding: '16px 48px' }}
+                    style={{ outline: 'none', minHeight: '100%', padding: '28px 48px' }}
                   />
                 }
                 placeholder={<Placeholder />}

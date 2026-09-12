@@ -22,7 +22,7 @@ sequenceDiagram
         Preload-->>UI: Yield AsyncGenerator chunk -> Update AgentStream UI
     end
 
-    ExtLLM-->>Agent: ToolCall: manageGraph(action: "writeGraph", spec: {...})
+    ExtLLM-->>Agent: ToolCall: writeGraph({ instanceName, spec: {...} })
     Agent->>Agent: CanvasDiffEngine computes atomic CanvasCommands
     alt Direct Workspace Tool Call (Default: staged = false)
         Agent->>WSS: Broadcast command with { staged: false, threadId, baseVersion }

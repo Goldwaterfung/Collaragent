@@ -24,7 +24,7 @@ flowchart TB
 
         subgraph LocalDisk ["Host Filesystem & OS Vault"]
             ConfigDir["~/.collaragent/<br/>• config.json<br/>• secrets.json (safeStorage 0o600)<br/>• window-state.json"]:::file
-            SkillsDir["~/.deepagents/skills/<br/>• SKILL.md bundles"]:::file
+            SkillsDir["Progressive Skills Directory<br/>• Built-in: src/collaragent/skills/<br/>• Configured: config.middleware.skills.source"]:::file
             ProjectDir["Single-File SQLite Workspace (*.cagent / *.cagent.lock)<br/>• WAL Journal (*-wal, *-shm)<br/>• Relational Tables & BLOBs<br/>• B-Tree Checkpoint Index"]:::file
         end
     end
@@ -33,6 +33,7 @@ flowchart TB
         OpenAICloud["OpenAI API [HTTPS]"]:::cloud
         AnthropicCloud["Anthropic API [HTTPS]"]:::cloud
         GoogleCloud["Google GenAI API [HTTPS]"]:::cloud
+        OpenCodeGoCloud["OpenCode Go API [HTTPS]"]:::cloud
         TavilyAPI["Tavily Search API [HTTPS]"]:::cloud
     end
 
@@ -48,4 +49,5 @@ flowchart TB
     MainProc -->|"Streams Prompts/Completions"| OpenAICloud
     MainProc -->|"Streams Prompts/Completions"| AnthropicCloud
     MainProc -->|"Streams Prompts/Completions"| GoogleCloud
+    MainProc -->|"Streams Prompts/Completions"| OpenCodeGoCloud
     MainProc -->|"Queries Search"| TavilyAPI

@@ -21,6 +21,7 @@ import {
 } from '@shared/checkpoints/events'
 import { getStreamErrorPresentation } from '../../utils/streamErrors'
 import { ChatIcon } from '../../assets/icons/ChatIcon'
+import { ChevronDownIcon } from '../../assets/icons/ChevronDownIcon'
 
 export interface ChatProps {
   sessionId?: string
@@ -92,10 +93,32 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
         }
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef = useRef(true)
+  const [isAtBottom, setIsAtBottom] = useState(true)
   const streamMessageIdsRef = useRef<Map<string, { assistantId: string }>>(new Map())
   const [checkpointBundles, setCheckpointBundles] = useState<CheckpointBundleSummary[]>([])
   const [checkpointBusy, setCheckpointBusy] = useState(false)
   const [checkpointError, setCheckpointError] = useState<string | null>(null)
+
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    const atBottom = distanceFromBottom <= 80
+    if (atBottom !== isAtBottomRef.current) {
+      isAtBottomRef.current = atBottom
+      setIsAtBottom(atBottom)
+    }
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
+    const container = messagesContainerRef.current
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    }
+  }, [])
 
   // ── Subagent pane navigation ──
   // Stores the toolCallId that the user last clicked "View Task" on.
@@ -132,12 +155,44 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
     }
   }, [messages, upsertSubagentTask])
 
-  // Scroll to bottom on new messages
+  // 1. Instant scroll during high-frequency token streaming.
+  //    Only scrolls when the user is pinned to the bottom (isAtBottomRef.current === true).
+  //    Using direct container.scrollTop = container.scrollHeight eliminates
+  //    animation frame conflicts (stroboscopic jitter) and allows effortless upward breakout.
+  useEffect(() => {
+    if (!activeStreaming.isStreaming && !activeStreaming.accumulatedContent) return
+    const container = messagesContainerRef.current
+    if (!container || !isAtBottomRef.current) return
+
+    container.scrollTop = container.scrollHeight
+  }, [activeStreaming.accumulatedContent, activeStreaming.blocks, activeStreaming.isStreaming])
+
+  // 2. Scroll to bottom on completed message additions if user is at bottom
+  const prevMessagesLengthRef = useRef(messages.length)
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
-    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
-  }, [messages, activeStreaming.accumulatedContent, activeStreaming.isStreaming])
+
+    const messagesCountIncreased = messages.length > prevMessagesLengthRef.current
+    prevMessagesLengthRef.current = messages.length
+
+    if (isAtBottomRef.current) {
+      if (messagesCountIncreased) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+      } else {
+        container.scrollTop = container.scrollHeight
+      }
+    }
+  }, [messages])
+
+  // Reset sticky-bottom pin on thread/session switch
+  useEffect(() => {
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [sessionId])
 
   const refreshBundles = useCallback(
     async (targetThreadId?: string) => {
@@ -433,6 +488,15 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
 
       addThreadMessage(sid, userMessage)
 
+      isAtBottomRef.current = true
+      setIsAtBottom(true)
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        })
+      }
+
       // Note: We used to explicitly persist the user message here via ChatService.postMessage.
       // That is now removed because the backend Agent automatically persists the input message
       // when processing AGENT_STREAM. Keeping addThreadMessage above ensures immediate UI feedback (Optimistic Update).
@@ -513,6 +577,15 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
         timestamp: new Date()
       }
       addMessage(userMessage)
+
+      isAtBottomRef.current = true
+      setIsAtBottom(true)
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        })
+      }
 
       // Ensure threadId exists
       let sid = threadId
@@ -645,6 +718,7 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
           {/* Messages Area - responsive padding & centered */}
           <div
             ref={messagesContainerRef}
+            onScroll={handleScroll}
             className="flex-1 overflow-y-auto min-w-0 w-full custom-scrollbar flex flex-col items-center"
           >
             <div className="reading-column p-3 sm:p-4 md:p-6 flex-1 flex flex-col min-w-0">
@@ -702,6 +776,21 @@ export const Chat: React.FC<ChatProps> = ({ sessionId }) => {
               )}
             </div>
           </div>
+
+          {/* Floating Scroll-to-Bottom Button */}
+          {!isAtBottom && (
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
+              <button
+                type="button"
+                onClick={scrollToBottom}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/95 border border-surface-200 shadow-sm rounded-full text-[var(--ev-c-text-2)] hover:text-[var(--ev-c-text-1)] hover:bg-surface-100 transition-all focus:outline-none cursor-pointer backdrop-blur-sm"
+                aria-label="Scroll to bottom"
+              >
+                <ChevronDownIcon width={14} height={14} />
+                <span>Scroll to bottom</span>
+              </button>
+            </div>
+          )}
 
           {/* Active Todos Display */}
           <div className="w-full px-4 shrink-0 flex justify-center">

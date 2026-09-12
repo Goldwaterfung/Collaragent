@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import { ModelConfig, ModelInfo } from '@shared/config/types'
+import { REASONING_EFFORT_LEVELS, ReasoningEffort } from '@shared/config/constants'
+
+const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
+  off: 'Off (No Thinking)',
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra High',
+  max: 'Max'
+}
 
 interface ModelSelectorProps {
   currentConfig: ModelConfig
@@ -11,6 +22,9 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
   const [modelId, setModelId] = useState(currentConfig.modelId)
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(currentConfig.baseUrl || '')
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | undefined>(
+    currentConfig.reasoningEffort
+  )
 
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -33,6 +47,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
     setModelId(currentConfig.modelId)
     setBaseUrl(currentConfig.baseUrl || '')
     setCustomName(currentConfig.name || '')
+    setReasoningEffort(currentConfig.reasoningEffort)
 
     if (availableModels.length > 0) {
       const matchesCatalog = availableModels.some(
@@ -72,6 +87,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
         (m) => m.id === targetModelId && m.provider === provider
       )
       const parameters = selectedModel?.parameters
+      const supportsReasoning =
+        (selectedModel?.supportedReasoningLevels?.length ?? 0) > 0 || isManual
 
       const response = await window.configIPC.setModel({
         provider,
@@ -79,6 +96,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
         name: isManual ? customName.trim() || undefined : undefined,
         apiKey: apiKey || undefined, // Only send if provided
         baseUrl: baseUrl || undefined,
+        reasoningEffort: supportsReasoning ? reasoningEffort : undefined,
         parameters
       })
 
@@ -105,9 +123,24 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
     { id: 'opencode-go', label: 'OpenCode Go' }
   ]
   const filteredModels = availableModels.filter((m) => m.provider === provider)
-  const selectedModelInfo = !isManual
-    ? availableModels.find((m) => m.id === modelId && m.provider === provider)
-    : undefined
+  const selectedModelInfo = availableModels.find(
+    (m) => m.id === (isManual ? customModelId.trim() : modelId) && m.provider === provider
+  )
+
+  const reasoningOptions: readonly ReasoningEffort[] = selectedModelInfo?.supportedReasoningLevels
+    ?.length
+    ? selectedModelInfo.supportedReasoningLevels
+    : REASONING_EFFORT_LEVELS
+
+  const showReasoningEffort =
+    (selectedModelInfo?.supportedReasoningLevels?.length ?? 0) > 0 || isManual
+
+  useEffect(() => {
+    if (reasoningOptions.length === 0) return
+    if (!reasoningEffort || !reasoningOptions.includes(reasoningEffort)) {
+      setReasoningEffort(reasoningOptions.includes('off') ? 'off' : reasoningOptions[0])
+    }
+  }, [reasoningEffort, reasoningOptions])
 
   return (
     <div className="model-selector p-4 sm:p-6 lg:p-8 border border-surface-200 rounded-xl sm:rounded-2xl bg-white shadow-sm">
@@ -209,6 +242,31 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ currentConfig, onU
               />
               <p className="text-xs text-black/50 mt-1.5">Friendly name shown in the UI.</p>
             </div>
+          </div>
+        )}
+
+        {showReasoningEffort && (
+          <div className="lg:col-span-2">
+            <label className="block text-sm font-medium mb-2 text-black">Reasoning Effort</label>
+            <select
+              value={
+                reasoningEffort && reasoningOptions.includes(reasoningEffort)
+                  ? reasoningEffort
+                  : reasoningOptions[0]
+              }
+              onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
+              className="w-full p-3 border border-surface-200 rounded-xl bg-surface-50 text-black text-sm sm:text-base focus:outline-none transition-shadow"
+            >
+              {reasoningOptions.map((level) => (
+                <option key={level} value={level}>
+                  {REASONING_EFFORT_LABELS[level]}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs sm:text-sm text-black/50 mt-2">
+              Controls how much the model reasons before responding. Only levels supported by the
+              selected model are shown.
+            </p>
           </div>
         )}
 

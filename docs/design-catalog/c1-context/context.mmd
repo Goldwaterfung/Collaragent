@@ -12,7 +12,7 @@ flowchart TB
     end
 
     LocalFS["💾 Local Filesystem<br/>[Host OS]<br/>Stores .cagent SQLite databases (WAL mode), locks, skills, and configuration vaults"]:::external
-    LLMProviders["🧠 LLM Cloud Providers<br/>[External Systems: OpenAI, Anthropic, Google, Ollama]<br/>Executes generative completions, reasoning traces, and function calling"]:::external
+    LLMProviders["🧠 LLM Cloud Providers<br/>[External Systems: OpenAI, Anthropic, Google, Ollama, OpenCode Go]<br/>Executes generative completions, reasoning traces, and function calling"]:::external
     MCPServers["🔌 Model Context Protocol (MCP) Servers<br/>[External Processes / Remote Servers]<br/>Provides external tools, filesystem access, and domain integrations via STDIO/SSE"]:::external
     SearchGateway["🌐 Web Search Gateway<br/>[External API: Tavily]<br/>Performs live internet queries and web intelligence gathering"]:::external
 

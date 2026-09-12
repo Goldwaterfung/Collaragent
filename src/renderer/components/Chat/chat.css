@@ -3,40 +3,36 @@
 
 /* Scoped markdown styling for chat output. */
 .chat-markdown {
+  line-height: 1.65;
+
   & ul {
-    @apply list-disc pl-6;
+    @apply list-disc pl-6 my-2;
   }
 
   & ol {
-    @apply list-decimal pl-6;
+    @apply list-decimal pl-6 my-2;
   }
 
   & li {
-    @apply my-1;
-  }
-
-  & h1,
-  & h2,
-  & h3 {
-    @apply font-semibold mt-3 mb-2;
+    @apply my-2;
   }
 
   & h1 {
-    @apply text-2xl;
+    @apply font-semibold text-2xl mt-7 mb-3;
   }
 
   & h2 {
-    @apply text-xl;
+    @apply font-semibold text-xl mt-6 mb-2.5;
   }
 
   & h3 {
-    @apply text-[1.1rem];
+    @apply font-semibold text-[1.1rem] mt-5 mb-2;
   }
 
   & h4,
   & h5,
   & h6 {
-    @apply font-semibold mt-2.5 mb-1.5 text-black/90;
+    @apply font-semibold mt-4 mb-2 text-black/90;
   }
 
   & h4 {
@@ -52,7 +48,7 @@
   }
 
   & p {
-    @apply my-2;
+    @apply my-3.5;
   }
 
   & strong {
@@ -64,7 +60,7 @@
   }
 
   & blockquote {
-    @apply my-3 pl-3 border-l-[3px] border-black/20 text-black/70;
+    @apply my-4 pl-3.5 border-l-[3px] border-black/20 text-black/70;
   }
 
   & code {
@@ -72,7 +68,7 @@
   }
 
   & pre {
-    @apply my-3 p-3 rounded-md bg-surface-100 overflow-x-auto;
+    @apply my-4 p-3.5 rounded-md bg-surface-100 overflow-x-auto;
 
     &::-webkit-scrollbar {
       @apply h-1.5;
@@ -92,7 +88,7 @@
   }
 
   & hr {
-    @apply my-4 border-0 border-t border-black/15;
+    @apply my-5 border-0 border-t border-black/15;
   }
 
   & a {
@@ -100,12 +96,12 @@
   }
 
   & img {
-    @apply max-w-full h-auto rounded-lg border border-surface-200 my-2;
+    @apply max-w-full h-auto rounded-lg border border-surface-200 my-3;
   }
 
   /* GFM Tables */
   & .chat-table-wrapper {
-    @apply my-3 w-full overflow-x-auto rounded-lg border border-surface-200 bg-white;
+    @apply my-4 w-full overflow-x-auto rounded-lg border border-surface-200 bg-white;
   }
 
   & table {

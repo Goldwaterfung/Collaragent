@@ -213,6 +213,67 @@ describe('filesystemAPI Express REST Integration (Task 5.1 / Boundary A)', () =>
       const checkRes = await fetch(`${baseUrl}/api/instances/${instance.id}`)
       expect(checkRes.status).toBe(404)
     })
+
+    it('cascades and purges incident ledger edges when deleting a document', async () => {
+      const project = storage.createProject('Wiki Project')
+      const doc = storage.createInstance('document', {
+        projectId: project.id,
+        name: 'ObsoleteDoc'
+      })
+
+      // Setup a ledger instance with incident edges
+      storage.createInstance('ledger', {
+        id: 'ledger-default',
+        name: 'ledger-default',
+        projectId: project.id,
+        payload: {
+          edges: [
+            {
+              id: '00000000-0000-4000-8000-000000000001',
+              sourceEntityId: 'ObsoleteDoc',
+              targetEntityId: 'TargetDoc',
+              rel: 'supports',
+              provenance: 'document_claim',
+              status: 'active',
+              anchor: { blockId: 'b1', justification: 'j1' },
+              meta: {
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                author: 'agent'
+              }
+            },
+            {
+              id: '00000000-0000-4000-8000-000000000002',
+              sourceEntityId: 'OtherDoc',
+              targetEntityId: 'TargetDoc',
+              rel: 'cites',
+              provenance: 'document_claim',
+              status: 'active',
+              anchor: { blockId: 'b2', justification: 'j2' },
+              meta: {
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                author: 'agent'
+              }
+            }
+          ]
+        }
+      })
+
+      // Delete the document
+      const delRes = await fetch(`${baseUrl}/api/instances/${doc.id}`, {
+        method: 'DELETE'
+      })
+      expect(delRes.status).toBe(200)
+
+      // Fetch the ledger and verify the edge with sourceEntityId: ObsoleteDoc was purged
+      const ledgerRes = await fetch(`${baseUrl}/api/instances/ledger-default`)
+      expect(ledgerRes.status).toBe(200)
+      const ledgerData = (await ledgerRes.json()) as { payload?: { edges?: Array<{ id: string }> } }
+      const edges = ledgerData.payload?.edges || []
+      expect(edges).toHaveLength(1)
+      expect(edges[0].id).toBe('00000000-0000-4000-8000-000000000002')
+    })
   })
 
   // ============================================================================

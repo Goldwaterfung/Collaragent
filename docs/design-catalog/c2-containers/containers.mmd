@@ -12,7 +12,7 @@ flowchart TB
         
         RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders multi-chat Dockview layout, graph canvas, Lexical editor, parallel agent streams, and state trees"]:::container
         
-        PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / AsyncGenerators]<br/>Provides isolated, typed IPC channels and stream unbuffering"]:::container
+        PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / Domain IPC Bridges]<br/>Provides isolated, typed domain bridges (agentIPC, configIPC, checkpointIPC, fileIPC, skillsIPC) and stream unbuffering"]:::container
         
         MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
         
@@ -25,13 +25,13 @@ flowchart TB
         ProjectStore[("📦 Embedded SQLite Database (.cagent in WAL Mode)<br/>[Container: better-sqlite3 + MessagePack]<br/>Stores relational schema, instance BLOBs, indexed checkpoints, and chat history")]:::database
     end
 
-    ExternalLLM["🧠 LLM Cloud APIs<br/>[External: OpenAI / Anthropic / Gemini / Ollama]"]:::external
+    ExternalLLM["🧠 LLM Cloud APIs<br/>[External: OpenAI / Anthropic / Gemini / Ollama / OpenCode Go]"]:::external
     ExternalMCP["🔌 External MCP Servers<br/>[External: STDIO / SSE / HTTP]"]:::external
 
     User -->|"Interacts via Mouse, Keyboard, Drag & Drop"| RendererUI
     RendererUI -->|"Invokes typed APIs & receives stream chunks"| PreloadBridge
     PreloadBridge -->|"Bi-directional IPC [Electron IPC]"| MainHost
-    RendererUI <-->|"Bi-directional State Sync & Thread Proposals [WebSocket / JSON-RPC]"| WSServer
+    RendererUI <-->|"Bi-directional State Sync & Thread Proposals [WebSocket / Sync Protocol]"| WSServer
     RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
     
     MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer

@@ -10,7 +10,7 @@ flowchart LR
 
     Agent[🤖 DeepAgent ReAct Loop]:::actor
     
-    CmdEditDoc[Command: editDocument<br/>operations: JSONPatch[]]:::command
+    CmdEditDoc[Command: editDocument<br/>operations: BlockOperation[]]:::command
     EvtPatchReceived[Event: Document Patch Received]:::event
     AggPatchEngine[Aggregate: PatchCommandEngine]:::aggregate
     

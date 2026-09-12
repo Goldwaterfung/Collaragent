@@ -16,10 +16,9 @@ erDiagram
     INLINE_RUN }o--o{ COMMENT : references
 
     %% Relational Knowledge Ledger Domain
-    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_TRIPLE : contains
-    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_ENTITY : contains
-    RELATIONAL_TRIPLE }o--|| BLOCK : grounded_by_claim
-    BLOCK ||--o{ INLINE_CLAIM_BADGE : contains
+    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_LEDGER_ENTRY : contains
+    RELATIONAL_LEDGER_ENTRY }o--|| BLOCK : grounded_by_claim
+    INLINE_RUN ||--o| INLINE_CLAIM_BADGE : contains
 
     %% Unified Checkpoint & Ledger Domain
     CHECKPOINT_BUNDLE ||--o{ INSTANCE_RESTORE_POINT : captures
@@ -46,8 +45,7 @@ erDiagram
         GraphId id PK
         Record nodesById
         Record relationshipsById
-        Record outgoingByNodeId
-        Record incomingByNodeId
+        Record layoutByNodeId
     }
 
     NODE_ENTITY {
@@ -90,7 +88,6 @@ erDiagram
         string align "left|center|right|justify"
         string language
         InlineRun[] children
-        InlineClaimBadge[] claimBadges
     }
 
     INLINE_RUN {
@@ -99,27 +96,22 @@ erDiagram
         boolean italic
         string equation "LaTeX Formula"
         string[] commentIds FK
+        InlineClaimBadge claimBadge
     }
 
     RELATIONAL_LEDGER_PAYLOAD {
         string instanceId PK
-        Record entitiesById
-        Record triplesById
+        RelationalLedgerEntry[] entries
     }
 
-    RELATIONAL_TRIPLE {
+    RELATIONAL_LEDGER_ENTRY {
         string id PK
-        string source FK
-        string predicate
-        string target FK
-        string claimId FK
-    }
-
-    RELATIONAL_ENTITY {
-        string id PK
-        string label
-        string type
-        Record properties
+        string sourceEntityId FK
+        string targetEntityId FK
+        string rel
+        string provenance
+        Anchor anchor
+        string status "active | retracted | disputed"
     }
 
     INLINE_CLAIM_BADGE {

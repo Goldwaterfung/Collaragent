@@ -25,6 +25,7 @@ describe('WorkspaceMiddleware & Tool Standards', () => {
     expect(toolNames).toContain('writeMindMap')
     expect(toolNames).toContain('ingestSource')
     expect(toolNames).toContain('queryAndFileBack')
+    expect(toolNames).toContain('pruneLedger')
     expect(toolNames).toContain('createProject')
     expect(toolNames).toContain('removeProject')
   })
@@ -39,6 +40,7 @@ describe('WorkspaceMiddleware & Tool Standards', () => {
     expect(toolNames).not.toContain('createDocument')
     expect(toolNames).not.toContain('compileGraph')
     expect(toolNames).not.toContain('ingestSource')
+    expect(toolNames).not.toContain('pruneLedger')
   })
 
   it('ensures all active tools conform to the isWorkspaceTool contract in WORKSPACE_TOOL_NAMES', () => {
@@ -70,5 +72,29 @@ describe('WorkspaceMiddleware & Tool Standards', () => {
       expect(typeof fix).toBe('string')
       expect(fix!.length).toBeGreaterThan(10)
     }
+  })
+
+  it('injects PRIMARY: Workspace Tools hierarchy and operational boundaries into systemPrompt', async () => {
+    const middleware = createWorkspaceMiddleware({ readOnly: false })
+    expect(middleware.wrapModelCall).toBeDefined()
+
+    type WrapModelCallType = NonNullable<typeof middleware.wrapModelCall>
+    type RequestType = Parameters<WrapModelCallType>[0]
+    type HandlerType = Parameters<WrapModelCallType>[1]
+
+    let capturedPrompt = ''
+    const handler: HandlerType = async (req) => {
+      capturedPrompt = req.systemPrompt || ''
+      return { content: 'ok' } as unknown as Awaited<ReturnType<HandlerType>>
+    }
+
+    await middleware.wrapModelCall!(
+      { systemPrompt: 'Initial base prompt' } as unknown as RequestType,
+      handler
+    )
+
+    expect(capturedPrompt).toContain('PRIMARY: Workspace Tools (Studio Knowledge Surfaces)')
+    expect(capturedPrompt).toContain('NEVER attempt to use filesystem tools')
+    expect(capturedPrompt).toContain('listWorkspaceItems')
   })
 })

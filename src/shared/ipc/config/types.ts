@@ -5,6 +5,7 @@ import {
   MCPServerConfig,
   ModelProvider
 } from '../../config/types'
+import type { ReasoningEffort } from '../../config/constants'
 
 // ============================================================================
 // CONFIG IPC REQUEST TYPES
@@ -63,6 +64,7 @@ export interface ConfigSetModelRequest {
   name?: string
   apiKey?: string
   baseUrl?: string
+  reasoningEffort?: ReasoningEffort
   parameters?: {
     temperature?: number
     maxTokens?: number

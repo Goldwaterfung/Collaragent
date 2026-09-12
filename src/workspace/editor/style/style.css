@@ -468,7 +468,7 @@ span.editor-equation {
 }
 
 .editor-paragraph {
-  @apply mb-4 relative;
+  @apply mb-5 relative;
 }
 
 .editor-paragraph:first-child {
@@ -525,7 +525,7 @@ span.editor-equation {
 }
 
 .editor-listitem {
-  margin: 8px 32px 8px 32px;
+  margin: 10px 24px 10px 24px;
 }
 
 .editor-nested-listitem {
@@ -1173,8 +1173,8 @@ i.justify-align {
   border-spacing: 0;
   table-layout: auto;
   width: 100%;
-  margin-top: 25px;
-  margin-bottom: 30px;
+  margin-top: 24px;
+  margin-bottom: 24px;
 }
 .PlaygroundEditorTheme__tableScrollableWrapper.PlaygroundEditorTheme__tableFrozenRow {
   overflow-x: clip;

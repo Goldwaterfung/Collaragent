@@ -15,6 +15,7 @@ import type { NodeId } from '@workspace/canvas/domain/ids'
 import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
 import { RelationalLedgerStore } from '../wiki/RelationalLedgerStore'
 import { ClaimRelationEnum, type RelationalLedgerEntry } from '@shared/wiki'
+import { DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID } from '@shared/constants'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. readGraph
@@ -531,6 +532,29 @@ export async function executeWriteGraph(options: WriteGraphOptions) {
         const entityName = node?.name || nodeId
         options.ledgerStore.removeEdgesByQuery({ sourceEntityId: entityName })
         options.ledgerStore.removeEdgesByQuery({ targetEntityId: entityName })
+      }
+    }
+
+    // Persist ledger mutations to API if apiPort and ledgerStore are present
+    const hasLedgerMutations =
+      options.ledgerStore &&
+      ((validatedSpec.edges && validatedSpec.edges.length > 0) ||
+        (resolvedSpec.deleteEdges && resolvedSpec.deleteEdges.length > 0) ||
+        (resolvedSpec.deleteNodes && resolvedSpec.deleteNodes.length > 0))
+
+    if (hasLedgerMutations && options.apiPort && options.ledgerStore) {
+      try {
+        const edges = options.ledgerStore.getAllEdges()
+        await fetch(
+          `http://127.0.0.1:${options.apiPort}/api/instances/${DEFAULT_RELATIONAL_LEDGER_INSTANCE_ID}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: { edges } })
+          }
+        )
+      } catch (err) {
+        console.warn('[manageGraph] Failed to persist ledger via API:', err)
       }
     }
   } finally {

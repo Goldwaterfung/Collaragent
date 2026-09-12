@@ -13,9 +13,11 @@ describe('System Prompt Structure & Invariants', () => {
     expect(BASE_PROMPT).toContain('Operating Principles')
     expect(BASE_PROMPT).toContain('Evidence-Based & Pragmatic')
     expect(BASE_PROMPT).toContain('High-Signal Communication')
+    expect(BASE_PROMPT).toContain('Intellectual Honesty Over Deference')
     expect(BASE_PROMPT).toContain('Grounded Reasoning')
     expect(BASE_PROMPT).toContain('Collaborative Co-Authoring')
     expect(BASE_PROMPT).toContain('Mechanism Over Description')
+    expect(BASE_PROMPT).toContain('Fracture & Workaround Reconnaissance')
     expect(BASE_PROMPT).toContain('Zero Scaffolding & Orthogonality')
   })
 

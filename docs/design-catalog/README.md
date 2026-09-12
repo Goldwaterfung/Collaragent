@@ -91,7 +91,7 @@ flowchart TB
     end
 
     LocalFS["💾 Local Filesystem<br/>[Host OS]<br/>Stores .cagent SQLite databases (WAL mode), skills, and configuration vaults"]:::external
-    LLMProviders["🧠 LLM Cloud Providers<br/>[External Systems: OpenAI, Anthropic, Google, Ollama]<br/>Executes generative completions, reasoning traces, and function calling"]:::external
+    LLMProviders["🧠 LLM Cloud Providers<br/>[External Systems: OpenAI, Anthropic, Google, Ollama, OpenCode Go]<br/>Executes generative completions, reasoning traces, and function calling"]:::external
     MCPServers["🔌 Model Context Protocol (MCP) Servers<br/>[External Processes / Remote Servers]<br/>Provides external tools, filesystem access, and domain integrations via STDIO/SSE"]:::external
     SearchGateway["🌐 Web Search Gateway<br/>[External API: Tavily]<br/>Performs live internet queries and web intelligence gathering"]:::external
 
@@ -222,7 +222,7 @@ flowchart TB
 
         RendererUI["💻 Renderer Process (Chromium)<br/>[Container: React 19 / Vite / Tailwind v4 / Dockview]<br/>Renders multi-chat Dockview layout, graph canvas, Lexical editor, parallel agent streams, and state trees"]:::container
 
-        PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / AsyncGenerators]<br/>Provides isolated, typed IPC channels and stream unbuffering"]:::container
+        PreloadBridge["🔒 Preload Security Bridge<br/>[Container: contextBridge / Domain IPC Bridges]<br/>Provides isolated, typed domain bridges (agentIPC, configIPC, checkpointIPC, fileIPC, skillsIPC) and stream unbuffering"]:::container
 
         MainHost["⚙️ Main Host Process<br/>[Container: Node.js / Electron Main]<br/>Manages window lifecycle, secure storage vault, agent factory, and IPC routing"]:::container
 
@@ -235,13 +235,13 @@ flowchart TB
         ProjectStore[("📦 Embedded SQLite Database (.cagent in WAL Mode)<br/>[Container: better-sqlite3 + MessagePack]<br/>Stores relational schema, instance BLOBs, indexed checkpoints, and chat history")]:::database
     end
 
-    ExternalLLM["🧠 LLM Cloud APIs<br/>[External: OpenAI / Anthropic / Gemini / Ollama]"]:::external
+    ExternalLLM["🧠 LLM Cloud APIs<br/>[External: OpenAI / Anthropic / Gemini / Ollama / OpenCode Go]"]:::external
     ExternalMCP["🔌 External MCP Servers<br/>[External: STDIO / SSE / HTTP]"]:::external
 
     User -->|"Interacts via Mouse, Keyboard, Drag & Drop"| RendererUI
     RendererUI -->|"Invokes typed APIs & receives stream chunks"| PreloadBridge
     PreloadBridge -->|"Bi-directional IPC [Electron IPC]"| MainHost
-    RendererUI <-->|"Bi-directional State Sync & Thread Proposals [WebSocket / JSON-RPC]"| WSServer
+    RendererUI <-->|"Bi-directional State Sync & Thread Proposals [WebSocket / Sync Protocol]"| WSServer
     RendererUI -->|"Queries instances, sessions & snapshots [HTTP / REST :fsPort]"| UtilityServer
 
     MainHost -->|"Forks & supervises via parentPort [Node IPC]"| UtilityServer
@@ -283,7 +283,7 @@ flowchart TB
 
         subgraph LocalDisk ["Host Filesystem & OS Vault"]
             ConfigDir["~/.collaragent/<br/>• config.json<br/>• secrets.json (safeStorage 0o600)<br/>• window-state.json"]:::file
-            SkillsDir["~/.deepagents/skills/<br/>• SKILL.md bundles"]:::file
+            SkillsDir["Progressive Skills Directory<br/>• Built-in: src/collaragent/skills/<br/>• Configured: config.middleware.skills.source"]:::file
             ProjectDir["Single-File SQLite Workspace (*.cagent / *.cagent.lock)<br/>• WAL Journal (*-wal, *-shm)<br/>• Relational Tables & BLOBs<br/>• B-Tree Checkpoint Index"]:::file
         end
     end
@@ -292,6 +292,7 @@ flowchart TB
         OpenAICloud["OpenAI API [HTTPS]"]:::cloud
         AnthropicCloud["Anthropic API [HTTPS]"]:::cloud
         GoogleCloud["Google GenAI API [HTTPS]"]:::cloud
+        OpenCodeGoCloud["OpenCode Go API [HTTPS]"]:::cloud
         TavilyAPI["Tavily Search API [HTTPS]"]:::cloud
     end
 
@@ -307,6 +308,7 @@ flowchart TB
     MainProc -->|"Streams Prompts/Completions"| OpenAICloud
     MainProc -->|"Streams Prompts/Completions"| AnthropicCloud
     MainProc -->|"Streams Prompts/Completions"| GoogleCloud
+    MainProc -->|"Streams Prompts/Completions"| OpenCodeGoCloud
     MainProc -->|"Queries Search"| TavilyAPI
 ```
 
@@ -437,7 +439,7 @@ flowchart TB
                 CardEditor["📄 CardEditor (Lexical)<br/>[Component]<br/>Full document editor: typography, GFM tables, math (KaTeX), code blocks"]:::component
                 BlockIdPlugin["🔑 BlockIdPlugin<br/>[Plugin]<br/>Deterministic Lexical AST block UUID assignment & registry"]:::component
                 ClaimBadgeNode["🏷️ InlineClaimBadgeNode<br/>[Lexical Node]<br/>Grounded claim badges with provenance tooltip popovers"]:::component
-                DocxExporter["📑 DocxExporter<br/>[Component]<br/>Compiles DocumentPayload block AST directly into Word (.docx)"]:::component
+                DocxExporter["📑 docxExportUtils<br/>[Utility]<br/>Compiles DocumentPayload block AST directly into Word (.docx)"]:::component
             end
 
             subgraph ChatView ["Concurrent Agent Chat & Streaming Subsystem"]
@@ -494,10 +496,12 @@ flowchart TB
         subgraph MiddlewarePipeline ["Ordered Middleware Interceptor Stack"]
             PatchToolMW["🔧 PatchToolCallsMiddleware<br/>[Middleware]<br/>Appends synthetic cancellation ToolMessages for dangling calls"]:::middleware
             SkillsMW["📚 SkillsMiddleware<br/>[Middleware]<br/>Progressive disclosure catalog injection & on-demand skill reading"]:::middleware
-            MemoryMW["🧠 Memory & AgentMemoryMiddleware<br/>[Middleware]<br/>Loads AGENTS.md, ~/.deepagents/agent.md, and project memory"]:::middleware
+            WorkspaceMW["🌐 WorkspaceMiddleware<br/>[Middleware]<br/>Injects active workspace context, open instances, and system metadata"]:::middleware
+            UserRulesMW["📜 UserRulesMiddleware<br/>[Middleware]<br/>Injects persistent workspace user rules and project constraints"]:::middleware
+            DateMW["📅 DateMiddleware<br/>[Middleware]<br/>Appends current timestamp and temporal anchor"]:::middleware
+            NormalizerMW["⚙️ ModelResponseNormalizer<br/>[Middleware]<br/>Normalizes provider-specific responses and tool-call signatures"]:::middleware
             FSMiddleware["📁 FilesystemMiddleware<br/>[Middleware]<br/>Filesystem tool guides, sandbox validation, large output eviction"]:::middleware
             SubAgentMW["👥 SubAgentMiddleware<br/>[Middleware]<br/>Manages task / dynamic_task delegation and state isolation"]:::middleware
-            TodoMW["📋 TodoListMiddleware<br/>[Middleware]<br/>write_todos tool injection & anti-parallelism guardrails"]:::middleware
             ContextMW["✂️ ContextEditing & Summarization<br/>[Middleware]<br/>Prunes tool outputs (>100k tokens) and summarizes history (>120k)"]:::middleware
         end
 
@@ -505,43 +509,42 @@ flowchart TB
             CanvasDiff["🎨 CanvasDiffEngine<br/>[Component]<br/>Diffs declarative GraphSpec vs current state to emit atomic CanvasCommands"]:::component
             DocDiff["📄 DocumentDiffEngine<br/>[Component]<br/>Diffs Lexical DocumentPayloads to emit atomic EditorCommands"]:::component
             PatchEngine["🧩 PatchCommandEngine<br/>[Component]<br/>Applies structured JSON patch operations against HTML patch views"]:::component
-            InverseEngine["🔄 InverseCommandEngine<br/>[Component]<br/>Inverts executed workspace commands into atomic Undo commands"]:::component
-            InverseLedger["🔄 InverseLedgerCommand<br/>[Component]<br/>Inverts relational ledger triple mutations for exact rollback"]:::component
+            InverseEngine["🔄 InverseCommandEngine<br/>[Component]<br/>Inverts executed canvas, document, and relational ledger mutations into atomic Undo commands"]:::component
         end
 
         subgraph WikiAndLedgerSubsystem ["LLM Wiki & Knowledge Ledger Subsystem"]
             WikiAdapter["🔌 LiveWikiWorkspaceAdapter<br/>[Adapter]<br/>Transactional read barriers (flushBeforeRead), instance hydration & tool routing"]:::component
             StructuralLinter["🔍 L1StructuralLinter<br/>[Component]<br/>Pre-audit flush barriers, orphan claim detection & graph validation"]:::component
+            SemanticLinter["🔍 L2SemanticLinter<br/>[Component]<br/>Evaluates semantic contradictions and epistemological conflicts"]:::component
         end
 
         subgraph StorageBackends ["Pluggable Storage Backends"]
-            CompositeBE["🔀 CompositeBackend<br/>[Backend]<br/>Prefix-based router (/memories -> StoreBackend, / -> FilesystemBackend)"]:::backend
-            FSBackend["💾 FilesystemBackend<br/>[Backend]<br/>POSIX disk access with virtual sandboxing and O_NOFOLLOW symlink safety"]:::backend
-            StateBE["⚡ StateBackend<br/>[Backend]<br/>Ephemeral in-memory storage residing in LangGraph state (`files` channel)"]:::backend
-            StoreBE["🗄️ StoreBackend<br/>[Backend]<br/>Cross-thread persistent storage backed by LangGraph BaseStore"]:::backend
+            FSBackend["💾 FilesystemBackend<br/>[Backend]<br/>POSIX disk access with virtual sandboxing (instantiated in AgentFactory)"]:::backend
+            CompositeBE["🔀 CompositeBackend<br/>[Backend (Re-exported)]<br/>Prefix-based router (/memories -> StoreBackend, / -> FilesystemBackend)"]:::backend
+            StateBE["⚡ StateBackend<br/>[Backend (Re-exported)]<br/>Ephemeral in-memory storage residing in LangGraph state"]:::backend
+            StoreBE["🗄️ StoreBackend<br/>[Backend (Re-exported)]<br/>Cross-thread persistent storage backed by LangGraph BaseStore"]:::backend
         end
     end
 
     DeepAgentFac --> PatchToolMW
     PatchToolMW --> SkillsMW
-    SkillsMW --> MemoryMW
-    MemoryMW --> FSMiddleware
+    SkillsMW --> WorkspaceMW
+    WorkspaceMW --> UserRulesMW
+    UserRulesMW --> DateMW
+    DateMW --> NormalizerMW
+    NormalizerMW --> FSMiddleware
     FSMiddleware --> SubAgentMW
-    SubAgentMW --> TodoMW
-    TodoMW --> ContextMW
+    SubAgentMW --> ContextMW
 
-    FSMiddleware --> CompositeBE
-    CompositeBE --> FSBackend
-    CompositeBE --> StateBE
-    CompositeBE --> StoreBE
+    FSMiddleware --> FSBackend
 
     DeepAgentFac --> CanvasDiff
     DeepAgentFac --> DocDiff
     DeepAgentFac --> PatchEngine
     DeepAgentFac --> InverseEngine
-    DeepAgentFac --> InverseLedger
     DeepAgentFac --> WikiAdapter
     WikiAdapter --> StructuralLinter
+    WikiAdapter --> SemanticLinter
 ```
 
 ---
@@ -569,10 +572,9 @@ erDiagram
     INLINE_RUN }o--o{ COMMENT : references
 
     %% Relational Knowledge Ledger Domain
-    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_TRIPLE : contains
-    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_ENTITY : contains
-    RELATIONAL_TRIPLE }o--|| BLOCK : grounded_by_claim
-    BLOCK ||--o{ INLINE_CLAIM_BADGE : contains
+    RELATIONAL_LEDGER_PAYLOAD ||--o{ RELATIONAL_LEDGER_ENTRY : contains
+    RELATIONAL_LEDGER_ENTRY }o--|| BLOCK : grounded_by_claim
+    INLINE_RUN ||--o| INLINE_CLAIM_BADGE : contains
 
     %% Unified Checkpoint & Ledger Domain
     CHECKPOINT_BUNDLE ||--o{ INSTANCE_RESTORE_POINT : captures
@@ -599,8 +601,7 @@ erDiagram
         GraphId id PK
         Record nodesById
         Record relationshipsById
-        Record outgoingByNodeId
-        Record incomingByNodeId
+        Record layoutByNodeId
     }
 
     NODE_ENTITY {
@@ -643,7 +644,6 @@ erDiagram
         string align "left|center|right|justify"
         string language
         InlineRun[] children
-        InlineClaimBadge[] claimBadges
     }
 
     INLINE_RUN {
@@ -652,27 +652,22 @@ erDiagram
         boolean italic
         string equation "LaTeX Formula"
         string[] commentIds FK
+        InlineClaimBadge claimBadge
     }
 
     RELATIONAL_LEDGER_PAYLOAD {
         string instanceId PK
-        Record entitiesById
-        Record triplesById
+        RelationalLedgerEntry[] entries
     }
 
-    RELATIONAL_TRIPLE {
+    RELATIONAL_LEDGER_ENTRY {
         string id PK
-        string source FK
-        string predicate
-        string target FK
-        string claimId FK
-    }
-
-    RELATIONAL_ENTITY {
-        string id PK
-        string label
-        string type
-        Record properties
+        string sourceEntityId FK
+        string targetEntityId FK
+        string rel
+        string provenance
+        Anchor anchor
+        string status "active | retracted | disputed"
     }
 
     INLINE_CLAIM_BADGE {

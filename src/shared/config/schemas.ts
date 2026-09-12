@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { REASONING_EFFORT_LEVELS } from './constants'
 
 /**
  * Zod schema for ModelConfig
@@ -8,6 +9,7 @@ export const ModelConfigSchema = z.object({
   modelId: z.string().min(1),
   name: z.string().optional(),
   baseUrl: z.string().optional(),
+  reasoningEffort: z.enum(REASONING_EFFORT_LEVELS).optional(),
   parameters: z
     .object({
       temperature: z.number().min(0).max(2).optional(),

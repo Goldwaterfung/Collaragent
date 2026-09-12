@@ -214,31 +214,99 @@ export const L2AuditResultSchema = z.object({
   auditedAt: z.string()
 })
 
-export const PruneLedgerInputSchema = z.object({
-  edgeId: z.string().optional().describe('Specific ledger edge UUID to remove.'),
-  sourceEntityId: z.string().optional().describe('Source document/entity name.'),
-  targetEntityId: z.string().optional().describe('Target document/entity name.'),
-  rel: ClaimRelationEnum.optional().describe('Relation predicate.'),
-  pruneAllDegraded: z
-    .boolean()
-    .optional()
-    .describe('If true, purges all edges with status: "anchor_lost".'),
-  pruneUnresolved: z
-    .boolean()
-    .optional()
-    .describe(
-      'If true, purges all edges whose source or target document does not exist in the workspace.'
-    ),
-  workspacePath: z.string().optional().describe('Optional workspace directory path.')
+export const PrunedEdgeReasonEnum = z.enum([
+  'explicit_id',
+  'incident_entity',
+  'unresolved_source',
+  'unresolved_target',
+  'anchor_lost',
+  'query_match'
+])
+export type PrunedEdgeReason = z.infer<typeof PrunedEdgeReasonEnum>
+
+export const PrunedEdgeDetailSchema = z.object({
+  id: z.string(),
+  sourceEntityId: z.string(),
+  targetEntityId: z.string(),
+  rel: ClaimRelationEnum,
+  provenance: EdgeProvenanceEnum,
+  status: z.enum(['active', 'anchor_lost', 'archived']),
+  reason: PrunedEdgeReasonEnum
 })
+export type PrunedEdgeDetail = z.infer<typeof PrunedEdgeDetailSchema>
+
+export const PruneLedgerInputSchema = z
+  .object({
+    edgeId: z.string().optional().describe('Specific ledger edge UUID to remove.'),
+    edgeIds: z
+      .array(z.string())
+      .optional()
+      .describe('List of specific ledger edge UUIDs to remove.'),
+    entityId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Entity/document name whose incident edges (both source and target) should be removed.'
+      ),
+    entityIds: z
+      .array(z.string().min(1))
+      .optional()
+      .describe('List of entity/document names whose incident edges should be removed.'),
+    sourceEntityId: z.string().optional().describe('Source document/entity name filter.'),
+    targetEntityId: z.string().optional().describe('Target document/entity name filter.'),
+    rel: ClaimRelationEnum.optional().describe('Relation predicate filter.'),
+    provenance: EdgeProvenanceEnum.optional().describe(
+      'Edge provenance filter (document_claim or canvas_relational).'
+    ),
+    pruneAllDegraded: z
+      .boolean()
+      .optional()
+      .describe('If true, purges all edges with status: "anchor_lost".'),
+    pruneUnresolved: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, purges all edges whose source or target document does not exist in the workspace.'
+      ),
+    dryRun: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'If true, simulates pruning and returns matched edges without mutating the ledger.'
+      ),
+    workspacePath: z.string().optional().describe('Optional workspace directory path.')
+  })
+  .refine(
+    (data) =>
+      Boolean(
+        data.edgeId ||
+        (data.edgeIds && data.edgeIds.length > 0) ||
+        data.entityId ||
+        (data.entityIds && data.entityIds.length > 0) ||
+        data.sourceEntityId ||
+        data.targetEntityId ||
+        data.rel ||
+        data.provenance ||
+        data.pruneUnresolved ||
+        data.pruneAllDegraded
+      ),
+    {
+      message:
+        'Must specify at least one pruning criterion (e.g. edgeId, edgeIds, entityId, entityIds, pruneUnresolved, or pruneAllDegraded).'
+    }
+  )
 
 export type PruneLedgerInput = z.infer<typeof PruneLedgerInputSchema>
 
 export const PruneLedgerResultSchema = z.object({
   status: z.enum(['success', 'error']),
   action: z.string(),
+  dryRun: z.boolean(),
   edgesPruned: z.number(),
   prunedEdgeIds: z.array(z.string()),
+  prunedEdges: z.array(PrunedEdgeDetailSchema),
   remainingEdgesCount: z.number(),
   report: z.string()
 })

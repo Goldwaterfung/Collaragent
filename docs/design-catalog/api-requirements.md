@@ -81,10 +81,12 @@ All REST API responses must adhere to strictly typed JSON envelopes. Arbitrary t
 
 ```json
 {
-  "error": "WORKSPACE_INSTANCE_NOT_FOUND",
-  "message": "Instance \"doc-uuid-1\" could not be found in active project.",
-  "statusCode": 404,
-  "timestamp": "2026-08-30T12:00:00.000Z"
+  "error": {
+    "code": "STORAGE_ERR_NOT_FOUND",
+    "message": "Instance \"doc-uuid-1\" could not be found in active project.",
+    "subsystem": "STORAGE",
+    "details": null
+  }
 }
 ```
 
@@ -92,10 +94,10 @@ All REST API responses must adhere to strictly typed JSON envelopes. Arbitrary t
 
 #### 1. `GET /api/instances`
 
-Returns a list of all document and canvas instances in the active project.
+Returns a list of all document and canvas instances in the active project along with project records.
 
 - **Query Parameters**:
-  - `projectId` _(optional, string)_: Filter instances by project ID.
+  - `projectId` _(optional, string)_: Unfiltered in current storage daemon implementation.
 - **Success Response (`200 OK`)**:
   ```json
   {
@@ -120,12 +122,18 @@ Returns a list of all document and canvas instances in the active project.
           "nodeCount": 18
         }
       }
+    ],
+    "projects": [
+      {
+        "id": "default",
+        "name": "Default Project"
+      }
     ]
   }
   ```
 - **Validation Schema (Zod)**:
   ```typescript
-  export const InstancesApiResponseSchema = z.object({
+  export const ListInstancesResponseSchema = z.object({
     instances: z.array(
       z.object({
         id: z.string().min(1),
@@ -135,7 +143,8 @@ Returns a list of all document and canvas instances in the active project.
         type: z.enum(['document', 'canvas']).optional(),
         metadata: z.record(z.string(), z.unknown()).optional()
       })
-    )
+    ),
+    projects: z.array(ProjectSchema).optional()
   })
   ```
 
@@ -149,7 +158,7 @@ Retrieves the raw persisted state payload of an individual instance.
   - For Document: `{ "blocks": [...], "comments": [...] }`
   - For Canvas: `{ "type": "graph-canvas", "graph": { "nodes": [...], "edges": [...] }, "layout": { ... } }`
 - **Error Responses**:
-  - `404 Not Found`: `{ "error": "WORKSPACE_INSTANCE_NOT_FOUND", "message": "..." }`
+  - `404 Not Found`: `{ "error": { "code": "STORAGE_ERR_NOT_FOUND", "message": "...", "subsystem": "STORAGE" } }`
 
 #### 3. `POST /api/instances`
 
@@ -162,7 +171,7 @@ Creates a new document or canvas instance.
     "name": "New Research Document",
     "projectId": "proj-uuid",
     "type": "document",
-    "initialPayload": {
+    "payload": {
       "blocks": [
         {
           "id": "block-1",
@@ -174,7 +183,7 @@ Creates a new document or canvas instance.
     }
   }
   ```
-- **Success Response (`201 Created`)**: `{ "success": true, "instanceId": "...", "createdAt": "..." }`
+- **Success Response (`201 Created`)**: `{ "status": "created", "id": "4a73ec31-6ec6-4f40-9a28-971c66f7d0a1" }`
 
 #### 4. `GET /api/projects`
 
@@ -203,8 +212,7 @@ Restores the complete project state, instance snapshots, and chat history to a d
   {
     "bundleId": "chk-turn-14-uuid",
     "threadId": "chat-thread-uuid",
-    "sessionId": "chat-session-uuid",
-    "projectId": "default"
+    "sessionId": "chat-session-uuid"
   }
   ```
 - **Validation Schema (Zod)**:
@@ -212,8 +220,7 @@ Restores the complete project state, instance snapshots, and chat history to a d
   export const CheckpointRestoreBodySchema = z.object({
     bundleId: z.string().min(1),
     sessionId: z.string().optional(),
-    threadId: z.string().optional(),
-    projectId: z.string().optional()
+    threadId: z.string().optional()
   })
   ```
 - **Success Response (`200 OK`)**:
@@ -436,30 +443,34 @@ sequenceDiagram
 
 ## 4. Electron Desktop IPC Contracts (`src/preload`, `src/main`)
 
-Electron IPC channels use context-isolated `contextBridge` interfaces with strict runtime parameter validation.
+Electron IPC channels use context-isolated `contextBridge` interfaces with strict runtime parameter validation. Instead of a single monolithic API, the preload layer exposes five domain-specific bridges: `window.agentIPC`, `window.configIPC`, `window.checkpointIPC`, `window.fileIPC`, and `window.skillsIPC`.
 
 ### 4.1 IPC Channel Registry
 
 ```mermaid
 flowchart LR
     Renderer["Renderer Process"]
-    Preload["contextBridge Bridge"]
+    Preload["contextBridge Domain Bridges<br/>(agentIPC, configIPC, checkpointIPC, fileIPC, skillsIPC)"]
     Main["Main Process"]
 
-    Renderer -->|"window.collarAPI.invokeChat(req)"| Preload
-    Preload -->|"ipcRenderer.invoke('workspace:chat', req)"| Main
-    Main -->>|"ipcRenderer.send('workspace:chat:stream:chunk', chunk)"| Preload
+    Renderer -->|"window.agentIPC.chat(req)"| Preload
+    Preload -->|"ipcRenderer.invoke('agent:chat', req)"| Main
+    Main -->>|"ipcRenderer.send('agent:stream:${streamId}', chunk)"| Preload
     Preload -->>|"AsyncGenerator.next()"| Renderer
 ```
 
-| Channel Name                  | Direction        | Payload Shape                                                      | Description                                                             |
-| ----------------------------- | ---------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `workspace:chat`              | Bidirectional    | `{ message: string, threadId: string, modelConfig: ModelConfig }`  | Initiates an agent execution turn                                       |
-| `workspace:chat:stream:chunk` | Main -> Renderer | `{ type: 'token' \| 'tool_call' \| 'reasoning', content: string }` | Streams tokens and reasoning traces                                     |
-| `app:open-project`            | Renderer -> Main | `{ projectPath?: string }`                                         | Opens native file/directory picker and mounts workspace SQLite database |
-| `app:export-project`          | Renderer -> Main | `{ targetZipPath: string }`                                        | Exports/packages workspace database into standalone `.cagent` archive   |
-| `settings:save-key`           | Renderer -> Main | `{ provider: string, apiKey: string }`                             | Encrypts API key via OS `safeStorage`                                   |
-| `settings:get-keys`           | Renderer -> Main | `void` -> `{ [provider: string]: boolean }`                        | Checks key presence without leaking plaintext                           |
+| Channel Name                     | Direction        | Payload Shape                                                      | Description                                                             |
+| -------------------------------- | ---------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `agent:chat`                     | Bidirectional    | `{ message: string, threadId: string, modelConfig: ModelConfig }`  | Initiates an agent execution turn                                       |
+| `agent:stream:${streamId}`       | Main -> Renderer | `{ type: 'token' \| 'tool_call' \| 'reasoning', content: string }` | Streams tokens and reasoning traces for dynamic per-request stream UUID |
+| `agent:stream:${streamId}:end`   | Main -> Renderer | `void`                                                             | Signals stream completion                                               |
+| `agent:stream:${streamId}:error` | Main -> Renderer | `{ error: string }`                                                | Emits stream-level execution error                                      |
+| `dialog:openFile`                | Renderer -> Main | `void` -> `{ canceled: boolean, filePaths: string[] }`             | Opens native project file picker (`.cagent`)                            |
+| `dialog:createFile`              | Renderer -> Main | `void` -> `{ canceled: boolean, filePath?: string }`               | Opens native file save dialog to create `.cagent`                       |
+| `file:openPath`                  | Renderer -> Main | `{ filePath: string }`                                             | Mounts and opens project archive                                        |
+| `config:save`                    | Renderer -> Main | `{ config: Partial<AppConfig> }`                                   | Persists user configuration intent and provider settings                |
+| `config:check-key`               | Renderer -> Main | `{ provider: string }` -> `boolean`                                | Checks key presence in OS vault without leaking plaintext               |
+| `config:set-tool-api-key`        | Renderer -> Main | `{ keyName: string, apiKey: string }`                              | Encrypts and saves tool API key via OS `safeStorage`                    |
 
 ---
 
@@ -471,13 +482,28 @@ Workspace tools provide the ReAct agent with atomic, deterministic operations ov
 
 #### 1. `readDocument`
 
-Reads the complete block structure, identity mapping, and comments of a document.
+Reads the block structure, identity mapping, and comments of a document with pagination and targeted anchoring support.
 
 - **Input Parameters (Zod)**:
   ```typescript
   export const ReadDocumentInputSchema = z.object({
-    instanceName: z.string().describe('The name or UUID of the document to read.'),
-    projectName: z.string().optional().describe('Optional project name to disambiguate.')
+    instanceName: z.string().optional().describe('The name or UUID of the document to read.'),
+    instanceId: z.string().optional().describe('Direct instance UUID.'),
+    projectName: z.string().optional().describe('Optional project name to disambiguate.'),
+    offset: z.number().optional().describe('Zero-based starting block offset for pagination.'),
+    limit: z.number().optional().describe('Maximum number of blocks to return.'),
+    outlineOnly: z
+      .boolean()
+      .optional()
+      .describe('If true, returns only heading blocks for high-level structure.'),
+    targetBlockId: z
+      .string()
+      .optional()
+      .describe('Anchor block ID to center the read window around.'),
+    radius: z
+      .number()
+      .optional()
+      .describe('Number of contextual blocks before and after targetBlockId.')
   })
   ```
 - **Return Type (`ReadDocumentResult`)**:
@@ -495,22 +521,45 @@ Reads the complete block structure, identity mapping, and comments of a document
   }
   ```
 - **Error Invariants**:
-  - Throws `WORKSPACE_INSTANCE_NOT_FOUND` if the instance name cannot be resolved.
+  - Throws `WORKSPACE_INSTANCE_NOT_FOUND` if the instance name or ID cannot be resolved.
   - Throws `WORKSPACE_BLOCK_IDENTITY_MISSING` if any block in the payload lacks a valid string `id`.
   - Throws `WORKSPACE_PAYLOAD_INVALID` if the document blocks structure is not an array.
 
 #### 2. `editDocument`
 
-Performs atomic block updates, insertions, or deletions with staged proposal tracking and unified diff generation.
+Performs atomic block updates, insertions, deletions, or targeted substring text replacements with staged proposal tracking and unified diff generation.
 
 - **Input Parameters (Zod)**:
   ```typescript
   export const EditDocumentInputSchema = z.object({
-    instanceName: z.string().describe('Target document name or UUID.'),
-    operation: z.enum(['update', 'insert', 'delete']).describe('Edit action.'),
-    targetBlockId: z.string().optional().describe('Block ID to update, delete, or anchor against.'),
-    anchor: z.enum(['before', 'after']).optional().describe('Anchor position for insert.'),
-    newHtml: z.string().optional().describe('HTML string for update or insert.')
+    instanceId: z.string().optional().describe('Target document instance UUID.'),
+    instanceName: z.string().optional().describe('Target document name.'),
+    projectName: z.string().optional().describe('Target project name.'),
+    allowUnresolvedLinks: z
+      .boolean()
+      .optional()
+      .describe('Allow wiki links that do not yet exist.'),
+    operations: z
+      .array(
+        z.object({
+          action: z.enum(['update', 'insert', 'delete', 'replace_text']).describe('Edit action.'),
+          blockId: z
+            .string()
+            .describe('Target block ID to update, delete, replace text, or anchor against.'),
+          anchor: z.enum(['before', 'after']).optional().describe('Anchor position for insert.'),
+          newHtml: z.string().optional().describe('HTML string for update or insert.'),
+          target: z
+            .string()
+            .optional()
+            .describe('Exact substring to find when action is replace_text.'),
+          replacement: z
+            .string()
+            .optional()
+            .describe('Replacement string when action is replace_text.')
+        })
+      )
+      .describe('Ordered sequence of atomic document editing operations.'),
+    explanation: z.string().optional().describe('Human-readable description of the proposed edits.')
   })
   ```
 - **Unified Diff Output**:
@@ -532,35 +581,28 @@ Creates a brand new document instance with initial HTML content.
 - **Input Parameters (Zod)**:
   ```typescript
   export const CreateDocumentInputSchema = z.object({
-    name: z.string().describe('Display name of the new document.'),
-    content: z.string().optional().describe('Initial HTML or Markdown content.'),
-    projectName: z.string().optional().describe('Target project name.')
+    html_content: z.string().describe('Initial HTML or Markdown content.'),
+    instanceName: z.string().describe('Display name of the new document.'),
+    instanceId: z.string().optional().describe('Optional custom UUID.'),
+    projectName: z.string().optional().describe('Target project name.'),
+    allowUnresolvedLinks: z.boolean().optional().describe('Allow wiki links that do not yet exist.')
   })
   ```
 
 ### 5.2 Graph Canvas & Spatial Modeling Tools
 
-#### 1. `manageGraph` (`writeGraph` / `writeMindMap`)
+Agent tools for visual canvas management are individually registered tools in `WorkspaceTools.ts`:
 
-Dispatches declarative graph specifications (`WriteGraphSpec`) or mindmap trees to update canvas nodes, directional relationships, and auto-layouts.
+- **`writeGraph`**: Replaces or updates the graph canvas structure using declarative nodes, links, and layout specifications (`WriteGraphSpec`).
+- **`writeMindMap`**: Ingests hierarchical tree nodes to automatically generate radial or tree mind maps on the canvas.
+- **`readGraph`**: Reads canvas nodes, relationships, and layout properties for a specified canvas instance.
 
-- **Input Parameters (Zod)**:
-  ```typescript
-  export const ManageGraphInputSchema = z.object({
-    action: z
-      .enum(['writeGraph', 'writeMindMap', 'readGraph'])
-      .describe('Graph manipulation action.'),
-    instanceName: z.string().describe('Target canvas instance name or UUID.'),
-    spec: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .describe('Declarative GraphSpec containing nodes, links, and layout.'),
-    staged: z
-      .boolean()
-      .optional()
-      .describe('Whether to buffer as a staged proposal (default: false).')
-  })
-  ```
+Each mutation tool accepts:
+
+- `instanceName` _(string)_: Target canvas instance name or UUID.
+- `instanceId` _(optional, string)_: Direct instance UUID.
+- `projectName` _(optional, string)_: Scoped project name.
+- `staged` _(optional, boolean)_: Whether to buffer as a staged proposal (`proposals[instanceId][threadId]`). Defaults to `false` (direct mutation).
 
 ### 5.3 LLM Wiki & Knowledge Ledger Tools (`src/collaragent/tools/wiki`)
 
@@ -568,9 +610,9 @@ CollarAgent provides a specialized tool suite for grounded claims, relational tr
 
 | Tool Function      | Description                                                                                                                                                       | Read Barrier Option                                                         |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `loadLedger`       | Retrieves the active relational knowledge ledger triples `(source, predicate, target, claimId)` and entity nodes.                                                 | Supports `flushBeforeRead: true` to guarantee fresh read-after-write state. |
+| `pruneLedger`      | Removes orphaned, duplicate, or unanchored triples from the relational knowledge ledger. (Ledger loading is performed via `LiveWikiWorkspaceAdapter.loadLedger`). | Supports `flushBeforeRead: true` to guarantee fresh read-after-write state. |
 | `compileGraph`     | Compiles wiki document blocks and claims into knowledge graph card nodes and directional edges.                                                                   | Resolves blocks via `BlockIdPlugin` persistent UUIDs.                       |
-| `lintWorkspace`    | Executes L1 structural integrity audit (`L1StructuralLinter`) for broken anchors and unreferenced claims, and L2 contradiction audits (`L2ContradictionAuditor`). | Supports `flushBeforeAudit: true` to flush pending mutations before audit.  |
+| `lintWorkspace`    | Executes L1 structural integrity audit (`L1StructuralLinter`) for broken anchors and unreferenced claims, and L2 contradiction audits (`L2SemanticLinter`).       | Supports `flushBeforeAudit: true` to flush pending mutations before audit.  |
 | `ingestSource`     | Ingests external source research into grounded document paragraphs with assigned persistent block IDs.                                                            | Commits blocks to Lexical AST.                                              |
 | `queryAndFileBack` | Queries relational triples and grounded claims, returning structured evidence citations for agent reasoning.                                                      | Supports `flushBeforeRead: true`.                                           |
 

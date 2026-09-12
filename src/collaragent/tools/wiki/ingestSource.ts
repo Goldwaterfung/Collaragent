@@ -461,6 +461,11 @@ export async function executeIngestSource(
       }
     })
 
+    // Persist updated relational ledger to storage
+    if (edgesCreated > 0 && adapter.saveLedger) {
+      await adapter.saveLedger(ledgerStore)
+    }
+
     return {
       status: 'success',
       action: 'Ingested Source',
@@ -483,6 +488,14 @@ export async function executeIngestSource(
           `[ingestSource] Rollback failure on step "${step.description}":`,
           rollbackError
         )
+      }
+    }
+    // Persist rolled-back ledger state
+    if (adapter.saveLedger) {
+      try {
+        await adapter.saveLedger(ledgerStore)
+      } catch (saveErr) {
+        console.error('[ingestSource] Failed to persist rolled-back ledger:', saveErr)
       }
     }
     throw error

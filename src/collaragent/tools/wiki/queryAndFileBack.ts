@@ -403,6 +403,11 @@ export async function executeQueryAndFileBack(
       }
     })
 
+    // Persist updated relational ledger to storage
+    if (edgesCreated > 0 && adapter.saveLedger) {
+      await adapter.saveLedger(ledgerStore)
+    }
+
     return {
       status: 'success',
       action: 'Filed Back Synthesis',
@@ -424,6 +429,14 @@ export async function executeQueryAndFileBack(
           `[queryAndFileBack] Rollback failure on step "${step.description}":`,
           rollbackError
         )
+      }
+    }
+    // Persist rolled-back ledger state
+    if (adapter.saveLedger) {
+      try {
+        await adapter.saveLedger(ledgerStore)
+      } catch (saveErr) {
+        console.error('[queryAndFileBack] Failed to persist rolled-back ledger:', saveErr)
       }
     }
     throw error

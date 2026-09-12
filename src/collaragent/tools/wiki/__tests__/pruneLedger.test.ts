@@ -233,4 +233,177 @@ describe('pruneLedger Tool (Flaw #1 Remediation)', () => {
     expect(postLint.audit.errors).toHaveLength(0)
     expect(postLint.audit.warnings).toHaveLength(0)
   })
+
+  it('prunes multiple specific edges via edgeIds array in a single invocation', async () => {
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000001',
+      sourceEntityId: 'Doc1',
+      targetEntityId: 'Doc2',
+      rel: 'supports',
+      provenance: 'document_claim',
+      status: 'active',
+      anchor: { blockId: 'b1', justification: 'j1' },
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000002',
+      sourceEntityId: 'Doc2',
+      targetEntityId: 'Doc3',
+      rel: 'cites',
+      provenance: 'document_claim',
+      status: 'active',
+      anchor: { blockId: 'b2', justification: 'j2' },
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000003',
+      sourceEntityId: 'Doc3',
+      targetEntityId: 'Doc4',
+      rel: 'details',
+      provenance: 'canvas_relational',
+      status: 'active',
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+
+    const res = await executePruneLedger(
+      {
+        edgeIds: ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002']
+      },
+      adapter
+    )
+
+    expect(res.status).toBe('success')
+    expect(res.edgesPruned).toBe(2)
+    expect(res.prunedEdgeIds).toEqual([
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000002'
+    ])
+    expect(res.remainingEdgesCount).toBe(1)
+    expect(ledgerStore.getAllEdges()).toHaveLength(1)
+    expect(ledgerStore.getAllEdges()[0].id).toBe('00000000-0000-4000-8000-000000000003')
+  })
+
+  it('prunes all incident edges for an entity via entityId cascading', async () => {
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000011',
+      sourceEntityId: 'DeletedDoc',
+      targetEntityId: 'DocA',
+      rel: 'supports',
+      provenance: 'document_claim',
+      status: 'active',
+      anchor: { blockId: 'b1', justification: 'j1' },
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000012',
+      sourceEntityId: 'DocB',
+      targetEntityId: 'DeletedDoc',
+      rel: 'cites',
+      provenance: 'document_claim',
+      status: 'active',
+      anchor: { blockId: 'b2', justification: 'j2' },
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000013',
+      sourceEntityId: 'DocA',
+      targetEntityId: 'DocB',
+      rel: 'details',
+      provenance: 'canvas_relational',
+      status: 'active',
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+
+    const res = await executePruneLedger({ entityId: 'DeletedDoc' }, adapter)
+    expect(res.edgesPruned).toBe(2)
+    expect(res.prunedEdgeIds).toContain('00000000-0000-4000-8000-000000000011')
+    expect(res.prunedEdgeIds).toContain('00000000-0000-4000-8000-000000000012')
+    expect(res.remainingEdgesCount).toBe(1)
+    expect(ledgerStore.getEdge('00000000-0000-4000-8000-000000000013')).toBeDefined()
+  })
+
+  it('supports dryRun simulation without mutating the ledger or saving to disk', async () => {
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000021',
+      sourceEntityId: 'DocX',
+      targetEntityId: 'DocY',
+      rel: 'supports',
+      provenance: 'document_claim',
+      status: 'anchor_lost',
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+
+    let saveLedgerCalled = false
+    adapter.saveLedger = async () => {
+      saveLedgerCalled = true
+    }
+
+    const res = await executePruneLedger({ pruneAllDegraded: true, dryRun: true }, adapter)
+
+    expect(res.status).toBe('success')
+    expect(res.dryRun).toBe(true)
+    expect(res.edgesPruned).toBe(1)
+    expect(res.prunedEdgeIds).toEqual(['00000000-0000-4000-8000-000000000021'])
+    expect(res.remainingEdgesCount).toBe(0)
+    expect(res.report).toContain('DRY RUN SIMULATION')
+
+    // In dryRun, store must NOT be mutated and saveLedger must NOT be called
+    expect(ledgerStore.getAllEdges()).toHaveLength(1)
+    expect(saveLedgerCalled).toBe(false)
+  })
+
+  it('invokes adapter.saveLedger when pruning in non-dryRun mode', async () => {
+    ledgerStore.upsertEdge({
+      id: '00000000-0000-4000-8000-000000000031',
+      sourceEntityId: 'DocX',
+      targetEntityId: 'DocY',
+      rel: 'supports',
+      provenance: 'document_claim',
+      status: 'anchor_lost',
+      meta: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'agent'
+      }
+    })
+
+    let saveLedgerCalled = false
+    adapter.saveLedger = async () => {
+      saveLedgerCalled = true
+    }
+
+    const res = await executePruneLedger({ pruneAllDegraded: true, dryRun: false }, adapter)
+
+    expect(res.edgesPruned).toBe(1)
+    expect(ledgerStore.getAllEdges()).toHaveLength(0)
+    expect(saveLedgerCalled).toBe(true)
+  })
 })
