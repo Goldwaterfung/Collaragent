@@ -47,6 +47,7 @@ export const WORKSPACE_TOOL_NAMES = [
   'readDocument',
   'createDocument',
   'editDocument',
+  'leaveComment',
   'listWorkspaceItems',
   'readGraph',
   'writeGraph',

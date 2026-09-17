@@ -3,12 +3,14 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { DocumentSchema, type Block, type Comment } from '@workspace/persistence/editorContent'
 import { CollarError } from '@shared/errors/CollarError'
-import { WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
+import { WorkspaceError, WorkspaceErrorCode } from '@shared/errors/WorkspaceErrors'
+import type { EditorCommand } from '@shared/commands'
 import {
   convertBlocksToPatchView,
   convertHtmlToBlocks
 } from '@workspace/editor/schemas/htmlContentConversion'
 import { PatchCommandEngine } from '@collaragent/runtime'
+import { anchorCommentToBlock } from './commentAnchoring'
 import { getDocumentPayload } from '@workspace/wstools/getDocument'
 import { executeWriteDocument, executeDocumentCommands } from '@workspace/wstools/manageDocument'
 import { listDocumentInstances } from '@workspace/wstools/listDocumentInstances'
@@ -257,6 +259,79 @@ const editDocumentSchema = z
     message: 'Either instanceId or instanceName must be provided.'
   })
 
+const commentItemSchema = z.object({
+  blockId: z
+    .string()
+    .min(1)
+    .describe('The target block ID where the comment will be attached (found via readDocument).'),
+  targetText: z
+    .string()
+    .min(1)
+    .describe('The exact text substring within the block to attach the comment to.'),
+  comment: z.string().min(1).describe('The review feedback or note to leave.'),
+  author: z
+    .string()
+    .optional()
+    .describe('Optional author display name for the comment (defaults to "AI Reviewer").')
+})
+
+const leaveCommentInputSchema = z
+  .object({
+    instanceId: z.string().optional().describe('Optional persistent UUID of the document.'),
+    instanceName: z
+      .string()
+      .optional()
+      .describe('The document name. Provide either instanceId or instanceName.'),
+    projectName: z
+      .string()
+      .optional()
+      .describe('Optional project name to disambiguate documents across projects.'),
+
+    // Single comment parameters (backwards compatible)
+    blockId: z
+      .string()
+      .optional()
+      .describe('The target block ID where the comment will be attached (for a single comment).'),
+    targetText: z
+      .string()
+      .optional()
+      .describe(
+        'The exact text substring within the block to attach the comment to (for a single comment).'
+      ),
+    comment: z
+      .string()
+      .optional()
+      .describe('The review feedback or note to leave (for a single comment).'),
+    author: z
+      .string()
+      .optional()
+      .describe('The author display name for the comment (defaults to "AI Reviewer").'),
+
+    // Batched comments parameter (recommended for multiple comments)
+    comments: z
+      .array(commentItemSchema)
+      .optional()
+      .describe(
+        'An array of comments to attach in a single batch. Strongly recommended when leaving multiple comments to prevent OCC version conflicts.'
+      )
+  })
+  .refine((data) => !!(data.instanceId || data.instanceName), {
+    message: 'Either instanceId or instanceName must be provided.'
+  })
+  .refine(
+    (data) => {
+      const hasSingle = !!(data.blockId && data.targetText && data.comment)
+      const hasBatch = Array.isArray(data.comments) && data.comments.length > 0
+      return hasSingle || hasBatch
+    },
+    {
+      message:
+        'Must provide either a single comment ("blockId", "targetText", "comment") or a non-empty "comments" array.'
+    }
+  )
+
+type LeaveCommentInput = z.infer<typeof leaveCommentInputSchema>
+
 // Graph Schemas
 const writeMindMapInputSchema = z
   .object({
@@ -454,6 +529,43 @@ interface EditDocumentSuccessResult {
 }
 
 export type EditDocumentResult = EditDocumentErrorResult | EditDocumentSuccessResult
+
+export interface LeaveCommentItemResult {
+  commentId: string
+  blockId: string
+  targetText: string
+  author: string
+  comment: string
+}
+
+export interface LeaveCommentSuccessResult {
+  status: 'success'
+  action: 'Comment Added'
+  instanceId: string
+  instanceName: string
+  projectName?: string
+  commentsAdded: number
+  comments: LeaveCommentItemResult[]
+  // Convenience fields for single comment callers
+  commentId?: string
+  blockId?: string
+  targetText?: string
+  author?: string
+  comment?: string
+}
+
+export interface LeaveCommentErrorResult {
+  status: 'error'
+  action: 'Failed to leave comment'
+  instanceId?: string
+  instanceName?: string
+  projectName?: string
+  code: string
+  message: string
+  recommendFix?: string
+}
+
+export type LeaveCommentResult = LeaveCommentSuccessResult | LeaveCommentErrorResult
 
 export interface ReadDocumentErrorResult {
   status: 'error'
@@ -705,6 +817,10 @@ export function getCodeRecommendFix(code: string): string | undefined {
       return 'The HTML string did not produce any valid blocks. Ensure content is wrapped in standard HTML tags such as <p>...</p> or <table>...</table>.'
     case WorkspaceErrorCode.WORKSPACE_HTML_TABLE_MALFORMED:
       return 'The table markup contains no rows or cells. Ensure <table> contains at least one <tr> with <th> or <td> elements.'
+    case WorkspaceErrorCode.WORKSPACE_COMMENT_TARGET_NOT_FOUND:
+      return 'The specified targetText was not found in the target block. Call readDocument with targetBlockId to inspect the exact text runs.'
+    case WorkspaceErrorCode.WORKSPACE_COMMENT_EMPTY:
+      return 'The comment string is empty. Provide non-empty feedback content.'
 
     // Graph Canvas & Diagram Subsystem Recommendations
     case WorkspaceErrorCode.WORKSPACE_GRAPH_NOT_FOUND:
@@ -1200,6 +1316,221 @@ async function editDocumentHandler(
   }
 }
 
+const documentInstanceLocks = new Map<string, Promise<void>>()
+
+/**
+ * Ensures sequential in-process execution for mutations targeting the same document instance.
+ * Eliminates race conditions and version conflicts when agents fire parallel tool calls (Promise.all) in the same turn.
+ */
+export async function withDocumentInstanceLock<T>(
+  instanceId: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const previous = documentInstanceLocks.get(instanceId) ?? Promise.resolve()
+  let releaseLock: () => void
+  const current = new Promise<void>((resolve) => {
+    releaseLock = resolve
+  })
+
+  documentInstanceLocks.set(
+    instanceId,
+    previous.catch(() => {}).then(() => current)
+  )
+
+  try {
+    await previous.catch(() => {})
+    return await fn()
+  } finally {
+    releaseLock!()
+    if (documentInstanceLocks.get(instanceId) === current) {
+      documentInstanceLocks.delete(instanceId)
+    }
+  }
+}
+
+async function leaveCommentHandler(
+  input: LeaveCommentInput,
+  config: ToolConfig
+): Promise<LeaveCommentResult> {
+  try {
+    // 1. Normalize items (support both single-comment fields and "comments" batch array)
+    const rawItems: Array<{
+      blockId: string
+      targetText: string
+      comment: string
+      author?: string
+    }> = []
+
+    if (input.comments && input.comments.length > 0) {
+      rawItems.push(...input.comments)
+    } else if (input.blockId && input.targetText && input.comment) {
+      rawItems.push({
+        blockId: input.blockId,
+        targetText: input.targetText,
+        comment: input.comment,
+        author: input.author
+      })
+    }
+
+    if (rawItems.length === 0) {
+      throw new WorkspaceError(
+        WorkspaceErrorCode.WORKSPACE_COMMENT_EMPTY,
+        'No comment specified. Provide either a single comment ("blockId", "targetText", "comment") or a "comments" array.'
+      )
+    }
+
+    for (const item of rawItems) {
+      if (!item.comment || item.comment.trim().length === 0) {
+        throw new WorkspaceError(
+          WorkspaceErrorCode.WORKSPACE_COMMENT_EMPTY,
+          'Comment must not be empty or whitespace only.'
+        )
+      }
+    }
+
+    const context = config.configurable
+    const resolved = await resolveResourceId({
+      instanceId: input.instanceId,
+      instanceName: input.instanceName,
+      projectName: input.projectName,
+      type: 'document',
+      context
+    })
+
+    // 2. Execute under per-document mutex to serialize concurrent parallel tool calls
+    return await withDocumentInstanceLock(resolved.instanceId, async () => {
+      const MAX_OCC_RETRIES = 3
+      let lastError: unknown
+
+      for (let attempt = 0; attempt <= MAX_OCC_RETRIES; attempt++) {
+        try {
+          const { payload } = await getDocumentPayload({
+            instanceId: resolved.instanceId,
+            port: context?.wsPort
+          })
+
+          const allBlocks = payload.blocks || []
+          const blocksMap = new Map<string, Block>()
+          for (const b of allBlocks) {
+            if (b.id) blocksMap.set(b.id, { ...b })
+          }
+
+          const nextComments: Record<string, Comment> = { ...(payload.comments || {}) }
+          const addedItems: LeaveCommentItemResult[] = []
+          const modifiedBlockIds = new Set<string>()
+
+          for (const item of rawItems) {
+            const targetBlock = blocksMap.get(item.blockId)
+            if (!targetBlock) {
+              throw new WorkspaceError(
+                WorkspaceErrorCode.WORKSPACE_BLOCK_IDENTITY_MISSING,
+                `Target block "${item.blockId}" not found in document "${resolved.name}".`
+              )
+            }
+
+            const commentId =
+              globalThis.crypto?.randomUUID?.() ||
+              `c-${Math.random().toString(36).substring(2, 11)}`
+            const author = item.author?.trim() || 'AI Reviewer'
+
+            // Anchor comment to the block
+            const updatedBlock = anchorCommentToBlock(targetBlock, item.targetText, commentId)
+            blocksMap.set(item.blockId, updatedBlock)
+            modifiedBlockIds.add(item.blockId)
+
+            // Record comment metadata
+            const newComment: Comment = {
+              id: commentId,
+              author,
+              content: item.comment.trim()
+            }
+            nextComments[commentId] = newComment
+
+            addedItems.push({
+              commentId,
+              blockId: item.blockId,
+              targetText: item.targetText,
+              author,
+              comment: item.comment.trim()
+            })
+          }
+
+          // Build atomic commands: one editor:update_block per touched block + one editor:update_comments
+          const commands: EditorCommand[] = []
+          for (const bId of modifiedBlockIds) {
+            const b = blocksMap.get(bId)!
+            commands.push({
+              type: 'editor:update_block',
+              blockId: bId,
+              changes: {
+                children: b.children,
+                tableRows: b.tableRows,
+                content: b.content
+              }
+            })
+          }
+          commands.push({
+            type: 'editor:update_comments',
+            comments: nextComments
+          })
+
+          await executeDocumentCommands({
+            commands,
+            instanceId: resolved.instanceId,
+            wsPort: context?.wsPort,
+            threadId: context?.thread_id || context?.threadId,
+            staged: false
+          })
+
+          const firstItem = addedItems[0]
+          return {
+            status: 'success',
+            action: 'Comment Added',
+            instanceId: resolved.instanceId,
+            instanceName: resolved.name,
+            projectName: input.projectName,
+            commentsAdded: addedItems.length,
+            comments: addedItems,
+            commentId: firstItem?.commentId,
+            blockId: firstItem?.blockId,
+            targetText: firstItem?.targetText,
+            author: firstItem?.author,
+            comment: firstItem?.comment
+          }
+        } catch (err: unknown) {
+          lastError = err
+          const errMsg = err instanceof Error ? err.message : String(err)
+          const isStaleVersion =
+            errMsg.includes('WORKSPACE_STALE_BASE_VERSION') ||
+            errMsg.includes('stale version') ||
+            errMsg.includes('stale base version')
+
+          if (isStaleVersion && attempt < MAX_OCC_RETRIES) {
+            const delay = Math.pow(2, attempt) * 50 + Math.random() * 25
+            await new Promise((resolve) => setTimeout(resolve, delay))
+            continue
+          }
+          throw err
+        }
+      }
+
+      throw lastError
+    })
+  } catch (err: unknown) {
+    const { code, message, recommendFix } = extractErrorInfo(err)
+    return {
+      status: 'error',
+      action: 'Failed to leave comment',
+      instanceId: input.instanceId,
+      instanceName: input.instanceName,
+      projectName: input.projectName,
+      code,
+      message,
+      recommendFix
+    }
+  }
+}
+
 // ============================================================================
 // Resolution Logic
 // ============================================================================
@@ -1453,6 +1784,51 @@ Examples:
   ]
 }`,
   schema: editDocumentSchema
+})
+
+/**
+ * leaveComment - LangChain Tool
+ * Leaves a review comment or annotation attached to a specific text substring in a document block.
+ * Does not mutate canonical document text or structure.
+ */
+export const leaveComment = tool(leaveCommentHandler, {
+  name: 'leaveComment',
+  description: `Leave an inline review comment or annotation on a specific passage of text within a document block. Call readDocument first to obtain valid block IDs and inspect the exact text runs.
+
+Inputs:
+- instanceName / instanceId: The document identifier.
+- blockId: The ID of the block containing the target text (for a single comment).
+- targetText: The exact text substring within the block to anchor the comment to.
+- comment: The review note, critique, or co-author feedback.
+- author (optional): Author display name (defaults to 'AI Reviewer').
+- comments (optional): Array of { blockId, targetText, comment, author? } items. Strongly recommended when leaving multiple comments to avoid concurrency/OCC version conflicts.
+
+Examples:
+1. Single comment:
+{
+  "instanceName": "SystemArchitecture",
+  "blockId": "b-4a81",
+  "targetText": "sample size of 12 patients",
+  "comment": "Note that this small sample size limits generalization.",
+  "author": "Methodology Reviewer"
+}
+2. Batched comments (Recommended when leaving multiple comments):
+{
+  "instanceName": "SystemArchitecture",
+  "comments": [
+    {
+      "blockId": "b-4a81",
+      "targetText": "sample size of 12 patients",
+      "comment": "Small sample size limits generalizability."
+    },
+    {
+      "blockId": "b-7c92",
+      "targetText": "p < 0.05",
+      "comment": "Specify exact p-values rather than inequality thresholds."
+    }
+  ]
+}`,
+  schema: leaveCommentInputSchema
 })
 
 /**

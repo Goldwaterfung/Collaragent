@@ -44,10 +44,10 @@ export function SkillsPanel() {
   }
 
   return (
-    <div className="flex flex-col mb-1 relative rounded-lg">
+    <div className="flex flex-col min-h-0 relative rounded-lg">
       {/* Section Header */}
       <div
-        className="group flex items-center justify-between p-2 hover:bg-surface-100 cursor-pointer rounded-lg mx-1"
+        className="shrink-0 group flex items-center justify-between p-2 hover:bg-surface-100 cursor-pointer rounded-lg mx-1"
         onClick={() => setIsExpanded((p) => !p)}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -66,7 +66,7 @@ export function SkillsPanel() {
             e.stopPropagation()
             handleOpenCreate()
           }}
-          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-surface-200 rounded-md text-(--ev-c-text-2) transition-opacity"
+          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-surface-200 rounded-md text-(--ev-c-text-2) transition-opacity focus:outline-none"
           title="New Skill"
         >
           <PlusIcon width={12} height={12} />
@@ -75,42 +75,44 @@ export function SkillsPanel() {
 
       {/* Skill Items */}
       {isExpanded && (
-        <div className="pl-3 pr-2 pb-2 mt-1 relative">
-          <div className="absolute left-[13px] top-0 bottom-2 w-px bg-surface-200" />
-          <div className="space-y-0.5 pl-3">
-            {skills.length === 0 && !isLoading && (
-              <p className="text-[10px] italic text-(--ev-c-text-3) px-2">
-                No skills yet. Configure a source in Settings.
-              </p>
-            )}
-            {skills.map((skill) => (
-              <div
-                key={skill.skillMdPath}
-                onClick={() => setActiveSkillPath(skill.skillMdPath)}
-                className={`group flex justify-between items-center px-2 py-1.5 rounded-lg cursor-pointer text-xs transition-all ${
-                  activeSkillPath === skill.skillMdPath
-                    ? 'bg-surface-200 text-(--ev-c-text-1) font-medium'
-                    : 'hover:bg-surface-100 text-(--ev-c-text-2)'
-                }`}
-                title={skill.description}
-              >
-                <div className="flex items-center gap-2 truncate flex-1">
-                  <SkillIcon width={13} height={13} />
-                  <span className="truncate pt-0.5">{skill.name}</span>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (confirm(`Delete skill "${skill.name}" and its directory?`)) {
-                      deleteSkill(skill.skillDirPath)
-                    }
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-surface-300 rounded-md text-[10px] text-(--ev-c-text-3) hover:text-red-500"
+        <div className="flex-1 min-h-0 max-h-64 overflow-y-auto custom-scrollbar mt-1">
+          <div className="pl-3 pr-2 pb-2 relative">
+            <div className="absolute left-[13px] top-0 bottom-2 w-px bg-surface-200" />
+            <div className="space-y-0.5 pl-3">
+              {skills.length === 0 && !isLoading && (
+                <p className="text-[10px] italic text-(--ev-c-text-3) px-2">
+                  No skills yet. Configure a source in Settings.
+                </p>
+              )}
+              {skills.map((skill) => (
+                <div
+                  key={skill.skillMdPath}
+                  onClick={() => setActiveSkillPath(skill.skillMdPath)}
+                  className={`group flex justify-between items-center px-2 py-1.5 rounded-lg cursor-pointer text-xs transition-all ${
+                    activeSkillPath === skill.skillMdPath
+                      ? 'bg-surface-200 text-(--ev-c-text-1) font-medium'
+                      : 'hover:bg-surface-100 text-(--ev-c-text-2)'
+                  }`}
+                  title={skill.description}
                 >
-                  ✕
-                </button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2 truncate flex-1">
+                    <SkillIcon width={13} height={13} />
+                    <span className="truncate pt-0.5">{skill.name}</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (confirm(`Delete skill "${skill.name}" and its directory?`)) {
+                        deleteSkill(skill.skillDirPath)
+                      }
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-surface-300 rounded-md text-[10px] text-(--ev-c-text-3) hover:text-red-500 focus:outline-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -366,7 +366,7 @@ export default function ToolbarPlugin({ pluginType = 'default' }: ToolbarPluginP
   const isSupportedBlockType = SUPPORTED_BLOCK_TYPES.has(blockType)
 
   return (
-    <div className="toolbar" ref={toolbarRef}>
+    <div className="toolbar" ref={toolbarRef} onMouseDown={(e) => e.stopPropagation()}>
       <button
         disabled={!canUndo}
         onMouseDown={(e) => e.preventDefault()}

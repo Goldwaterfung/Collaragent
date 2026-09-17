@@ -37,10 +37,10 @@ function AppContent(): React.JSX.Element {
               style={{ width: sidebarWidth }}
               className="shrink-0 flex flex-col h-full border-r border-surface-200"
             >
-              <div className="flex-1 overflow-hidden relative">
+              <div className="flex-1 min-h-[120px] overflow-hidden relative">
                 <InstanceManager onSelect={() => setActiveSkillPath(null)} />
               </div>
-              <div className="shrink-0 border-t border-surface-200 bg-surface-50">
+              <div className="shrink-0 max-h-[40%] flex flex-col border-t border-surface-200 bg-surface-50">
                 <SkillsPanel />
               </div>
             </div>

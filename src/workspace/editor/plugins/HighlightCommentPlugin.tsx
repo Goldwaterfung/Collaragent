@@ -56,17 +56,38 @@ const decodeCommentId = (rawId: string): { id: string; text: string; storageId: 
     return null
   }
   const id = remainder.slice(0, firstColonIndex)
-  const encodedText = remainder.slice(firstColonIndex + 1)
+  const rest = remainder.slice(firstColonIndex + 1)
+  const secondColonIndex = rest.indexOf(':')
+
+  // Legacy 2-part format: id:content
+  if (secondColonIndex === -1) {
+    try {
+      return {
+        id,
+        text: decodeURIComponent(rest),
+        storageId: rawId
+      }
+    } catch {
+      return {
+        id,
+        text: rest,
+        storageId: rawId
+      }
+    }
+  }
+
+  // 3-part format: id:author:content
+  const encodedContent = rest.slice(secondColonIndex + 1)
   try {
     return {
       id,
-      text: decodeURIComponent(encodedText),
+      text: decodeURIComponent(encodedContent),
       storageId: rawId
     }
   } catch {
     return {
       id,
-      text: encodedText,
+      text: encodedContent,
       storageId: rawId
     }
   }

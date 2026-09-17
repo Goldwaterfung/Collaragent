@@ -5,16 +5,25 @@ import { createPortal } from 'react-dom'
 import {
   $getSelection,
   $isRangeSelection,
+  BLUR_COMMAND,
   COMMAND_PRIORITY_LOW,
+  KEY_ESCAPE_COMMAND,
   SELECTION_CHANGE_COMMAND
 } from 'lexical'
 import ToolbarPlugin from './ToolBarPlugin'
+import { INSERT_COMMENT_COMMAND } from '../utils/commands'
+
+export interface FloatingToolBarPluginProps {
+  pluginType?: 'default' | 'skill'
+  isActive?: boolean
+  anchorElem?: HTMLElement | null
+}
 
 export default function FloatingToolBarPlugin({
-  pluginType = 'default'
-}: {
-  pluginType?: 'default' | 'skill'
-}) {
+  pluginType = 'default',
+  isActive = true,
+  anchorElem = null
+}: FloatingToolBarPluginProps) {
   const [editor] = useLexicalComposerContext()
   const [isVisible, setIsVisible] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
@@ -57,6 +66,10 @@ export default function FloatingToolBarPlugin({
 
   const update = useCallback(() => {
     if (typeof window === 'undefined') return
+    if (!isActive) {
+      setIsVisible(false)
+      return
+    }
 
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current)
@@ -69,6 +82,20 @@ export default function FloatingToolBarPlugin({
         return
       }
 
+      // 1. Focus check: Editor root, toolbar, or dropdown must contain activeElement
+      const activeElem = document.activeElement
+      const isFocusedInEditor = root.contains(activeElem)
+      const isFocusedInToolbar = toolbarWrapRef.current?.contains(activeElem)
+      const isFocusedInDropdown =
+        activeElem instanceof HTMLElement &&
+        Boolean(activeElem.closest('.dropdown, .color-picker-popover, [data-lexical-dropdown]'))
+
+      if (!isFocusedInEditor && !isFocusedInToolbar && !isFocusedInDropdown) {
+        setIsVisible(false)
+        return
+      }
+
+      // 2. Dual check: Lexical range selection must be non-collapsed
       let hasNonCollapsedLexicalSelection = false
       let isBackward = false
       editor.getEditorState().read(() => {
@@ -84,15 +111,19 @@ export default function FloatingToolBarPlugin({
         return
       }
 
+      // 3. Dual check: Native DOM selection must be non-collapsed and inside root
       const nativeSelection = window.getSelection()
-      if (!nativeSelection || nativeSelection.rangeCount === 0) {
+      if (!nativeSelection || nativeSelection.isCollapsed || nativeSelection.rangeCount === 0) {
         setIsVisible(false)
         return
       }
 
       const range = nativeSelection.getRangeAt(0)
       const common = range.commonAncestorContainer
-      if (!root.contains(common)) {
+      if (
+        !root.contains(common) ||
+        (nativeSelection.anchorNode && !root.contains(nativeSelection.anchorNode))
+      ) {
         setIsVisible(false)
         return
       }
@@ -120,6 +151,18 @@ export default function FloatingToolBarPlugin({
         },
         viewport
       )
+
+      // Check if selection is visible inside the scroll container
+      const isVisibleInContainer =
+        clientRect.bottom >= bounds.top &&
+        clientRect.top <= bounds.bottom &&
+        clientRect.right >= bounds.left &&
+        clientRect.left <= bounds.right
+
+      if (!isVisibleInContainer) {
+        setIsVisible(false)
+        return
+      }
 
       // Measure toolbar size (fallback to a reasonable default).
       const measured = toolbarWrapRef.current?.getBoundingClientRect()
@@ -149,7 +192,19 @@ export default function FloatingToolBarPlugin({
       setPos({ top: clampedTop, left: clampedLeft })
       setIsVisible(true)
     })
-  }, [editor])
+  }, [editor, isActive])
+
+  const isVisibleRef = useRef(false)
+  useEffect(() => {
+    isVisibleRef.current = isVisible
+  }, [isVisible])
+
+  // Automatically dismiss if card/panel becomes inactive
+  useEffect(() => {
+    if (!isActive) {
+      setIsVisible(false)
+    }
+  }, [isActive])
 
   useEffect(() => {
     return () => {
@@ -158,6 +213,75 @@ export default function FloatingToolBarPlugin({
       }
     }
   }, [])
+
+  const handleFocusOut = useCallback((event: FocusEvent) => {
+    const related = event.relatedTarget as Node | null
+    const toolbarElem = toolbarWrapRef.current
+
+    // If focus moved inside the toolbar itself, keep it open
+    if (toolbarElem && related && toolbarElem.contains(related)) {
+      return
+    }
+
+    // If focus moved inside an open dropdown or popover belonging to toolbar
+    if (
+      related instanceof HTMLElement &&
+      Boolean(related.closest('.dropdown, .color-picker-popover, [data-lexical-dropdown]'))
+    ) {
+      return
+    }
+
+    setIsVisible(false)
+  }, [])
+
+  // Focusout / blur handling: dismiss toolbar unless focus moved to toolbar or its dropdowns
+  useEffect(() => {
+    const attach = (elem: HTMLElement | null) => {
+      elem?.addEventListener('focusout', handleFocusOut)
+    }
+    const detach = (elem: HTMLElement | null) => {
+      elem?.removeEventListener('focusout', handleFocusOut)
+    }
+
+    const currentRoot = editor.getRootElement()
+    attach(currentRoot)
+
+    const unregisterRoot = editor.registerRootListener((rootElement, prevRootElement) => {
+      detach(prevRootElement)
+      attach(rootElement)
+    })
+
+    return () => {
+      unregisterRoot()
+      detach(editor.getRootElement())
+    }
+  }, [editor, handleFocusOut])
+
+  // Dismiss on pointer down outside editor and outside toolbar
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!isVisibleRef.current) return
+
+      const target = event.target as Node | null
+      const root = editor.getRootElement()
+      const toolbarElem = toolbarWrapRef.current
+
+      const isInsideRoot = root !== null && root.contains(target)
+      const isInsideToolbar = toolbarElem !== null && toolbarElem.contains(target)
+      const isInsideDropdown =
+        target instanceof HTMLElement &&
+        Boolean(target.closest('.dropdown, .color-picker-popover, [data-lexical-dropdown]'))
+
+      if (!isInsideRoot && !isInsideToolbar && !isInsideDropdown) {
+        setIsVisible(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [editor])
 
   useEffect(() => {
     return mergeRegister(
@@ -171,9 +295,46 @@ export default function FloatingToolBarPlugin({
           return false
         },
         COMMAND_PRIORITY_LOW
+      ),
+      editor.registerCommand(
+        BLUR_COMMAND,
+        (payload: FocusEvent) => {
+          handleFocusOut(payload)
+          return false
+        },
+        COMMAND_PRIORITY_LOW
+      ),
+      editor.registerCommand(
+        KEY_ESCAPE_COMMAND,
+        () => {
+          if (isVisibleRef.current) {
+            setIsVisible(false)
+            editor.update(() => {
+              const selection = $getSelection()
+              if ($isRangeSelection(selection)) {
+                selection.focus.set(
+                  selection.anchor.key,
+                  selection.anchor.offset,
+                  selection.anchor.type
+                )
+              }
+            })
+            return true
+          }
+          return false
+        },
+        COMMAND_PRIORITY_LOW
+      ),
+      editor.registerCommand(
+        INSERT_COMMENT_COMMAND,
+        () => {
+          setIsVisible(false)
+          return false
+        },
+        COMMAND_PRIORITY_LOW
       )
     )
-  }, [editor, update])
+  }, [editor, update, handleFocusOut])
 
   useEffect(() => {
     const onScrollOrResize = () => update()
@@ -191,9 +352,12 @@ export default function FloatingToolBarPlugin({
     }
   }, [isVisible, update])
 
-  if (!isVisible) return null
+  if (!isVisible || !isActive) return null
 
-  // NOTE: Portal to document.body to avoid ancestor `backdrop-filter`/stacking contexts
+  const targetPortal = anchorElem ?? (typeof document !== 'undefined' ? document.body : null)
+  if (!targetPortal) return null
+
+  // NOTE: Portal to document.body (or anchorElem) to avoid ancestor `backdrop-filter`/stacking contexts
   // turning `position: fixed` into a non-viewport containing block.
   return createPortal(
     <div
@@ -208,6 +372,6 @@ export default function FloatingToolBarPlugin({
     >
       <ToolbarPlugin pluginType={pluginType} />
     </div>,
-    document.body
+    targetPortal
   )
 }

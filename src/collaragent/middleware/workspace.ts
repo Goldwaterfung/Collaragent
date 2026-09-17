@@ -3,6 +3,7 @@ import {
   readDocument,
   createDocument,
   editDocument,
+  leaveComment,
   listWorkspaceItems,
   readGraph,
   writeGraph,
@@ -28,7 +29,7 @@ The workspace is an interconnected knowledge environment of documents and visual
 ### Tool Precedence & Operational Boundaries
 - **PRIMARY: Workspace Tools (Studio Knowledge Surfaces)**
   - Surfaces: Block-based Document Workspace (prose, notes, papers) & Infinite Visual Canvas (concept maps, relationship graphs, mind maps).
-  - Tools: \`listWorkspaceItems\`, \`readDocument\`, \`createDocument\`, \`editDocument\`, \`readGraph\`, \`writeGraph\`, \`writeMindMap\`, \`compileGraph\`, \`ingestSource\`, \`queryAndFileBack\`, \`lintWorkspace\`, \`pruneLedger\`.
+  - Tools: \`listWorkspaceItems\`, \`readDocument\`, \`createDocument\`, \`editDocument\`, \`leaveComment\`, \`readGraph\`, \`writeGraph\`, \`writeMindMap\`, \`compileGraph\`, \`ingestSource\`, \`queryAndFileBack\`, \`lintWorkspace\`, \`pruneLedger\`.
   - Invariant: ALL user-facing documents, notes, research syntheses, and concept graphs are managed EXCLUSIVELY via Workspace Tools. Studio documents and canvases are internal workspace entities managed by live editors and databases—they DO NOT exist as raw files on the host filesystem.
   - Strict Prohibitions: NEVER attempt to use filesystem tools (\`write_file\`, \`edit_file\`, \`read_file\`, \`delete\`) to create, edit, read, or delete studio documents or canvases. NEVER use \`ls\` or \`glob\` to discover workspace documents; always use \`listWorkspaceItems\`.
 
@@ -41,7 +42,7 @@ The workspace is an interconnected knowledge environment of documents and visual
    - Narrative Prose: Use \`<p>\` for conceptual reasoning and synthesis (one core thesis per paragraph).`
 
 const WORKSPACE_WRITING_SECTION = `
-4. **Targeted Mutations**: Use \`editDocument\` with batched operations (\`update\`, \`insert\`, \`delete\`) to modify documents. This preserves block identities and attached comments. Only use \`createDocument\` when provisioning a new document or replacing the entire file.
+4. **Targeted Mutations & Reviews**: Use \`editDocument\` with batched operations (\`update\`, \`insert\`, \`delete\`) to modify documents. This preserves block identities and attached comments. Use \`leaveComment\` to provide review notes, suggestions, and margin critiques on specific text passages without altering the text. Only use \`createDocument\` when provisioning a new document or replacing the entire file.
 5. **Compounding Wiki & Ledger Integrity**:
    - Link entities and literature claims using typed wikilinks (\`[[<relation>:<targetEntity>|<justification>]]\`).
    - Supported relations: 'supports', 'contradicts', 'supersedes', 'details', 'derived_from', 'cites', 'relates_to'.
@@ -56,6 +57,7 @@ export const createWorkspaceMiddleware = (
   const writeTools = [
     createDocument,
     editDocument,
+    leaveComment,
     writeGraph,
     writeMindMap,
     compileGraph,

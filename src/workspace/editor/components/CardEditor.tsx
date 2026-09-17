@@ -138,7 +138,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
                 <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
                 <PasteMarkdownPlugin />
                 <FindPlugin isActive={isActiveEditor} />
-                <FloatingToolBarPlugin />
+                <FloatingToolBarPlugin isActive={isActiveEditor} />
                 <TablePlugin hasCellMerge={true} hasCellBackgroundColor={true} />
                 <TableScrollShadowPlugin />
                 <TableFitNestedTablePlugin />
@@ -195,7 +195,7 @@ function Cards({ initialContent, instanceId }: { initialContent?: string; instan
               <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
               <PasteMarkdownPlugin />
               <FindPlugin isActive={isActiveEditor} />
-              <FloatingToolBarPlugin />
+              <FloatingToolBarPlugin isActive={isActiveEditor} />
               <TablePlugin hasCellMerge={true} hasCellBackgroundColor={true} />
               <TableScrollShadowPlugin />
               <TableFitNestedTablePlugin />
